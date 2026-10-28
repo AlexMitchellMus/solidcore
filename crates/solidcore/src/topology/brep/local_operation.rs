@@ -12,11 +12,9 @@
 //! (`SmLocalOperationGeometryCreation`) is the face and surface lists the executive
 //! holds ([`OffsetExecutive::set_local_surfaces`]). The executive's notifications are
 //! the caller's ([`OffsetNotifications`]). Upstream removes every face of the B-rep and
-//! copies the faces of the offset B-rep in with a merge (`RemoveFaces`, `CopyFaces`);
-//! the offset B-rep here is moved into place, which is the same body (the merge
-//! re-derives the topology the offset B-rep already has), the tolerance growing to the
-//! offset B-rep's as `CopyFaces` does. `SmTemporaryChangeValue(m_bEditingEnabled)` has
-//! no counterpart: arena edits are not gated. The debug drawing code is omitted. No
+//! copies the faces of the offset B-rep in with a merge (`RemoveFaces`, `CopyFaces`), as
+//! here; the copy notifies through an arena-only store. `SmTemporaryChangeValue` of
+//! `m_bEditingEnabled` is a set and restore of the flag. The debug drawing code is omitted. No
 //! recursion is introduced here.
 
 use crate::error::{Result, SolidError};
@@ -28,7 +26,10 @@ use crate::offset::offset_executive::p2::OffsetNotifications;
 use crate::query::brep::{calculate_bounding_box, BoundingBoxOptions};
 use crate::surface::surface::Surface;
 use crate::topology::brep::p1 as bp1;
-use crate::topology::brep::p2::set_tolerance;
+use crate::topology::brep::p2::ArenaNotifyState;
+use crate::topology::brep::p5;
+use crate::topology::brep::p7;
+use crate::topology::brep_cache::{arena_identity, CacheObject};
 use crate::topology::face::p2 as face_ops;
 use crate::topology::{Brep, FaceId};
 
@@ -111,7 +112,7 @@ pub fn local_operation(
     executive.set_extend_convex_edges(true);
 
     // Build a new Brep by merging in all the faces with their new surfaces
-    let new_brep = executive
+    let mut new_brep = executive
         .do_extended_offset(k, Some(&mut *b), notifications)
         .map_err(|e| {
             if e.is_unported() {
@@ -122,9 +123,35 @@ pub fn local_operation(
         })?;
     drop(executive);
 
-    // the faces of this Brep become those of the new one
-    *b = new_brep;
-    set_tolerance(k, b, tolerance, true, true)
+    // remove all faces from this Brep, then move all faces of the new Brep into it
+    // (`CopyFaces` with a merge, which also grows this Brep's tolerance to the new one's)
+    let editing = b.editing_enabled();
+    b.set_editing_enabled(true);
+    let moved = move_faces(k, b, &mut new_brep);
+    b.set_editing_enabled(editing);
+    moved
+}
+
+/// `RemoveFaces(GetFaces)` of `b`, then `pNewBrep->CopyFaces(GetFaces, b)`.
+fn move_faces(k: &mut Kernel, b: &mut Brep, new_brep: &mut Brep) -> Result<()> {
+    let old_faces = bp1::faces(b, None)?;
+    p5::remove_faces(k, b, true, &old_faces)?;
+    let new_faces = bp1::faces(new_brep, None)?;
+    let face_ref = |face| arena_identity(CacheObject::Face(face));
+    // the arena entry carries no attribute records: the copy notifies through an
+    // arena-only store (a default record per object of both B-reps)
+    let mut state = ArenaNotifyState::new(new_brep);
+    state.seed(b);
+    p7::copy_faces(
+        k,
+        new_brep,
+        &new_faces,
+        b,
+        true,
+        &face_ref,
+        &mut state.env(None),
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
