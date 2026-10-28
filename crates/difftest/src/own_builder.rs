@@ -71,6 +71,7 @@ pub(crate) enum Built {
 /// How a runner's shim orders, names and initialises the B-rep it builds: the
 /// differences between `sc_edgeuse_graph.h` ([`Conventions::EDGEUSE_GRAPH`]) and
 /// `sc_topology_fixture.h` as the `topology.brep_p2` shim uses it.
+#[allow(clippy::struct_excessive_bools)] // independent per-shim switches
 pub(crate) struct Conventions<'a> {
     /// Register the B-rep's face, edge and vertex lists (`GetFaces`, `GetEdges`,
     /// `GetVertices`) before the traversal (the `topology.brep_p2` shim).
