@@ -1278,72 +1278,6 @@ impl UnitDiff for Runner {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeMap;
-
-    fn op_name(op: &OpIn) -> &'static str {
-        match op {
-            OpIn::Build {} => "build",
-            OpIn::EvalStep { .. } => "eval_step",
-            OpIn::ToStep { .. } => "to_step",
-            OpIn::Iso { .. } => "iso",
-            OpIn::Directrix { .. } => "directrix",
-            OpIn::Generator { .. } => "generator",
-            OpIn::StartPlane { .. } => "start_plane",
-            OpIn::Eq { .. } => "eq",
-            OpIn::Plane { .. } => "plane",
-            OpIn::IsoCircles { .. } => "iso_circles",
-        }
-    }
-
-    /// The generators reach a successful construction and a successful run of every op
-    /// on the Rust side.
-    #[test]
-    fn generated_cases_cover_every_op() {
-        let mut tally: BTreeMap<(String, String), usize> = BTreeMap::new();
-        for seed in 0..600u64 {
-            let mut rng = Rng::new(0x5eed_0000 + seed);
-            let Some(i) = gen_case(&mut rng) else {
-                continue;
-            };
-            let out = rust(&i).expect("harness");
-            let kind = if let Some(d) = &out.deferred {
-                format!("deferred:{}", d.symbol)
-            } else {
-                let b = out.values.get("build").and_then(|v| v.first()).copied();
-                let st = out.values.get("status").and_then(|v| v.first()).copied();
-                format!("build:{b:?} status:{st:?}")
-            };
-            *tally.entry((op_name(&i.op).to_string(), kind)).or_default() += 1;
-        }
-        for (k, v) in &tally {
-            eprintln!("{k:?} {v}");
-        }
-        for op in [
-            "build",
-            "eval_step",
-            "to_step",
-            "iso",
-            "directrix",
-            "generator",
-            "start_plane",
-            "eq",
-            "plane",
-        ] {
-            let ok = tally.iter().any(|((o, k), _)| {
-                o == op && (k == "build:Some(0.0) status:Some(0.0)" || k == "build:Some(0.0) status:None")
-            });
-            assert!(ok, "{op} never succeeds");
-        }
-        let ok = tally
-            .iter()
-            .any(|((o, k), _)| o == "iso_circles" && k == "build:None status:Some(0.0)");
-        assert!(ok, "iso_circles never succeeds");
-    }
-}
-
 // ---- lazy NURB (`surface.surface_p2` `common_const_make` cases) ------------------------
 
 /// The constructor-built surface of a `common_const_make` case.
@@ -1418,4 +1352,70 @@ pub(super) fn const_make_cases() -> Vec<Case> {
         }
     }
     cases
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    fn op_name(op: &OpIn) -> &'static str {
+        match op {
+            OpIn::Build {} => "build",
+            OpIn::EvalStep { .. } => "eval_step",
+            OpIn::ToStep { .. } => "to_step",
+            OpIn::Iso { .. } => "iso",
+            OpIn::Directrix { .. } => "directrix",
+            OpIn::Generator { .. } => "generator",
+            OpIn::StartPlane { .. } => "start_plane",
+            OpIn::Eq { .. } => "eq",
+            OpIn::Plane { .. } => "plane",
+            OpIn::IsoCircles { .. } => "iso_circles",
+        }
+    }
+
+    /// The generators reach a successful construction and a successful run of every op
+    /// on the Rust side.
+    #[test]
+    fn generated_cases_cover_every_op() {
+        let mut tally: BTreeMap<(String, String), usize> = BTreeMap::new();
+        for seed in 0..600u64 {
+            let mut rng = Rng::new(0x5eed_0000 + seed);
+            let Some(i) = gen_case(&mut rng) else {
+                continue;
+            };
+            let out = rust(&i).expect("harness");
+            let kind = if let Some(d) = &out.deferred {
+                format!("deferred:{}", d.symbol)
+            } else {
+                let b = out.values.get("build").and_then(|v| v.first()).copied();
+                let st = out.values.get("status").and_then(|v| v.first()).copied();
+                format!("build:{b:?} status:{st:?}")
+            };
+            *tally.entry((op_name(&i.op).to_string(), kind)).or_default() += 1;
+        }
+        for (k, v) in &tally {
+            eprintln!("{k:?} {v}");
+        }
+        for op in [
+            "build",
+            "eval_step",
+            "to_step",
+            "iso",
+            "directrix",
+            "generator",
+            "start_plane",
+            "eq",
+            "plane",
+        ] {
+            let ok = tally.iter().any(|((o, k), _)| {
+                o == op && (k == "build:Some(0.0) status:Some(0.0)" || k == "build:Some(0.0) status:None")
+            });
+            assert!(ok, "{op} never succeeds");
+        }
+        let ok = tally
+            .iter()
+            .any(|((o, k), _)| o == "iso_circles" && k == "build:None status:Some(0.0)");
+        assert!(ok, "iso_circles never succeeds");
+    }
 }
