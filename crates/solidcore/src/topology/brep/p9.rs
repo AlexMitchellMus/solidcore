@@ -17,6 +17,9 @@
 //! their external context, including null. Editing state is part 1's `Brep::editing_enabled`.
 //! Ordinary split failures retain the nearby vertex alongside their status. All six
 //! owned bodies are present; individual dependency calls defer to their owners.
+//! `FindInfiniteRegion` retries a failed `SmShell::RayFire` as upstream, but propagates
+//! errors that have no upstream status (unported, stale id, pending preparation, B-rep
+//! cache owner/handle resolution) instead of treating them as a missed ray.
 //! Part 1's `add_*_record` appends a face, edge or vertex to its owning list at
 //! allocation; native `PostInsert`s later, with no same-kind allocation in between,
 //! so the list order matches, but a record allocated before a dependency error stays
@@ -426,10 +429,20 @@ fn ray_direction(direction: Vec3) -> Result<Vec3> {
     })
 }
 
+/// Whether a `SmShell::RayFire` call succeeded. Upstream retries on any failed status;
+/// an error with no upstream status (an unported callee, a stale id, a pending
+/// geometry preparation, or the B-rep cache failing to resolve an owner under the
+/// query's identities) is propagated instead, so a naming mismatch cannot pass for a
+/// missed ray and silently select another region.
 fn ray_success(status: &Result<()>) -> Result<bool> {
     match status {
         Ok(()) => Ok(true),
-        Err(e @ SolidError::Unported { .. }) => Err(e.clone()),
+        Err(
+            e @ (SolidError::Unported { .. }
+            | SolidError::NotFound { .. }
+            | SolidError::PreparationRequired { .. }),
+        ) => Err(e.clone()),
+        Err(e) if crate::topology::brep_cache::is_identity_error(e) => Err(e.clone()),
         Err(_) => Ok(false),
     }
 }
@@ -745,7 +758,7 @@ fn register_entities(env: &mut edge::NotifyEnv<'_>, entities: &[EntityRef]) {
 
 fn register_state_entities(state: &mut edge::NotifyState<'_>, entities: &[EntityRef]) {
     for &entity in entities {
-        state.records.entry((state.key_of)(entity).key).or_default();
+        state.records.or_default((state.key_of)(entity).key);
     }
 }
 
@@ -2720,7 +2733,7 @@ mod tests {
                     type_code: original.type_code(),
                 };
                 let before = (b.edge_list().len(), b.vertex_list().len());
-                let mut records = BTreeMap::new();
+                let mut records = crate::topology::topology::NotifyRecords::new();
                 crate::topology::brep::p3::seed_records(&mut records, &b, &key_of);
                 let mut attributes = AttributeStore::default();
                 let label = attributes
@@ -2849,7 +2862,9 @@ mod tests {
                     let mut record = Topology::default();
                     record.set_user_index1(912);
                     record.mark(Some(&k.context), mark);
-                    let mut records = BTreeMap::from([(edge_ref.key, record)]);
+                    let mut records = crate::topology::topology::NotifyRecords::from(
+                        BTreeMap::from([(edge_ref.key, record)]),
+                    );
                     for (id, _) in b.vertices().iter() {
                         records.insert(split_key(EntityRef::Vertex(id)).key, Topology::default());
                     }
@@ -3027,7 +3042,7 @@ mod tests {
             let region = b
                 .add_region_record(crate::topology::Region::default())
                 .unwrap();
-            let mut records = BTreeMap::new();
+            let mut records = crate::topology::topology::NotifyRecords::new();
             let mut attributes = AttributeStore::default();
             let result = make_shell_vertex_with_kernel_context(
                 &mut k,
@@ -3092,7 +3107,10 @@ mod tests {
                 let events = callbacks::install(&mut k.context);
                 let (mut b, edge) = split_wire();
                 let mut records =
-                    BTreeMap::from([(split_key(EntityRef::Edge(edge)).key, Topology::default())]);
+                    crate::topology::topology::NotifyRecords::from(BTreeMap::from([(
+                        split_key(EntityRef::Edge(edge)).key,
+                        Topology::default(),
+                    )]));
                 let mut attributes = AttributeStore::default();
                 let mut stores = edge::NotificationStores {
                     records: &mut records,
@@ -3129,6 +3147,28 @@ mod tests {
                 callbacks::assert_installed(&k.context, &events);
                 assert_eq!((b.edge_list().len(), b.vertex_list().len()), (1, 2));
             }
+        }
+    }
+
+    #[test]
+    fn ray_errors_without_an_upstream_status_propagate() {
+        assert!(ray_success(&Ok(())).unwrap());
+        assert!(!ray_success(&Err(SolidError::sm_err(OP))).unwrap());
+        assert!(!ray_success(&Err(SolidError::invalid_input(OP, "native"))).unwrap());
+        let internal = [
+            SolidError::Unported {
+                upstream: "SmShell::RayFire",
+                unit: "topology.shell",
+            },
+            SolidError::NotFound {
+                operation: OP,
+                entity: EntityRef::Edge(EdgeId::from_index(7)),
+            },
+            SolidError::PreparationRequired { operation: OP },
+            SolidError::invalid_input("topology::brep_cache", "edge owner is not in source B-rep"),
+        ];
+        for e in internal {
+            assert_eq!(ray_success(&Err(e.clone())), Err(e));
         }
     }
 
@@ -3190,7 +3230,7 @@ mod tests {
             Point3::new(uv_end.x, uv_end.y, 0.0),
             3,
         ));
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = crate::geom::attribute::AttributeStore::default();
         let key_of = |e: EntityRef| crate::topology::loopuse::notify_ref(e);
         let mut env = edge::NotifyEnv {
@@ -3286,7 +3326,7 @@ mod tests {
             b.vertex_mut(vertex).unwrap().vertexuses.push(vu);
             b.edge_mut(e).unwrap().edgeuses.push(eu);
         }
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = crate::geom::attribute::AttributeStore::default();
         let mut env = edge::NotifyEnv {
             records: &mut records,

@@ -325,7 +325,7 @@ fn rust(i: &Inputs, mut b: Brep, initial: [f64; 2]) -> Result<Output, HarnessErr
     b.set_editing_enabled(i.editing);
     let mut k = Kernel::default();
     let mut record = Vec::new();
-    let mut records = std::collections::BTreeMap::new();
+    let mut records = solidcore::topology::topology::NotifyRecords::new();
     let mut attributes = solidcore::geom::attribute::AttributeStore::default();
     let mut env = solidcore::topology::edge::NotifyEnv {
         records: &mut records,
@@ -486,7 +486,7 @@ fn rust(i: &Inputs, mut b: Brep, initial: [f64; 2]) -> Result<Output, HarnessErr
                 if !i.same {
                     pc.set_sss_point(Vec3::from(i.point));
                 }
-                let mut records = std::collections::BTreeMap::new();
+                let mut records = solidcore::topology::topology::NotifyRecords::new();
                 let mut attributes = solidcore::geom::attribute::AttributeStore::default();
                 let mut env = solidcore::topology::edge::NotifyEnv {
                     records: &mut records,
