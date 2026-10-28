@@ -40,7 +40,7 @@ use solidcore::topology::{
     LoopEdge, LoopId, Loopuse, LoopuseId, LoopuseStart, Region, RegionId, Shell, ShellId, Vertex,
     VertexId, Vertexuse, VertexuseId, VertexuseOwner,
 };
-use solidcore::SolidError;
+use solidcore::{EntityRef, SolidError};
 
 use crate::units::topology_edgeuse_p1::{bspline_of, surface_of, BrepIn, SrfIn};
 use crate::HarnessError;
@@ -483,8 +483,8 @@ fn set_point(
         env.records,
         env.attributes,
         Some(&mut k.context),
-        key_of(solidcore::EntityRef::Vertex(v)),
-        &|vu| key_of(solidcore::EntityRef::Vertexuse(vu)),
+        key_of(EntityRef::Vertex(v)),
+        &|vu| key_of(EntityRef::Vertexuse(vu)),
     )
 }
 
@@ -947,6 +947,24 @@ impl Map<'_> {
     mapper!(edge, edges, EdgeId);
     mapper!(vertexuse, vertexuses, VertexuseId);
     mapper!(vertex, vertices, VertexId);
+
+    /// An entity of the source B-rep under its new id (a whole B-rep keeps its id).
+    fn entity(&self, e: EntityRef) -> Result<EntityRef, SolidError> {
+        let unreached = |_| SolidError::invalid_input("renumber", "unreached cache entity");
+        Ok(match e {
+            EntityRef::Brep(x) => EntityRef::Brep(x),
+            EntityRef::Region(x) => EntityRef::Region(self.region(x).map_err(unreached)?),
+            EntityRef::Shell(x) => EntityRef::Shell(self.shell(x).map_err(unreached)?),
+            EntityRef::Faceuse(x) => EntityRef::Faceuse(self.faceuse(x).map_err(unreached)?),
+            EntityRef::Face(x) => EntityRef::Face(self.face(x).map_err(unreached)?),
+            EntityRef::Loopuse(x) => EntityRef::Loopuse(self.loopuse(x).map_err(unreached)?),
+            EntityRef::Loop(x) => EntityRef::Loop(self.loop_(x).map_err(unreached)?),
+            EntityRef::Edgeuse(x) => EntityRef::Edgeuse(self.edgeuse(x).map_err(unreached)?),
+            EntityRef::Edge(x) => EntityRef::Edge(self.edge(x).map_err(unreached)?),
+            EntityRef::Vertexuse(x) => EntityRef::Vertexuse(self.vertexuse(x).map_err(unreached)?),
+            EntityRef::Vertex(x) => EntityRef::Vertex(self.vertex(x).map_err(unreached)?),
+        })
+    }
 }
 
 fn opt<T, F: Fn(T) -> Result<T, HarnessError>>(
@@ -1039,6 +1057,12 @@ pub(crate) fn renumber_with(src: &Brep, conv: &Conventions<'_>) -> Result<Brep, 
         let new = m.face(id)?;
         if let Some(s) = surface.as_mut().filter(|_| owned) {
             let _ = s.set_owner(Some((conv.face_owner)(new)));
+        }
+        // the face surface's cache slot as the Rust read left it (its tree state and
+        // kept trimmed cache, renamed into the new ids): the copy stands for the same
+        // surface object, and `Surface::clone` gives it an empty slot
+        if let (Some(s), Some(from)) = (surface.as_ref(), f.surface.as_ref()) {
+            s.copy_cache_slot_of(from, |e| m.entity(e)).map_err(solid)?;
         }
         b.add_face_record(Face {
             shell: m.shell(f.shell)?,

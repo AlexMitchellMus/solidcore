@@ -7,9 +7,3 @@
 # check = "ratchet"          # or "value-share"
 # case = "insert_at_end"     # ratchet only; omit to waive every case of the unit
 # reason = "fixture asserted the pre-#123 clamp; replaced by insert_at_end_clamped"
-
-[[waiver]]
-unit = "offset.offset_geometry_creation"
-check = "ratchet"
-case = "gen0266"
-reason = "passed only because the runner copied the C++ face-surface cache states onto the Rust B-reps (seed_cache_tree_states, C++ state on the Rust side); removed, the case is a listed known mismatch (Rust ReadFromFile leaves no face-surface caches): plan/findings/topology.brep_p7--read-from-file-leaves-no-face-surface-caches.md. Remove once this PR has merged."

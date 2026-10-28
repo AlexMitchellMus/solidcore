@@ -1,7 +1,0 @@
-# The Rust .smb reader leaves no face-surface caches where upstream's ReadFromFile
-# leaves some; the runner no longer copies the C++ cache states onto the Rust side
-# (plan/findings/topology.brep_p7--read-from-file-leaves-no-face-surface-caches.md).
-[[mismatch]]
-unit = "offset.offset_geometry_creation"
-case = "gen0266"
-why = "ExtendTrimEdges: C++ SM_SUCCESS, Rust SM_ERR (record 284 vs 1776 values). The Rust read of Mouse.smb/Endcap.smb leaves no face-surface caches; C++ leaves built trees and one unbuilt one, whose empty continuity arrays GetDomainWithContinuity then reads (plan/findings/topology.brep_p7--read-from-file-leaves-no-face-surface-caches.md)"
