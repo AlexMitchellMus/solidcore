@@ -346,7 +346,7 @@ fn highest_offset_deriv(hu: usize, hv: usize, only_upper_half: bool) -> Option<u
 
 /// `SM_CAST_PTR(SmBSplineSurface, surface)`: the B-spline kinds (planes, surfaces of
 /// revolution, cones, spheres and tori are `SmBSplineSurface`s).
-const fn is_b_spline_kind(surface: &Surface) -> bool {
+fn is_b_spline_kind(surface: &Surface) -> bool {
     matches!(
         surface.kind(),
         SurfaceKind::BSpline(_)
@@ -708,6 +708,29 @@ impl OffsetSurface {
         Ok(sur)
     }
 
+    /// `CreateMirrorSurface`: an offset of the mirrored base (owned by the new offset)
+    /// and of the mirrored extension, if any. The distance changes sign, as the mirror
+    /// reverses the base's orientation.
+    ///
+    /// # Errors
+    ///
+    /// Those of the base's and the extension's [`Surface::create_mirror_surface`] and of
+    /// [`OffsetSurface::new`].
+    pub fn create_mirror_surface(&self, k: &Kernel, mirror_plane: &Axis2Placement) -> Result<Self> {
+        let mirror = self.surface.create_mirror_surface(k, mirror_plane)?;
+        let mut off = Self::new(k, self.offset_distance.get(), mirror, true, SS_UNKNOWN)?;
+        off.allow_extension = self.allow_extension;
+        if let Some(e) = self.with_current_extension(|e| {
+            e.map(|e| e.create_mirror_surface(k, mirror_plane))
+                .transpose()
+        })? {
+            off.extended_surface = Some(Box::new(e));
+        }
+        // This needs to be done because mirror reverses orientation of the surface.
+        off.offset_distance.set(-self.offset_distance.get());
+        Ok(off)
+    }
+
     /// `operator==`: an offset surface (`SmSurface::operator==`) with the same distance
     /// (to the scaled zero), equal base surfaces, and the same periodicity flags and
     /// singularities.
@@ -804,6 +827,17 @@ impl OffsetSurface {
             is_periodic_on_v: self.is_periodic_on_v,
             singularities: self.singularities,
         }
+    }
+
+    /// The base surface and the stored extension, mutable, for
+    /// [`Surface::detach_nurb_cells`] (a pending extension is not reached: an exact
+    /// copy has folded it into the stored one).
+    pub(crate) fn nested_surfaces_mut(&mut self) -> Vec<&mut Surface> {
+        let mut v = vec![self.surface.as_mut()];
+        if let Some(e) = self.extended_surface.as_deref_mut() {
+            v.push(e);
+        }
+        v
     }
 
     /// A copy for evaluation: the members as they are, the base and extended
@@ -1805,13 +1839,28 @@ impl OffsetSurface {
     /// `SM_ERR` when the base surface is not owned (after the extended surface was
     /// swapped); those of [`Surface::swap_uv`].
     pub fn swap_uv(&mut self, k: &Kernel) -> Result<()> {
+        self.swap_uv_notifying(k, &mut |_, _, _| Ok(()))
+    }
+
+    /// [`OffsetSurface::swap_uv`] with the extended and base surfaces' edit
+    /// notifications sent through `notify` ([`Surface::swap_uv_notifying`]); the offset
+    /// surface notifies nothing itself, as upstream.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`OffsetSurface::swap_uv`] and of `notify`.
+    pub(crate) fn swap_uv_notifying(
+        &mut self,
+        k: &Kernel,
+        notify: &mut crate::surface::surface::p2::SurfaceEditNotify<'_>,
+    ) -> Result<()> {
         self.fold_pending_extension();
         if let Some(e) = self.extended_surface.as_deref_mut() {
-            e.swap_uv(k)?;
+            e.swap_uv_notifying(k, notify)?;
             self.offset_distance.set(-self.offset_distance.get());
         }
         if self.owns_surface {
-            self.surface.swap_uv(k)?;
+            self.surface.swap_uv_notifying(k, notify)?;
             self.offset_distance.set(-self.offset_distance.get());
         } else {
             // Can not swap UV if I do not own the surface

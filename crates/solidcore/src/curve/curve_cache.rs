@@ -374,14 +374,18 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             Some(t) => Some(t.retag_curve_tree(handle)?),
             None => None,
         };
+        let analytic = match &self.analytic {
+            Some(a) => Some(a.clone_detached().ok()?),
+            None => None,
+        };
         Some(CurveCache {
-            curve: self.curve.clone_detached(),
+            curve: self.curve.clone_detached().ok()?,
             curve_handle: handle,
             interval: self.interval,
             tree,
             continuities: self.continuities.clone(),
             tried_analytic: self.tried_analytic,
-            analytic: self.analytic.as_ref().map(Curve::clone_detached),
+            analytic,
             spans: self.spans.clone(),
             parents: self.parents.clone(),
             opts: self.opts,
@@ -637,6 +641,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             | CurveKind::Offset(_)
             | CurveKind::CrvInVolume(_)
             | CurveKind::CrvOnSurf(_)
+            | CurveKind::TangentField(_)
             | CurveKind::Composite(_) => false,
         };
 
@@ -664,6 +669,7 @@ impl<O: Copy + PartialEq> CurveCache<O> {
                 | CurveKind::Offset(_)
                 | CurveKind::CrvInVolume(_)
                 | CurveKind::CrvOnSurf(_)
+                | CurveKind::TangentField(_)
                 | CurveKind::Composite(_) => None,
             };
             create_bezier_segment_block(k, nurb, &self.curve)?

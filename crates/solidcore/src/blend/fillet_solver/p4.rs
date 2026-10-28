@@ -575,6 +575,7 @@ const fn bspline_curve_cast(curve: &Curve) -> Option<&BSplineCurve> {
         | CurveKind::Conic(_)
         | CurveKind::CrvInVolume(_)
         | CurveKind::CrvOnSurf(_)
+        | CurveKind::TangentField(_)
         | CurveKind::Composite(_) => None,
     }
 }
@@ -582,7 +583,7 @@ const fn bspline_curve_cast(curve: &Curve) -> Option<&BSplineCurve> {
 /// `SM_CAST_PTR(SmBSplineSurface, pSurface) != NULL`: the kinds derived from
 /// `SmBSplineSurface` (`SmPlane`, `SmSurfOfRevolution`, `SmSurfOfExtrusion`, and
 /// through `SmSurfOfRevolution` `SmCone`/`SmCylinder`, `SmSphere`, `SmTorus`).
-const fn is_bspline_surface(surface: &Surface) -> bool {
+fn is_bspline_surface(surface: &Surface) -> bool {
     matches!(
         surface.kind(),
         SurfaceKind::BSpline(_)
@@ -2820,7 +2821,7 @@ fn c5_split_original_fillet(
         let fillet_surface = cx
             .fillets
             .geom(geom0)?
-            .fillet_surface()?
+            .fillet_surface(None)?
             .ok_or_else(|| SolidError::null_pointer(OP))?;
         fillet_surface.split_at(cx.k, split_at_param, SurfParamType::U)?
     };
@@ -3104,7 +3105,7 @@ fn c5_undo_reversal(ops: &mut dyn FilletSolverOps, cx: &mut Cx<'_>) -> Result<()
             let ivl2 = center_line.natural_interval();
             center_line.reverse_parameterization(k, &ivl2)?;
         }
-        if let Some(fillet_surf) = geom.fillet_surface_mut()? {
+        if let Some(fillet_surf) = geom.fillet_surface_mut(None)? {
             fillet_surf.reverse(k, SurfParamType::U)?;
         }
     }
@@ -3296,7 +3297,7 @@ mod tests_c5 {
             self.fb
                 .geom(self.g)
                 .unwrap()
-                .fillet_surface()
+                .fillet_surface(None)
                 .unwrap()
                 .unwrap()
                 .evaluate_point(&Kernel::default(), uv)
