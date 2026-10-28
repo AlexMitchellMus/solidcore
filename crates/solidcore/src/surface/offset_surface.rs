@@ -829,6 +829,17 @@ impl OffsetSurface {
         }
     }
 
+    /// The base surface and the stored extension, mutable, for
+    /// [`Surface::detach_nurb_cells`] (a pending extension is not reached: an exact
+    /// copy has folded it into the stored one).
+    pub(crate) fn nested_surfaces_mut(&mut self) -> Vec<&mut Surface> {
+        let mut v = vec![self.surface.as_mut()];
+        if let Some(e) = self.extended_surface.as_deref_mut() {
+            v.push(e);
+        }
+        v
+    }
+
     /// A copy for evaluation: the members as they are, the base and extended
     /// surfaces copied exactly (no knot fix-up), `depth` the wrapper nesting
     /// already walked.
@@ -1828,13 +1839,28 @@ impl OffsetSurface {
     /// `SM_ERR` when the base surface is not owned (after the extended surface was
     /// swapped); those of [`Surface::swap_uv`].
     pub fn swap_uv(&mut self, k: &Kernel) -> Result<()> {
+        self.swap_uv_notifying(k, &mut |_, _, _| Ok(()))
+    }
+
+    /// [`OffsetSurface::swap_uv`] with the extended and base surfaces' edit
+    /// notifications sent through `notify` ([`Surface::swap_uv_notifying`]); the offset
+    /// surface notifies nothing itself, as upstream.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`OffsetSurface::swap_uv`] and of `notify`.
+    pub(crate) fn swap_uv_notifying(
+        &mut self,
+        k: &Kernel,
+        notify: &mut crate::surface::surface::p2::SurfaceEditNotify<'_>,
+    ) -> Result<()> {
         self.fold_pending_extension();
         if let Some(e) = self.extended_surface.as_deref_mut() {
-            e.swap_uv(k)?;
+            e.swap_uv_notifying(k, notify)?;
             self.offset_distance.set(-self.offset_distance.get());
         }
         if self.owns_surface {
-            self.surface.swap_uv(k)?;
+            self.surface.swap_uv_notifying(k, notify)?;
             self.offset_distance.set(-self.offset_distance.get());
         } else {
             // Can not swap UV if I do not own the surface
