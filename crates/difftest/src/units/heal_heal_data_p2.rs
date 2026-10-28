@@ -16,12 +16,12 @@
 //!   box or a full sphere face) with target lists, then a script of heal steps;
 //!   outputs each step's status and results and, at the end, the whole healer state
 //!   (targets, every props record ever allocated, every problem array with its labels,
-//!   histograms, statistics and the vertex voxel model). The C++ side preserves exactly
-//!   exported analytic surfaces and edge curves (circles/ellipses, with their polar
-//!   mapping and flags) and replaces other surfaces and edge curves by the plain
-//!   B-splines the Rust import rebuilds; the Rust side imports the C++ export (the
-//!   `topology.vertexuse` importer) and restores each vertex's vertex use order from the
-//!   shim.
+//!   histograms, statistics and the vertex voxel model). Both sides build the B-rep
+//!   themselves with its native geometry: the C++ side with the upstream constructors,
+//!   the Rust side with the Rust kernel ([`own_brep`]: the Rust `.smb` reader, the Rust
+//!   constructors, the single-vertex sphere record by record as `SmBrepConstructor`
+//!   writes it), renumbered into the shim's traversal order, so no C++ output or state
+//!   reaches the Rust side.
 //!
 //! Deferred: `Fix_TolSizes` (`SmBrep::GetThisModelSizeEstimate`, `topology.brep_p1`),
 //! `Cache_DegenFaces` with a face (`SmFace::IsDegenerate` classifies its edges with
@@ -2319,8 +2319,8 @@ mod tests {
 
     /// HANG-29: `--fuzz 30000` fuzz22334, a surface control point of `-1e300` in the
     /// B-rep block; the healer's caching did not return. Both sides refuse the block
-    /// through the `topology.vertexuse` export's HANG-29 bound (`1e150`; the Rust side
-    /// imports through the same validated export).
+    /// through the `topology.vertexuse` block's HANG-29 bound (`1e150`; the Rust side
+    /// applies the same pure check, `check_source`, before its own build).
     #[test]
     fn both_sides_refuse_a_block_in_the_overflow_range() {
         let recorded: Value = serde_json::from_str(include_str!(
@@ -2336,30 +2336,56 @@ mod tests {
         }
     }
 
-    /// A native analytic face must reach healing as the same surface kind in Rust.
-    /// A plain B-spline copy has the same control net but different UV evaluation.
-    #[test]
-    fn sphere_export_preserves_analytic_surface() {
-        use solidcore::surface::surface::SurfaceKind;
-
-        for swap in [false, true] {
-            let input = BIn::Prim(Prim::Sphere { radius: 3.0, swap });
-            let (path, block) = block_of(&input, false, false).unwrap();
-            let (export, counts) = export_of(&path, &block).unwrap();
-            assert!(counts.is_some(), "sphere construction failed");
-            let (brep, exact) = import_raw(&export).unwrap();
-            assert_eq!(exact, vec![true]);
-            let (_, face) = brep.faces().iter().next().unwrap();
-            let surface = face.surface.as_ref().unwrap();
-            assert!(matches!(surface.kind(), SurfaceKind::Sphere(_)));
+    fn built(input: &BIn) -> Brep {
+        let mut k = Kernel::default();
+        match own_brep(&mut k, input, false, false).unwrap() {
+            Built::Brep(b) => *b,
+            Built::Failed(e) => panic!("build failed: {e}"),
         }
     }
 
-    /// The healer transport must keep a native circle/ellipse edge curve as its
-    /// analytic kind (with the polar mapping and flags), not flatten it to the plain
-    /// B-spline copy the old `normalise()` made. The closing chord stays a line.
+    /// The Rust build heals the native sphere, not a plain B-spline copy (which has the
+    /// same control net but different UV evaluation), and has the C++ build's counts.
     #[test]
-    fn ellipse_face_preserves_native_edge_curve() {
+    fn own_sphere_keeps_the_analytic_surface() {
+        use solidcore::surface::surface::SurfaceKind;
+
+        for swap in [false, true] {
+            for input in [
+                BIn::Prim(Prim::Sphere { radius: 3.0, swap }),
+                BIn::Prim(Prim::SingleVertexSphere { radius: 3.0, swap }),
+            ] {
+                let brep = built(&input);
+                let (_, face) = brep.faces().iter().next().unwrap();
+                let surface = face.surface.as_ref().unwrap();
+                assert!(matches!(surface.kind(), SurfaceKind::Sphere(_)));
+                let (path, block) = block_of(&input, false, false).unwrap();
+                let (export, _) = export_of(&path, &block).unwrap();
+                let cpp = solidcore_ffi::units::topology_vertexuse::counts(&export).unwrap();
+                assert_eq!(own_counts(&brep), cpp, "{input:?}");
+            }
+        }
+    }
+
+    /// The single-vertex sphere is one face with one vertex loop on each face use and
+    /// one vertex holding both vertex uses, in a region of its own.
+    #[test]
+    fn own_single_vertex_sphere_records() {
+        for swap in [false, true] {
+            let brep = built(&BIn::Prim(Prim::SingleVertexSphere { radius: 2.0, swap }));
+            assert_eq!(own_counts(&brep), [2, 2, 2, 1, 2, 1, 0, 0, 2, 1]);
+            let (_, v) = brep.vertices().iter().next().unwrap();
+            assert_eq!(v.point, Vec3::new(0.0, 0.0, 2.0));
+            assert_eq!(v.vertexuses.len(), 2);
+            assert!(brep.edges().is_empty());
+        }
+    }
+
+    /// A native circle/ellipse edge curve reaches healing as its analytic kind (with the
+    /// polar mapping and flags), not as a plain B-spline copy. The closing chord stays a
+    /// line.
+    #[test]
+    fn own_ellipse_face_keeps_the_native_edge_curve() {
         use solidcore::curve::curve::p2::{CurveKind, CIRCLE_TYPE, ELLIPSE_TYPE};
         use solidcore::geom::extent1d::Extent1d;
 
@@ -2369,7 +2395,7 @@ mod tests {
             } else {
                 ([-90.0, 90.0], [0.03, 0.01])
             };
-            let input = BIn::Prim(Prim::EllipseFace {
+            let brep = built(&BIn::Prim(Prim::EllipseFace {
                 circle,
                 origin: [0.02, -0.03, 0.01],
                 axis: 0,
@@ -2378,11 +2404,7 @@ mod tests {
                 natural: [-4.0, 3.0],
                 inside_out: false,
                 oob: false,
-            });
-            let (path, block) = block_of(&input, false, false).unwrap();
-            let (export, counts) = export_of(&path, &block).unwrap();
-            assert!(counts.is_some(), "ellipse face construction failed");
-            let (brep, _) = import_raw(&export).unwrap();
+            }));
             let ty = if circle { CIRCLE_TYPE } else { ELLIPSE_TYPE };
             let mut found = 0;
             let mut plain = 0;
@@ -2410,7 +2432,7 @@ mod tests {
                 assert!(!ellipse.base().is_out_of_bounds_enabled());
                 assert!(ellipse.base().gw_nurb().is_some());
             }
-            assert_eq!(found, 1, "circle={circle}: analytic edge curve was flattened");
+            assert_eq!(found, 1, "circle={circle}: analytic edge curve missing");
             assert!(plain >= 1, "circle={circle}: the closing chord disappeared");
         }
     }
