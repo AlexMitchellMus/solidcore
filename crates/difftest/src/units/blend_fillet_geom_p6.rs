@@ -483,7 +483,31 @@ const EXACT_CURVES: [i64; 2] = [14033, 14010];
 /// shared B-rep export").
 const HARNESS_ANALYTIC_IMPORT: &str = "harness:analytic-geometry-export";
 
-/// Builds the target on both sides; `Err(output)` when it cannot be built.
+/// The Rust side's target: the source read by the Rust reader or built by the Rust
+/// kernel in the shim's traversal order ([`crate::own_reader::edgeuse_graph_brep`]),
+/// never imported from the C++ export, so all of its geometry is held exactly;
+/// `Err(output)` when the Rust build fails, as [`target`] reports the shim's.
+fn own_target(brep: &BrepIn) -> Result<Result<Target, Output>, HarnessError> {
+    let path = path_of(Some(brep))?;
+    let block = brep_block_of(Some(brep), false, false)?;
+    let brep = match crate::own_reader::edgeuse_graph_brep(&mut Kernel::default(), brep)? {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(Err(Output::unported(&e).unwrap_or_else(|| {
+                Output::new().values("flat", vec![1.0, crate::own_builder::build_status(&e)])
+            })))
+        }
+    };
+    Ok(Ok(Target {
+        path,
+        block,
+        counts: crate::own_builder::counts(&brep),
+        brep,
+        types: ImportTypes::default(),
+    }))
+}
+
+/// Builds the target on the C++ side (its selectors resolve on the shim's B-rep); `Err(output)` when it cannot be built.
 fn target(brep: &BrepIn) -> Result<Result<Target, Output>, HarnessError> {
     let path = path_of(Some(brep))?;
     let block = brep_block_of(Some(brep), false, false)?;
@@ -1460,7 +1484,7 @@ fn inexact(i: &Inputs, tg: &Target) -> Result<Option<Output>, HarnessError> {
 
 #[allow(clippy::too_many_lines)]
 fn rust(i: &Inputs) -> Result<Output, HarnessError> {
-    let mut tg = match target(&i.brep)? {
+    let mut tg = match own_target(&i.brep)? {
         Ok(t) => t,
         Err(out) => return Ok(out),
     };

@@ -165,6 +165,14 @@ pub(crate) fn edgeuse_graph_brep(
     )
 }
 
+/// An [`edgeuse_case`]: the entity counts (the export header's order), the B-rep and its
+/// geometry types.
+pub(crate) type EdgeuseCase = (
+    [usize; 10],
+    Brep,
+    crate::units::topology_edgeuse_p1::ImportTypes,
+);
+
 /// A `sc_edgeuse_graph.h` case's entity counts, B-rep and geometry types, or the output
 /// of a failed build (`brep_build_status_<status>`, or the deferral of an unported
 /// callee). With `own` (a runner's Rust side) the B-rep is [`brep_in_order`]'s and every
@@ -179,17 +187,7 @@ pub(crate) fn edgeuse_case(
     validate_only: bool,
     init_gaps: bool,
     own: bool,
-) -> Result<
-    Result<
-        (
-            [usize; 10],
-            Brep,
-            crate::units::topology_edgeuse_p1::ImportTypes,
-        ),
-        crate::Output,
-    >,
-    HarnessError,
-> {
+) -> Result<Result<EdgeuseCase, crate::Output>, HarnessError> {
     use crate::own_builder::{counts, failed_output, Built, Conventions};
     use crate::units::topology_edgeuse_p1::{
         brep_block_of, import_with_types, path_of, ImportTypes,

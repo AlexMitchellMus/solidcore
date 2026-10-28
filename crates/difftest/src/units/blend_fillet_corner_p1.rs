@@ -3153,7 +3153,7 @@ mod tests {
                     // selectors
                     let mut resolved = String::new();
                     if let Ok(i) = serde_json::from_value::<Inputs>(case.inputs.clone()) {
-                        if let Ok(Ok(t)) = topo(&i) {
+                        if let Ok(Ok(t)) = topo(&i, true) {
                             let vid = t.args.first().and_then(|&v| u32::try_from(v).ok());
                             let ring: Vec<u32> = t
                                 .brep

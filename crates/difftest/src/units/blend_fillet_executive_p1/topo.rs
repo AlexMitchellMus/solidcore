@@ -96,7 +96,7 @@ pub(super) fn rust(i: &TopoIn) -> Result<Output, HarnessError> {
     let mut b = match built {
         Built::Brep(b) => *b,
         // the C++ side reports a fixture that does not build as rejected
-        Built::Failed(e) => return Ok(Output::unported(&e).unwrap_or_else(Output::new)),
+        Built::Failed(e) => return Ok(Output::unported(&e).unwrap_or_default()),
     };
     p4::own_surfaces(&mut b)?;
     b.set_editing_enabled(i.editing);
