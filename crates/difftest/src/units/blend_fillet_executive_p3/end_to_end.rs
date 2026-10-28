@@ -287,7 +287,8 @@ impl RadiusLaw {
         let [min, max] = self.edge_map;
         Ok(solidcore::blend::fillet_standard_solver::p1::FilletLaw::bspline(
             curve,
-            &solidcore::geom::extent1d::Extent1d::from_raw(min, max),
+            // `SmExtent1d(dMin, dMax)` swaps reversed ends, as the shim's does.
+            &solidcore::geom::extent1d::Extent1d::from_min_max(min, max),
         ))
     }
 }
