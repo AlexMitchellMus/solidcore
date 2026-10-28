@@ -95,8 +95,8 @@ pub(super) struct BoxSpec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Source {
-    /// An upstream ASCII `.smb` file: `SmBrep::ReadFromFile` in the shim, imported
-    /// through the `topology.brep_p1` export on the Rust side (upstream list order).
+    /// An upstream ASCII `.smb` file: `SmBrep::ReadFromFile` in the shim, and the
+    /// Rust reader (`topology::brep::p7::read_from_file`) on the Rust side.
     File {
         /// Absolute path (`{"$upstream_file": ..}` in the fixture).
         path: String,
@@ -585,13 +585,7 @@ fn build(k: &mut Kernel, input: &RealSolid) -> Result<SolidResult<Brep>, Harness
             let [x, y, z] = input.dimensions.unwrap_or_default();
             primitives::create_box(k, Vec3::ZERO, x, y, z)
         }
-        Some(Source::File { path }) => {
-            let mut body = crate::units::topology_brep_p1::import_file(path, false)?;
-            // The import labels geometry owners with arena identities; record them as
-            // the B-rep's own owner keys, as a kernel-built B-rep does, so `GetFace` /
-            // `GetEdge` on that geometry resolve to the owning topology.
-            body.use_arena_naming().map(|()| body)
-        }
+        Some(Source::File { path }) => crate::own_reader::read_file(k, path)?,
         Some(Source::Cylinder {
             origin,
             radius,

@@ -23,6 +23,7 @@
 //! | [`turn_to_nurbs`]               | `SmBrep::TurnToNURBS`                            |
 //! | [`topology_ref`], [`topology_entity`], [`notify_serial`] | (an object's address in the notifications, for callers without identities of their own) |
 //! | [`edge_curve_identity`]         | (the `m_pCurve` object's address in the notifications) |
+//! | [`face_surface_identity`]       | (the `m_pSurface` object's address in the notifications) |
 //! | [`with_kernel_callbacks`]       | (for callers without notification state: the B-rep context's callbacks) |
 //! | `Brep::remove_from_*_list` (crate) | `SmOwningTopology::Remove` on the B-rep's list heads (and `~SmTopology`) |
 //!
@@ -1001,7 +1002,7 @@ fn with_caller_identities<R>(
 
 /// [`with_caller_identities`] for an edit that allocates per entry of an input list of
 /// `inputs` entries ([`allocation_window`]).
-fn with_caller_identities_for<R>(
+pub(crate) fn with_caller_identities_for<R>(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
@@ -1385,7 +1386,7 @@ fn copy_vertices_in(
 /// `SmTopology::Notify`, which carries the flags and user values of `this` to `to`
 /// (resetting its marks) and then the attributes and callbacks (`SmAObject`).
 /// `Notify` is `void`: only the errors of [`ignore_soft`] propagate.
-fn notify_copy_with_context(
+pub(crate) fn notify_copy_with_context(
     env: &mut NotifyEnv<'_>,
     source_context: Option<&mut Context>,
     this: ObjectRef,
@@ -2968,6 +2969,30 @@ pub fn edge_curve_identity(
         .curve
         .as_mut()
         .map(|c| curve_identity(context, c))
+        .transpose()
+}
+
+/// The identity face `f`'s surface is notified under through `context`
+/// ([`Surface::notify_key`]; issued by `context` when it has none of its domain),
+/// `None` without a surface.
+///
+/// # Errors
+///
+/// [`SolidError::NotFound`] for a dangling id; `InvalidInput` for an exhausted identity
+/// domain.
+pub fn face_surface_identity(
+    context: &mut Context,
+    b: &mut Brep,
+    f: FaceId,
+) -> Result<Option<ObjectRef>> {
+    b.face_mut(f)?
+        .surface
+        .as_mut()
+        .map(|s| {
+            let type_code = s.type_code();
+            let key = context.geometry_key(s.notify_identity_slot())?;
+            Ok(ObjectRef { type_code, key })
+        })
         .transpose()
 }
 
