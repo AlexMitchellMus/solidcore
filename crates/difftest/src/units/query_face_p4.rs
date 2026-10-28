@@ -431,12 +431,6 @@ impl Rd<'_> {
     }
 }
 
-fn loop_id(i: i64) -> Result<LoopId, HarnessError> {
-    u32::try_from(i)
-        .map(LoopId::from_index)
-        .map_err(|_| harness("bad loop index"))
-}
-
 fn index_of(l: Option<LoopId>) -> i64 {
     l.map_or(-1, |l| i64::from(l.index()))
 }
@@ -568,15 +562,6 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
         .ints("ordered_no_area", no_area)
         .ints("looptree", tree)
         .int("scratch_size", scratch))
-}
-
-fn tri(code: i64) -> Result<Tri, HarnessError> {
-    Ok(match code {
-        0 => Tri::False,
-        1 => Tri::True,
-        2 => Tri::Unsure,
-        _ => return Err(harness("bad SmBoolean")),
-    })
 }
 
 // ---- the Rust B-rep ---------------------------------------------------------------------
@@ -905,10 +890,10 @@ pub(super) fn setup_error(e: &SolidError) -> Output {
 
 /// Whether the shim ignores a status of the case setup's props calls (it discards
 /// `SetProps_Stage2`'s status, and `SmLoopProps::SetProps` always succeeds upstream):
-/// an upstream status or an invalid input (upstream's null-pointer statuses). An
-/// unported callee or any other Rust error is not ignored.
+/// an upstream status. An unported callee or any other Rust error (an invalid input
+/// included: it can be a limitation of the runner's handles) is not ignored.
 fn ignored_status(e: &SolidError) -> bool {
-    matches!(e, SolidError::Upstream { .. } | SolidError::InvalidInput { .. })
+    matches!(e, SolidError::Upstream { .. })
 }
 
 /// The face props `SetProps_Stage3` has built when it calls `ClassifyLoops`, and its
@@ -922,31 +907,31 @@ pub(super) fn stage3_props<O: LoopObject>(
     b: &mut Brep,
     face: FaceId,
     face_index: u64,
-) -> Result<Result<(FaceProps<O>, Vec<LoopId>), Output>, HarnessError> {
+) -> Result<(FaceProps<O>, Vec<LoopId>), Box<Output>> {
     use solidcore::heal::face_props::{ContainmentType, LoopuseType};
     use solidcore::heal::face_props::HealerOpType;
     let mut props: FaceProps<O> = FaceProps::for_face(face, face_index);
     if let Err(e) = props.set_props_stage2_mut(k, b, face, face_index, HealerOpType::All) {
         if !ignored_status(&e) {
-            return Ok(Err(setup_error(&e)));
+            return Err(Box::new(setup_error(&e)));
         }
     }
     // stage3_prefix
     props.reset(PropStage::Stage3);
     props.prop_stage = PropStage::Stage3A;
     let Some(m_face) = props.face else {
-        return Ok(Err(Output::err("rust_error: props without face")));
+        return Err(Box::new(Output::err("rust_error: props without face")));
     };
     let loops = match solidcore::topology::face::p2::loops(b, m_face, false, None) {
         Ok(l) => l,
-        Err(e) => return Ok(Err(setup_error(&e))),
+        Err(e) => return Err(Box::new(setup_error(&e))),
     };
     let mut loop_props = vec![LoopProps::new(); loops.len()];
     let mut closed_loops = Vec::new();
     for (lp, &l) in loop_props.iter_mut().zip(&loops) {
         if let Err(e) = lp.set_props(k, b, l, &props) {
             if !ignored_status(&e) {
-                return Ok(Err(setup_error(&e)));
+                return Err(Box::new(setup_error(&e)));
             }
         }
         if lp.loopuse_type == LoopuseType::Vertexuse {
@@ -963,7 +948,7 @@ pub(super) fn stage3_props<O: LoopObject>(
     }
     props.loop_props = loop_props;
     props.closed_loop_cnt = closed_loops.len() as u64;
-    Ok(Ok((props, closed_loops)))
+    Ok((props, closed_loops))
 }
 
 /// The shim's `fresh_props_closed`: whether fresh props of the selected face would be on
@@ -1029,6 +1014,9 @@ fn staged_guard(p: &FaceProps<H>, n_target: usize) -> bool {
     false
 }
 
+/// A resolved case: the face, its props and the target loops, or the case's output.
+type CaseOf = Result<(FaceId, FaceProps<H>, Vec<LoopId>), Output>;
+
 /// The case on `b` as the shim's `setup` resolves it (`face_sel props_mode
 /// loops_mode`): the face, its props and the target loops; `Err(rejected)` where the
 /// shim rejects it, `Err(output)` for an error of the Rust setup.
@@ -1036,7 +1024,7 @@ fn setup(
     k: &Kernel,
     b: &mut Brep,
     i: &Inputs,
-) -> Result<Result<(FaceId, FaceProps<H>, Vec<LoopId>), Output>, HarnessError> {
+) -> Result<CaseOf, HarnessError> {
     use solidcore::topology::face::p2::loops as face_loops;
     let rejected = || Ok(Err(Output::err("rejected")));
     let n_faces = b.faces().len();
@@ -1047,9 +1035,9 @@ fn setup(
     let face_of = |x: usize| u32::try_from(x).map(FaceId::from_index).map_err(|_| harness("bad face"));
     let face = face_of(face_index)?;
     let (props, base) = if i.props == 1 {
-        match stage3_props::<H>(k, b, face, face_index as u64)? {
+        match stage3_props::<H>(k, b, face, face_index as u64) {
             Ok(x) => x,
-            Err(o) => return Ok(Err(o)),
+            Err(o) => return Ok(Err(*o)),
         }
     } else {
         match fresh_props_closed(k, i)? {

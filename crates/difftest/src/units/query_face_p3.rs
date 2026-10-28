@@ -37,12 +37,11 @@ use solidcore::curve::curve::Curve;
 use solidcore::curve::line::Line;
 use solidcore::error::{EntityRef, SolidError};
 use solidcore::geom::extent1d::Extent1d;
-use solidcore::heal::face_props::{FaceProps, LoopObject, Tri};
+use solidcore::heal::face_props::{FaceProps, LoopObject};
 use solidcore::intersect::curve_class::p1::CurveClassification;
 use solidcore::intersect::point_class::{ClassObject, ClassObjectKind, PointClassification};
 use solidcore::kernel::Kernel;
 use solidcore::math::{Point2, Point3};
-use solidcore::nurbs::b_spline_surface::SurfParamType;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::query::face::p3 as qf3;
 use solidcore::query::face::p4::ZEROED_CLASSIFY_LOOP_IO;
@@ -231,35 +230,6 @@ impl Rd<'_> {
     fn pt(&mut self) -> Result<Point3, HarnessError> {
         Ok(Point3::new(self.num()?, self.num()?, self.num()?))
     }
-
-    fn index(&mut self) -> Result<u32, HarnessError> {
-        u32::try_from(self.int()?).map_err(|_| harness("bad index in shim output"))
-    }
-}
-
-fn orient(code: i64) -> Result<OrientType, HarnessError> {
-    match code {
-        0 => Ok(OrientType::Unknown),
-        1 => Ok(OrientType::Same),
-        2 => Ok(OrientType::Opposite),
-        _ => Err(harness("bad orientation")),
-    }
-}
-
-fn tri(code: i64) -> Result<Tri, HarnessError> {
-    Ok(match code {
-        0 => Tri::False,
-        1 => Tri::True,
-        2 => Tri::Unsure,
-        _ => return Err(harness("bad SmBoolean")),
-    })
-}
-
-fn surf_param(code: i64) -> Result<SurfParamType, HarnessError> {
-    u64::try_from(code)
-        .ok()
-        .and_then(SurfParamType::from_code)
-        .ok_or_else(|| harness("bad SmSurfParamType"))
 }
 
 // ---- the resolved cases -------------------------------------------------------------------
@@ -297,6 +267,16 @@ struct SectorCase {
     uv_ok: bool,
 }
 
+/// The drop's solution object (`DropPoint` with no solution array: never stored).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DropObj;
+
+impl solidcore::geom::solution_array::SolutionObject for DropObj {
+    fn kind(&self) -> solidcore::geom::solution_array::ObjectKind {
+        solidcore::geom::solution_array::ObjectKind::Surface
+    }
+}
+
 /// The shim's `face_frac`: the point at fractions `(a, b)` of the face's UV domain.
 fn face_frac(b: &Brep, f: FaceId, a: f64, c: f64) -> solidcore::Result<Point2> {
     let d = solidcore::topology::face::p2::uv_domain(b, f)?;
@@ -322,7 +302,7 @@ fn resolve(k: &Kernel, b: &mut Brep, i: &Inputs) -> Result<Result<Resolved, Outp
     match &i.op {
         OpIn::Tight | OpIn::Internal => Ok(Ok(Resolved::Face(face))),
         OpIn::Bisector { target, mask, containment } => {
-            bisector_setup(k, b, face, face_index, *target, *mask, *containment)
+            Ok(bisector_setup(k, b, face, face_index, *target, *mask, *containment).map_err(|o| *o))
         }
         OpIn::Sector { .. } => sector_setup(k, b, face, &i.op),
     }
@@ -340,31 +320,28 @@ fn bisector_setup(
     target: u32,
     mask: u8,
     containment: u8,
-) -> Result<Result<Resolved, Output>, HarnessError> {
-    let (props, loops) = match stage3_props::<H>(k, b, face, face_index as u64)? {
-        Ok(x) => x,
-        Err(o) => return Ok(Err(o)),
-    };
+) -> Result<Resolved, Box<Output>> {
+    let (props, loops) = stage3_props::<H>(k, b, face, face_index as u64)?;
     let surface = match solidcore::topology::face::p2::surface(b, face) {
         Ok(s) => s.is_some(),
-        Err(e) => return Ok(Err(setup_error(&e))),
+        Err(e) => return Err(Box::new(setup_error(&e))),
     };
     if loops.is_empty() || !surface {
-        return Ok(Err(Output::err("rejected")));
+        return Err(Box::new(Output::err("rejected")));
     }
     let target = target as usize % loops.len();
     // the pole points are read at their four slots
     if props.poles != 0 && props.pole_points.len() < 4 {
-        return Ok(Err(Output::err("rejected")));
+        return Err(Box::new(Output::err("rejected")));
     }
-    Ok(Ok(Resolved::Bisector(Box::new(BisectorCase {
+    Ok(Resolved::Bisector(Box::new(BisectorCase {
         face,
         target,
         loops,
         mask: u32::from(mask),
         containment: i64::from(containment),
         props,
-    }))))
+    })))
 }
 
 /// The shim's `sector_setup`: the edge uses, parameters, tolerances and orientations
@@ -499,7 +476,7 @@ fn sector_setup(
         if *curve_kind == 2 {
             let dom = r!(srf.natural_uv_domain_with_nurb(k));
             let opts = solidcore::surface::surface::p5::DropPointOptions::default();
-            let dropped = match srf.drop_point::<H>(k, cross, &dom, &opts) {
+            let dropped = match srf.drop_point::<DropObj>(k, cross, &dom, &opts) {
                 Ok(d) => d,
                 Err(e) if Output::unported(&e).is_some() => return fail(&e),
                 // a failed DropPoint status rejects the case, as the shim's
@@ -659,6 +636,9 @@ enum H {
     Curve(bool),
     EdgeCurve(EdgeId),
     Trim(EdgeuseId),
+    /// A temporary curve (the seam curves of `SmFace::HasSeamProblem`, which the props'
+    /// `SetProps_Stage2` runs on a closed surface).
+    Temp(usize),
 }
 
 impl ClassObject for H {
@@ -666,8 +646,14 @@ impl ClassObject for H {
         match self {
             Self::Topo(e) => e.class_kind(),
             Self::Surface(_) => ClassObjectKind::Surface,
-            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) => ClassObjectKind::Curve,
+            Self::Curve(_) | Self::EdgeCurve(_) | Self::Trim(_) | Self::Temp(_) => {
+                ClassObjectKind::Curve
+            }
         }
+    }
+
+    fn temporary(index: usize, kind: ClassObjectKind) -> Option<Self> {
+        (kind == ClassObjectKind::Curve).then_some(Self::Temp(index))
     }
 }
 
