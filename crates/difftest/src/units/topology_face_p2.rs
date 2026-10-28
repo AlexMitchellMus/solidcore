@@ -1759,10 +1759,15 @@ fn run_rust_op(b: &mut Brep, op: &OpIn) -> Result<Vec<f64>, Fail> {
             Err(e) => o.extend([status_of(e)?, 0.0]),
             }
         }
-        OpIn::Internal { f } => match fp2::calculate_an_internal_point(&k, b, fid(*f)) {
+        OpIn::Internal { f } => {
+            // the shim's `DeleteObjectsCache(SM_OC_TRIMSRF, srf)` before
+            // `CalculateAnInternalPoint` (`harness/cpp/shim/topology_face_p2.cpp`, OP_INTERNAL)
+            super::query_face_p1::drop_trim_cache(b, fid(*f))?;
+            match fp2::calculate_an_internal_point(&k, b, fid(*f)) {
             Ok(p) => o.extend([0.0, p.x, p.y, p.z]),
-            Err(e) => o.extend([status_of(e)?, 0.0, 0.0, 0.0]),
-        },
+                Err(e) => o.extend([status_of(e)?, 0.0, 0.0, 0.0]),
+            }
+        }
         OpIn::FromFace {
             f,
             orient: or,
