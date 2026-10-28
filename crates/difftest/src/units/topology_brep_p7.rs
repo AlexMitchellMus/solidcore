@@ -1271,7 +1271,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                     solidcore::geom::tol::USE_DEFAULT,
                 )
                 .map_err(hfail)?;
-                let mut records = BTreeMap::new();
+                let mut records = solidcore::topology::topology::NotifyRecords::new();
                 let mut attrs = AttributeStore::default();
                 let mut env = ed::NotifyEnv {
                     records: &mut records,

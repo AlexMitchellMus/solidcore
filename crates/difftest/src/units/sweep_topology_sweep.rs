@@ -865,7 +865,7 @@ fn body_rust(input: [f64; 16], lists: Option<[f64; 7]>) -> Result<Output> {
     let [body, kind, vx, vy, vz, angle, cx, cy, cz, eps, stitch, merge, reps, tagging, tag_id, targets] =
         input;
     let mut k = Kernel::default();
-    let mut records = BTreeMap::new();
+    let mut records = solidcore::topology::topology::NotifyRecords::new();
     let mut attributes = AttributeStore::new();
     let handle = BrepId::from_index(0);
     let key_of = |e: solidcore::error::EntityRef| WholeIdentities.topology(handle, e);
