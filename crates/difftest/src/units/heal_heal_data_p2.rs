@@ -13,7 +13,9 @@
 //!   op's result, the array and every object's linked members.
 //! - `heal`: an `SmHealData` built on a B-rep (an upstream `.smb` file, a wire edge, a
 //!   one-face B-rep, the `my_test_topology` wire network, an `SmPrimitiveCreation`
-//!   box or a full sphere face) with target lists, then a script of heal steps;
+//!   box, a full sphere face, a one-vertex-loop face on a sphere, plane or torus, or
+//!   `prog_test` `my_test_move_seam_refreshes_face_props`' seam-crossing cone patch) with
+//!   target lists, then a script of heal steps;
 //!   outputs each step's status and results and, at the end, the whole healer state
 //!   (targets, every props record ever allocated, every problem array with its labels,
 //!   histograms, statistics and the vertex voxel model). Both sides build the B-rep
@@ -22,6 +24,10 @@
 //!   constructors, the single-vertex sphere record by record as `SmBrepConstructor`
 //!   writes it), renumbered into the shim's traversal order, so no C++ output or state
 //!   reaches the Rust side.
+//!   A repair step that edits the B-rep (a nonempty queue) ends the script; when it
+//!   succeeds, a summary read from the live B-rep and the healer follows it (target,
+//!   new-object and repair problem list sizes, face/edge/vertex counts, per-face loop
+//!   and edge counts, sorted vertex points), since the fixture graph may be stale.
 //!
 //! Deferred: `Fix_TolSizes` (`SmBrep::GetThisModelSizeEstimate`, `topology.brep_p1`),
 //! `Cache_DegenFaces` with a face (`SmFace::IsDegenerate` classifies its edges with
@@ -44,22 +50,26 @@ use solidcore::heal::heal_data::p2::{
 use solidcore::intersect::point_class::{ClassObject, ClassObjectKind};
 use solidcore::kernel::Kernel;
 use solidcore::topology::topology_traverser::Marks;
-use solidcore::topology::{
-    Brep, EdgeId, EdgeuseId, FaceId, LoopId, VertexId, VertexuseId,
-};
+use solidcore::topology::{Brep, EdgeId, EdgeuseId, FaceId, LoopId, VertexId, VertexuseId};
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::heal_heal_data_p2 as ffi;
 
 use solidcore::geom::axis2_placement::Axis2Placement;
+use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::object::ObjectRef;
+use solidcore::geom::vector2d::Point2;
 use solidcore::geom::vector3d::Vec3;
 use solidcore::heal::stitch::p1::{DefaultStitchCallback, Stitch};
 use solidcore::heal::stitch::p2::MinGapRequest;
+use solidcore::nurbs::b_spline_curve::p1::NurbCircleParam;
+use solidcore::nurbs::b_spline_surface::p1::BSplineSurface;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::primitive::primitive_creation::p1::PrimitiveCreation;
+use solidcore::surface::plane::Plane;
 use solidcore::surface::sphere::Sphere;
 use solidcore::surface::surface::Surface;
-use solidcore::topology::brep::p2::{set_tolerance, ArenaNotifyState};
+use solidcore::surface::torus::{Torus, TorusOptions};
+use solidcore::topology::brep::p2::{replace_surface, set_tolerance, ArenaNotifyState, OldSurface};
 use solidcore::topology::brep::p8::{create_face_in_region_from_surface, FaceBuildEnv};
 use solidcore::topology::brep_cache::{arena_identity, CacheObject};
 use solidcore::topology::face::p4 as face_p4;
@@ -71,11 +81,11 @@ use solidcore::topology::{
 
 use super::topology_edgeuse_p1::BrepIn as EdgeuseBrepIn;
 use super::topology_vertexuse::{gen_brep, path_of, push_curve, push_surface, BrepIn};
-use crate::own_builder::{
-    build_any, build_status, counts as own_counts, finish, in_new_brep, init_gap_walk, Built,
-    Conventions,
-};
 use crate::case::CaseContext;
+use crate::own_builder::{
+    build_any, build_status, counts as own_counts, create_face, finish, in_new_brep, init_gap_walk,
+    Built, Conventions,
+};
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
@@ -200,6 +210,22 @@ pub(crate) enum Prim {
         radius: f64,
         #[serde(default)]
         swap: bool,
+        /// The face's surface: 0 the sphere, 1 a plane over `[-radius, radius]^2`, 2 a
+        /// torus (major `radius`, minor `radius / 4`); the vertex lies on it.
+        #[serde(default)]
+        surface: u8,
+    },
+    /// `prog_test` `my_test_move_seam_refreshes_face_props`: a
+    /// `SmBSplineSurface::CreateConePatch` face over `angles` (degrees) whose surface
+    /// is replaced by the full 0..360 patch with its seam turned by `seam` degrees, so
+    /// the seam crosses the face.
+    SeamCone {
+        radii: [f64; 2],
+        height: f64,
+        angles: [f64; 2],
+        seam: f64,
+        #[serde(default)]
+        quintic: bool,
     },
     /// `SmPrimitiveCreation::CreateBox(dx, dy, dz, SmAxis2Placement())`.
     Box { size: [f64; 3] },
@@ -399,8 +425,25 @@ fn block_of(
             v.extend(size);
             String::new()
         }
-        BIn::Prim(Prim::SingleVertexSphere { radius, swap }) => {
-            v.extend([6.0, *radius, flag(*swap)]);
+        BIn::Prim(Prim::SingleVertexSphere {
+            radius,
+            swap,
+            surface,
+        }) => {
+            v.extend([6.0, *radius, flag(*swap), f64::from(*surface)]);
+            String::new()
+        }
+        BIn::Prim(Prim::SeamCone {
+            radii,
+            height,
+            angles,
+            seam,
+            quintic,
+        }) => {
+            v.extend([
+                7.0, radii[0], radii[1], *height, angles[0], angles[1], *seam,
+            ]);
+            v.push(flag(*quintic));
             String::new()
         }
         BIn::Prim(Prim::Sphere { radius, swap }) => {
@@ -1009,6 +1052,67 @@ fn entity(kind: u64, index: u64, c: [usize; 10]) -> Option<EntityRef> {
 
 /// The healer state, as the shim's `dump`.
 #[allow(clippy::too_many_lines)]
+/// The shim's `put_repair_summary`: after a successful repair step (which may have
+/// edited the fixture topology), `-101`, the target and new-object list sizes, the
+/// repair problem list sizes, the B-rep's face, edge and vertex counts, per face
+/// (sorted) its loop and edge counts, and the vertex points in lexicographic order.
+fn put_repair_summary(h: &HealData<H>, b: &Brep, o: &mut Vec<f64>) -> Result<(), SolidError> {
+    use solidcore::topology::brep::p1 as bp1;
+    use solidcore::topology::face::{p2 as fp2, p4 as fp4};
+    o.push(-101.0);
+    for n in [
+        h.tgt_vertices.len(),
+        h.tgt_edges.len(),
+        h.tgt_faces.len(),
+        h.new_faces_from_fix_degen_faces.len(),
+        h.new_edges_from_split_edges_at_seams.len(),
+        h.new_vertices_from_split_edges_at_seams.len(),
+        h.new_faces_from_split_face_at_seams.len(),
+        h.new_edges_on_seams_from_split_face_at_seams.len(),
+        h.new_vertices_from_split_face_at_seams.len(),
+        h.bad_face_props_degen_faces.len(),
+        h.bad_face_props_crossed_seam.len(),
+        h.bad_face_props_missing_seam.len(),
+        h.bad_face_props_near_miss_seam.len(),
+        h.ran_face_props_move_seam.base.len(),
+        h.ran_face_props_split_edges_at_seam.base.len(),
+    ] {
+        o.push(n as f64);
+    }
+    let faces = bp1::faces(b, None)?;
+    let edges = bp1::edges(b, None)?;
+    let vertices = bp1::vertices(b, None)?;
+    o.extend([
+        faces.len() as f64,
+        edges.len() as f64,
+        vertices.len() as f64,
+    ]);
+    let mut per_face = Vec::new();
+    for &f in &faces {
+        let loops = fp2::loops(b, f, false, None)?.len();
+        let face_edges = fp4::edges(b, f, None, false, None)?.len();
+        per_face.push((loops, face_edges));
+    }
+    per_face.sort_unstable();
+    for (loops, face_edges) in per_face {
+        o.extend([loops as f64, face_edges as f64]);
+    }
+    let mut pts = Vec::new();
+    for &v in &vertices {
+        let p = b.vertex(v)?.point;
+        pts.push([p.x, p.y, p.z]);
+    }
+    pts.sort_by(|a, b| {
+        a[0].total_cmp(&b[0])
+            .then(a[1].total_cmp(&b[1]))
+            .then(a[2].total_cmp(&b[2]))
+    });
+    for p in pts {
+        o.extend(p);
+    }
+    Ok(())
+}
+
 fn dump(h: &HealData<H>, b: &Brep, o: &mut Vec<f64>) -> Result<(), SolidError> {
     o.push(STATE);
     o.push(h.tgt_vertices.len() as f64);
@@ -1265,15 +1369,19 @@ fn sphere_brep(
     })
 }
 
-/// Block kind 6, the single-vertex sphere of `smHealTest.cpp`, built as the shim's
+/// Block kind 6, the one-vertex-loop face of `smHealTest.cpp` on a sphere (`surface`
+/// 0: `SmSphere::CreateCanonical`, `SwapUV` with `swap`), a plane (1:
+/// `SmPlane::CreateCanonical`, domain `[-r, r]^2`, vertex at the origin) or a torus (2:
+/// `SmTorus::CreateCanonical(major r, minor r / 4, bSwapUV = swap)`, vertex
+/// `(1.25 r, 0, 0)`), built as the shim's
 /// `SmBrepConstructor` calls build it (`SmBrepData.cpp`; the constructor writes the
 /// records directly, as here): `StartBrep` (`new SmBrep`), `SetTolerance(1e-7, FALSE)`,
 /// `StartRegion(TRUE, NULL)` (a region on the B-rep's region list), `StartShell` (an
 /// outer face-use shell on the infinite region, an inner one on the new region),
-/// `StartFace(swap ? OPPOSITE : SAME)` (the face at the B-rep tolerance with its up
+/// `StartFace(surface == 0 && swap ? OPPOSITE : SAME)` (the face at the B-rep tolerance with its up
 /// face use `SAME` and its down one `OPPOSITE`; the outside one in the outer shell, the
-/// other in the inner), `SetFaceSurface(sphere, natural domain)` (the face owns the
-/// sphere), `StartAndEndSingleVertexLoop((0, 0, r))` (a loop with a vertex loop use on
+/// other in the inner), `SetFaceSurface(surface, domain)` (the face owns the
+/// surface), `StartAndEndSingleVertexLoop(vertex)` (a loop with a vertex loop use on
 /// each face use, both `SAME`, and one vertex at the B-rep tolerance holding both vertex
 /// uses), then `EndShell(TRUE)`: `SmStitch(cb, tol, FALSE, TRUE).DoStitching` over the
 /// face's vertices and edges. `EndShell`'s `ValidatePointers()` is `const` and its
@@ -1282,14 +1390,49 @@ fn single_vertex_sphere_brep(
     k: &mut Kernel,
     radius: f64,
     swap: bool,
+    surface: u8,
 ) -> Result<Result<Brep, SolidError>, HarnessError> {
     in_new_brep(k, |k, b| {
-        let s = canonical_sphere(k, radius, swap)?;
+        // 0 sphere, 1 plane (domain [-r, r]^2), 2 torus (major r, minor r/4)
+        let (s, vertex, dom) = match surface {
+            1 => {
+                let s = Surface::from(Plane::create_canonical(&Axis2Placement::default())?);
+                let dom = Extent2d::from_points(
+                    Point2::new(-radius, -radius),
+                    Point2::new(radius, radius),
+                );
+                (s, Vec3::new(0.0, 0.0, 0.0), dom)
+            }
+            2 => {
+                let s = Surface::from(Torus::create_canonical(
+                    k,
+                    &Axis2Placement::default(),
+                    radius,
+                    0.25 * radius,
+                    TorusOptions {
+                        swap_uv: swap,
+                        ..TorusOptions::default()
+                    },
+                    None,
+                )?);
+                let dom = s.natural_uv_domain_with_nurb(k)?;
+                (s, Vec3::new(1.25 * radius, 0.0, 0.0), dom)
+            }
+            _ => {
+                let s = canonical_sphere(k, radius, swap)?;
+                let dom = s.natural_uv_domain_with_nurb(k)?;
+                (s, Vec3::new(0.0, 0.0, radius), dom)
+            }
+        };
+        // StartFace(OPPOSITE) only for the swapped sphere
+        let swap = surface == 0 && swap;
         // (the records below name the surface under arena identities)
         b.set_naming(NamingScheme::Arena);
         set_tolerance(k, b, 1e-7, false, true)?;
         let tol = b.tolerance();
-        let inf = b.infinite_region().ok_or_else(|| SolidError::sm_err(OP_SVS))?;
+        let inf = b
+            .infinite_region()
+            .ok_or_else(|| SolidError::sm_err(OP_SVS))?;
         // StartRegion
         let region = b.add_region_record(Region {
             in_brep: true,
@@ -1333,8 +1476,7 @@ fn single_vertex_sphere_brep(
             post_insert_faceuse(b, outer, fu1)?;
             post_insert_faceuse(b, inner, fu2)?;
         }
-        // SetFaceSurface: the sphere has no owner, so the face takes it itself
-        let dom = s.natural_uv_domain_with_nurb(k)?;
+        // SetFaceSurface: the surface has no owner, so the face takes it itself
         let mut s = s;
         let _ = s.set_owner(Some(arena_identity(CacheObject::Face(face))));
         {
@@ -1344,7 +1486,9 @@ fn single_vertex_sphere_brep(
         }
         b.sync_face_surface_tolerance(face)?;
         // StartAndEndSingleVertexLoop: StartLoop(SM_OT_SAME), the first (outer) loop
-        let lp = LoopId::from_index(u32::try_from(b.loops().len()).map_err(|_| SolidError::sm_err(OP_SVS))?);
+        let lp = LoopId::from_index(
+            u32::try_from(b.loops().len()).map_err(|_| SolidError::sm_err(OP_SVS))?,
+        );
         let lu1 = b.add_loopuse_record(Loopuse {
             faceuse: Some(fu1),
             loop_: Some(lp),
@@ -1379,7 +1523,7 @@ fn single_vertex_sphere_brep(
             ..Vertexuse::default()
         })?;
         let v = b.add_vertex_record(Vertex {
-            point: Vec3::new(0.0, 0.0, radius),
+            point: vertex,
             tolerance: tol,
             vertexuses: vec![vu1, vu2],
             ..Vertex::default()
@@ -1393,24 +1537,90 @@ fn single_vertex_sphere_brep(
         let mut vertices = Vec::new();
         let mut edges = Vec::new();
         for fu in b.shell(outer)?.get_faceuses()? {
-            let f = b.faceuse(fu)?.face.ok_or_else(|| SolidError::sm_err(OP_SVS))?;
+            let f = b
+                .faceuse(fu)?
+                .face
+                .ok_or_else(|| SolidError::sm_err(OP_SVS))?;
             edges.extend(face_p4::edges(b, f, None, false, None)?);
             vertices.extend(face_p4::vertices(b, f, None, false, None)?);
         }
         let tol = b.tolerance();
         let mut cb = DefaultStitchCallback;
         let mut st = Stitch::new(&mut cb, tol, false, true);
-        st.do_stitching(k, b, Some(&vertices), Some(&edges), MinGapRequest::default())
-            .map(|_| ())
+        st.do_stitching(
+            k,
+            b,
+            Some(&vertices),
+            Some(&edges),
+            MinGapRequest::default(),
+        )
+        .map(|_| ())
     })
 }
 
 const OP_SVS: &str = "heal_heal_data_p2::single_vertex_sphere";
 
+/// Block kind 7, `prog_test` `my_test_move_seam_refreshes_face_props`, as the shim
+/// builds it: `SmBSplineSurface::CreateConePatch(SmAxis2Placement(), r0, r1, a0, a1,
+/// height)`, `CreateFaceFromSurface(patch, natural domain)`, then the full 0..360 patch
+/// on the frame turned by `seam` degrees about Z replaces the face's surface
+/// (`ReplaceSurface(face, full, FALSE, NULL, FALSE)`) and `SetIsRectangularTrim(FALSE)`.
+fn seam_cone_brep(
+    k: &mut Kernel,
+    radii: [f64; 2],
+    height: f64,
+    angles: [f64; 2],
+    seam: f64,
+    quintic: bool,
+) -> Result<Result<Brep, SolidError>, HarnessError> {
+    in_new_brep(k, |k, b| {
+        let param = if quintic {
+            NurbCircleParam::Quintic
+        } else {
+            NurbCircleParam::Quadratic
+        };
+        let patch = Surface::from(BSplineSurface::create_cone_patch(
+            &Axis2Placement::default(),
+            radii[0],
+            radii[1],
+            angles[0],
+            angles[1],
+            height,
+            param,
+        )?);
+        let d = patch.natural_uv_domain_with_nurb(k)?;
+        let face = create_face(k, b, patch, [d.min().x, d.min().y, d.max().x, d.max().y])?;
+        let t = seam * std::f64::consts::PI / 180.0;
+        let mut frame = Axis2Placement::default();
+        frame.set_canonical(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(t.cos(), t.sin(), 0.0),
+            Vec3::new(-t.sin(), t.cos(), 0.0),
+        )?;
+        let full = Surface::from(BSplineSurface::create_cone_patch(
+            &frame, radii[0], radii[1], 0.0, 360.0, height, param,
+        )?);
+        let mut state = ArenaNotifyState::new(b);
+        let mut env = state.env(None);
+        replace_surface(
+            k,
+            b,
+            &mut env,
+            face,
+            full,
+            arena_identity(CacheObject::Face(face)),
+            OldSurface::Delete,
+            false,
+        )?;
+        b.face_mut(face)?.rectangular_trim = 0;
+        Ok(())
+    })
+}
+
 /// The Rust B-rep of a heal case's block, built by the Rust kernel as the shim's
 /// `prepare` builds it (no C++ export reaches the Rust side): kinds 0..3 and 9 as the
 /// fixture's `build` ([`build_any`]: an `.smb` file read by the Rust reader, the rest
-/// by the Rust constructors, with its gap walk under `init_gaps`), kinds 4..6 above;
+/// by the Rust constructors, with its gap walk under `init_gaps`), kinds 4..7 above;
 /// `m_bValidateOnly`, then with `init_gaps` `init_cached_gaps` (the same gap walk
 /// again: cached gaps stay as they are). Renumbered into the shim's traversal order.
 ///
@@ -1426,13 +1636,29 @@ fn own_brep(
     let prim = match b {
         BIn::Prim(Prim::Box { size }) => Some(box_brep(k, *size)?),
         BIn::Prim(Prim::Sphere { radius, swap }) => Some(sphere_brep(k, *radius, *swap)?),
-        BIn::Prim(Prim::SingleVertexSphere { radius, swap }) => {
-            Some(single_vertex_sphere_brep(k, *radius, *swap)?)
-        }
+        BIn::Prim(Prim::SingleVertexSphere {
+            radius,
+            swap,
+            surface,
+        }) => Some(single_vertex_sphere_brep(k, *radius, *swap, *surface)?),
+        BIn::Prim(Prim::SeamCone {
+            radii,
+            height,
+            angles,
+            seam,
+            quintic,
+        }) => Some(seam_cone_brep(
+            k, *radii, *height, *angles, *seam, *quintic,
+        )?),
         _ => None,
     };
     let (built, fixture) = match b {
-        BIn::Prim(Prim::Box { .. } | Prim::Sphere { .. } | Prim::SingleVertexSphere { .. }) => {
+        BIn::Prim(
+            Prim::Box { .. }
+            | Prim::Sphere { .. }
+            | Prim::SingleVertexSphere { .. }
+            | Prim::SeamCone { .. },
+        ) => {
             let raw = prim.ok_or_else(|| harness("primitive source not built"))?;
             (finish(k, raw, validate_only, init_gaps, &CONV)?, false)
         }
@@ -1615,6 +1841,16 @@ fn rust_heal(
                 Step::FixSplitFaceAtSeams => !h.bad_face_props_missing_seam.is_empty(),
                 _ => false,
             };
+        let repair = last_without_state
+            && matches!(
+                s,
+                Step::FixCoinVertices
+                    | Step::FixDegenFaces
+                    | Step::FixDegenEdges
+                    | Step::FixMoveSeam
+                    | Step::FixSplitEdgesAtSeam
+                    | Step::FixSplitFaceAtSeams
+            );
         o.push(f64::from(code));
         let r: Result<bool, SolidError> = match s {
             Step::CacheEdgeProps => h.cache_edge_props(&k, &mut b, HealerOpType::CacheEdgeprops),
@@ -2050,6 +2286,9 @@ fn rust_heal(
         }
         match r {
             Ok(new_probs) if last_without_state => {
+                if repair {
+                    put_repair_summary(&h, &b, &mut o).map_err(|e| harness(e.to_string()))?;
+                }
                 o.extend([0.0, flag(new_probs)]);
                 stop = true;
                 break;
@@ -2353,7 +2592,11 @@ mod tests {
         for swap in [false, true] {
             for input in [
                 BIn::Prim(Prim::Sphere { radius: 3.0, swap }),
-                BIn::Prim(Prim::SingleVertexSphere { radius: 3.0, swap }),
+                BIn::Prim(Prim::SingleVertexSphere {
+                    radius: 3.0,
+                    swap,
+                    surface: 0,
+                }),
             ] {
                 let brep = built(&input);
                 let (_, face) = brep.faces().iter().next().unwrap();
@@ -2372,7 +2615,11 @@ mod tests {
     #[test]
     fn own_single_vertex_sphere_records() {
         for swap in [false, true] {
-            let brep = built(&BIn::Prim(Prim::SingleVertexSphere { radius: 2.0, swap }));
+            let brep = built(&BIn::Prim(Prim::SingleVertexSphere {
+                radius: 2.0,
+                swap,
+                surface: 0,
+            }));
             assert_eq!(own_counts(&brep), [2, 2, 2, 1, 2, 1, 0, 0, 2, 1]);
             let (_, v) = brep.vertices().iter().next().unwrap();
             assert_eq!(v.point, Vec3::new(0.0, 0.0, 2.0));
@@ -2423,7 +2670,10 @@ mod tests {
                 assert_eq!(ellipse.is_circle_class(), circle);
                 assert_eq!(ellipse.x_radius(), radii[0]);
                 assert_eq!(ellipse.y_radius(), radii[1]);
-                assert_eq!(ellipse.step_interval(), Extent1d::from_raw(angles[0], angles[1]));
+                assert_eq!(
+                    ellipse.step_interval(),
+                    Extent1d::from_raw(angles[0], angles[1])
+                );
                 assert_eq!(
                     ellipse.base().natural_interval(),
                     Extent1d::from_raw(-4.0, 3.0)

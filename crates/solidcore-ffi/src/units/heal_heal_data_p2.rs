@@ -7,10 +7,14 @@
 //! A B-rep block is one of [`super::topology_vertexuse`]'s (kinds `0..=3`),
 //! `4 dx dy dz validate_only init_gaps` (`SmPrimitiveCreation::CreateBox`) or
 //! `5 radius swap_uv validate_only init_gaps` (a face on the full
-//! `SmSphere::CreateCanonical` domain), `6 radius swap_uv validate_only init_gaps` (the
-//! single-vertex sphere of `SmBrepConstructor`); `init_gaps` computes the cached gaps
-//! first. The B-rep keeps its native geometry (the difftest runner builds the same
-//! B-rep with the Rust kernel).
+//! `SmSphere::CreateCanonical` domain), `6 radius swap_uv surface validate_only
+//! init_gaps` (an `SmBrepConstructor` face with one vertex loop on a sphere, plane or
+//! torus: `surface` 0, 1, 2) or `7 r0 r1 height a0 a1 seam quintic validate_only
+//! init_gaps` (`prog_test` `my_test_move_seam_refreshes_face_props`: an
+//! `SmBSplineSurface::CreateConePatch` face over `a0..a1` degrees whose surface is
+//! replaced by the full patch with its seam turned by `seam` degrees);
+//! `init_gaps` computes the cached gaps first. The B-rep keeps its native geometry (the
+//! difftest runner builds the same B-rep with the Rust kernel).
 //!
 //! | [`Op`]   | input | output |
 //! |----------|-------|--------|
@@ -170,6 +174,30 @@ pub fn check_source(path: &str, block: &[f64]) -> Result<(), FfiError> {
             return Err(bad("sphere radius out of range"));
         }
         rd.flag()?;
+        if kind == 6.0 {
+            rd.index(2)?;
+        }
+        rd.flag()?;
+        rd.flag()?;
+        return rd.done();
+    }
+    if kind == 7.0 {
+        let (r0, r1, height) = (rd.num()?, rd.num()?, rd.num()?);
+        if !(1e-3..=1e3).contains(&r0) || !(0.0..=1e3).contains(&r1) {
+            return Err(bad("cone patch radius out of range"));
+        }
+        if !(1e-3..=1e3).contains(&height) {
+            return Err(bad("cone patch height out of range"));
+        }
+        let (a0, a1, seam) = (rd.num()?, rd.num()?, rd.num()?);
+        let angles_ok = (-360.0..=360.0).contains(&a0)
+            && a1 > a0
+            && a1 - a0 <= 360.0
+            && (-360.0..=360.0).contains(&seam);
+        if !angles_ok {
+            return Err(bad("cone patch angles out of range"));
+        }
+        rd.flag()?;
         rd.flag()?;
         rd.flag()?;
         return rd.done();
@@ -189,7 +217,7 @@ pub fn check_source(path: &str, block: &[f64]) -> Result<(), FfiError> {
 pub(crate) fn check_block(path: &str, block: &[f64]) -> Result<(), FfiError> {
     check_source(path, block)?;
     let kind = block.first().copied().ok_or_else(|| bad("empty block"))?;
-    if kind == 4.0 || kind == 5.0 || kind == 6.0 {
+    if kind == 4.0 || kind == 5.0 || kind == 6.0 || kind == 7.0 {
         return Ok(());
     }
     vu::eval(vu::Op::Export, path, block).map(|_| ())

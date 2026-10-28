@@ -523,6 +523,25 @@ impl solidcore::intersect::point_class::ClassGeometry<EntityRef> for NoGeometry 
     }
 }
 
+/// The shim's `drop_trim_cache(f)` (`harness/cpp/shim/query_face_p1.cpp`, before
+/// `Point3DClassify`): `SmCacheMgr::DeleteObjectsCache(SM_OC_TRIMSRF, srf)`. The cache's
+/// tree state lives in the deleted object upstream, so the slot goes back to
+/// [`CacheTreeState::NoCache`]: the next lookup makes a cache whose tree is built, as
+/// upstream's does. (A Rust `.smb` read can leave a kept cache whose state is `Unbuilt`.)
+pub(crate) fn drop_trim_cache(b: &Brep, f: FaceId) -> Result<(), HarnessError> {
+    use solidcore::surface::surface::CacheTreeState;
+    if let Some(surface) = b
+        .face(f)
+        .map_err(|e| harness(e.to_string()))?
+        .surface
+        .as_ref()
+    {
+        surface.delete_trim_cache();
+        surface.set_cache_tree_state(CacheTreeState::NoCache);
+    }
+    Ok(())
+}
+
 fn run_point(k: &Kernel, i: &PointInput, cpp: bool) -> Result<Output, HarnessError> {
     let m = match side_model(&i.brep, cpp)? {
         Ok(m) => m,
@@ -559,6 +578,7 @@ fn run_point(k: &Kernel, i: &PointInput, cpp: bool) -> Result<Output, HarnessErr
     }
     let k = Kernel::default();
     let mut b = m.brep;
+    drop_trim_cache(&b, a.face)?;
     let mut pc = PointClassification::new(zone_tol3d(&k, i.pc_tol));
     let opts = p1::Point3dClassifyOptions {
         guess_uv: a.guess,
