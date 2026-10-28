@@ -805,7 +805,7 @@ mod tests {
         .unwrap();
         let mut faces = Vec::new();
         for surface in surfaces {
-            faces.push(create_face_from_surface(k, &mut body, *surface).unwrap());
+            faces.push(create_face_from_surface(k, &mut body, surface).unwrap());
         }
         (body, faces)
     }
