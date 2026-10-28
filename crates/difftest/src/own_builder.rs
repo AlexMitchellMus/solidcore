@@ -338,7 +338,7 @@ pub(crate) fn finish(
 
 /// The B-rep of an `.smb` file source as the shim's `build` makes it: `new SmBrep`,
 /// `ReadFromFile(path, SM_ASCII, rebuild)` read by the Rust reader
-/// ([`crate::own_reader::read_file_with`]), `m_bValidateOnly`, then (with
+/// ([`crate::own_reader::read_file_rebuild`]), `m_bValidateOnly`, then (with
 /// `init_gaps`) the shim's gap initialisation walk, renumbered into the shim's
 /// traversal order under `conv`. No C++ state reaches the Rust side.
 ///
@@ -354,7 +354,7 @@ pub(crate) fn read_with(
     init_gaps: bool,
     conv: &Conventions<'_>,
 ) -> Result<Built, HarnessError> {
-    let mut raw = match crate::own_reader::read_file_with(k, path, rebuild)? {
+    let mut raw = match crate::own_reader::read_file_rebuild(k, path, rebuild)? {
         Ok(b) => b,
         Err(e) => return Ok(Built::Failed(e)),
     };
@@ -385,7 +385,7 @@ pub(crate) fn read_as(
     init_gaps: bool,
     conv: &Conventions<'_>,
 ) -> Result<Built, HarnessError> {
-    let raw = crate::own_reader::read_file_with(k, path, rebuild)?;
+    let raw = crate::own_reader::read_file_rebuild(k, path, rebuild)?;
     finish(k, raw, validate_only, init_gaps, conv)
 }
 
