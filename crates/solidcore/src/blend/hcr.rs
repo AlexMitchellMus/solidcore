@@ -41,7 +41,7 @@
 //!   bucket collisions it yields exactly this order. The order decides which swept edge a
 //!   whole-B-rep `DoSweep` maps a silhouette vertex to (`SetHigher` keeps the first),
 //!   and with it the stitch's keep choices: ascending ids made the stitch of a box with a
-//!   wire edge fail where upstream succeeds (sweep.topology_sweep
+//!   wire edge fail where upstream succeeds (`sweep.topology_sweep`
 //!   `nm_box_linear_z_stitch`).
 //! - The traversal mark of `ComputeGlobalVisibility` (`SmNewMarkAndLock`, `Mark`,
 //!   `IsMarked`) is a set of marked edges owned by the call: a freshly advanced mark
