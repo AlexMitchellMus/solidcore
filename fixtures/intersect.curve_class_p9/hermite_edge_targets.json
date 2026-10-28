@@ -321,6 +321,23 @@
      }
     ]
    }
+  },
+  {
+   "name": "hermite_target_closed_disjoint",
+   "upstream_ref": "source/SMLib/src/SmBrep.cpp:2264-2293: CreateWireEdgeFromCurve glues coincident endpoints; a nonconstant closed Hermite is a valid disjoint target, not an invalid line",
+   "inputs": {
+    "op": 0,
+    "dim3": true,
+    "zone": 1e-06,
+    "edges": [
+     {
+      "a": [0.5, 2.0, 0.0],
+      "b": [0.5, 2.0, 0.0],
+      "zone": 1e-06,
+      "hermite": [[0.5, 2.0, 0.0], [1.0, 0.0, 1.0], [0.5, 2.0, 0.0], [1.0, 0.0, -1.0]]
+     }
+    ]
+   }
   }
  ]
 }

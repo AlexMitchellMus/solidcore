@@ -144,8 +144,7 @@ SC_EXPORT int32_t sc_intersect_curve_class_p9_run(const double* in,int64_t n,dou
         for(int k=11;k<23;k++) if(!std::isfinite(p[k]*in[10])) return SC_ERR_ARG;
         // A Hermite edge carries its own curve, never the source curve.
         if(p[9]) { ++shared; if(p[0]!=0 || in[8]!=1) return SC_ERR_ARG; }
-        else if(p[0]==1) { if(p[11]==p[17] && p[12]==p[18] && p[13]==p[19]) return SC_ERR_ARG; }
-        else if(p[1]==p[4] && p[2]==p[5] && p[3]==p[6]) return SC_ERR_ARG;
+        else if(p[0]==0 && p[1]==p[4] && p[2]==p[5] && p[3]==p[6]) return SC_ERR_ARG;
     }
     if(shared>1) return SC_ERR_ARG;
     SC_TRY

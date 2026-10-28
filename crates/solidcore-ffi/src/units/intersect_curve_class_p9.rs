@@ -110,11 +110,7 @@ pub fn validate(input: &[f64]) -> Result<(), FfiError> {
             if e[0] != 0. || header[8] != 1. {
                 return Err(invalid());
             }
-        } else if e[0] == 1. {
-            if e[11..14].iter().zip(&e[17..20]).all(|(a, b)| a == b) {
-                return Err(invalid());
-            }
-        } else if e[1..4].iter().zip(&e[4..7]).all(|(a, b)| a == b) {
+        } else if e[0] == 0. && e[1..4].iter().zip(&e[4..7]).all(|(a, b)| a == b) {
             return Err(invalid());
         }
     }
@@ -192,10 +188,10 @@ mod tests {
         let mut same = i.clone();
         same[22 + 9] = 1.;
         assert!(validate(&same).is_err());
-        // The cubic needs two distinct endpoints.
-        let mut collapsed = i.clone();
-        collapsed[22 + 17..22 + 20].copy_from_slice(&[0.3, 0.6, -0.4]);
-        assert!(validate(&collapsed).is_err());
+        // A nonconstant cubic may close on itself; the wire constructor glues its ends.
+        let mut closed = i.clone();
+        closed[22 + 17..22 + 20].copy_from_slice(&[0.3, 0.6, -0.4]);
+        assert!(validate(&closed).is_ok());
         // A line record still needs distinct endpoints, and unknown kinds are rejected.
         let mut repeated = i.clone();
         repeated[22] = 0.;
