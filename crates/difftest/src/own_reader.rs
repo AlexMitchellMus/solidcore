@@ -59,11 +59,12 @@ pub(crate) fn read_key_of(e: EntityRef) -> ObjectRef {
 /// reads it. The outer error is a harness failure (the file cannot be opened); the
 /// inner one is the Rust reader's own result.
 pub(crate) fn read_file(k: &mut Kernel, path: &str) -> Result<SolidResult<Brep>, HarnessError> {
-    read_file_with(k, path, false)
+    read_file_rebuild(k, path, false)
 }
 
-/// [`read_file`] with `ReadFromFile`'s `bRebuildUVTrimCurves` flag.
-pub(crate) fn read_file_with(
+/// [`read_file`] with `ReadFromFile`'s `bRebuildUVTrimCurves` flag: `rebuild` rebuilds
+/// the UV trim curves instead of checking and fixing them.
+pub(crate) fn read_file_rebuild(
     k: &mut Kernel,
     path: &str,
     rebuild: bool,
@@ -72,7 +73,7 @@ pub(crate) fn read_file_with(
     Ok(read_bytes(k, bytes, rebuild))
 }
 
-/// [`read_file_with`] on the file's bytes.
+/// [`read_file_rebuild`] on the file's bytes.
 fn read_bytes(k: &mut Kernel, bytes: Vec<u8>, rebuild: bool) -> SolidResult<Brep> {
     let mut body = Brep::new_with_infinite_region()?;
     let mut attributes = AttributeStore::default();
@@ -99,7 +100,7 @@ pub(crate) fn read_file_or_fail(k: &mut Kernel, path: &str) -> Result<Brep, Harn
 }
 
 /// The Rust B-rep of a `sc_edgeuse_graph.h` source as the shim's `build` makes it,
-/// in the shim's traversal order: an `.smb` file source read by [`read_file_with`]
+/// in the shim's traversal order: an `.smb` file source read by [`read_file_rebuild`]
 /// (`ReadFromFile` into `new SmBrep(ctx)`) and renumbered by
 /// [`own_builder::finish`](crate::own_builder::finish), every other source built by
 /// [`own_builder::build_with`](crate::own_builder::build_with). Selector indices taken
@@ -126,7 +127,7 @@ pub(crate) fn brep_in_order(
     file_in_order(k, &path, rebuild, validate_only, init_gaps, conv)
 }
 
-/// The `.smb` file at `path` read by [`read_file_with`] and renumbered into the shim's
+/// The `.smb` file at `path` read by [`read_file_rebuild`] and renumbered into the shim's
 /// traversal order under `conv` ([`own_builder::finish`](crate::own_builder::finish)),
 /// for runners with their own source types.
 ///
@@ -141,7 +142,7 @@ pub(crate) fn file_in_order(
     init_gaps: bool,
     conv: &crate::own_builder::Conventions<'_>,
 ) -> Result<crate::own_builder::Built, HarnessError> {
-    let raw = read_file_with(k, path, rebuild)?;
+    let raw = read_file_rebuild(k, path, rebuild)?;
     crate::own_builder::finish(k, raw, validate_only, init_gaps, conv)
 }
 
