@@ -45,7 +45,7 @@
 //! not parity with the native ownership flag.
 //! There is no new recursion; all owned loops are bounded by existing arena/relation lengths.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use super::p1::{OffsetExecutive, OffsetOperation};
 use crate::boolean::merge::p4::{
@@ -54,7 +54,7 @@ use crate::boolean::merge::p4::{
 };
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::a_object::BooleanOperation;
-use crate::geom::attribute::{AttributeStore, ObjectKey};
+use crate::geom::attribute::AttributeStore;
 use crate::geom::context::{with_mark_lock, MarkType, ALL_MARKS};
 use crate::geom::extent2d::Extent2d;
 use crate::geom::object::{FaceKey, NotifyOperation, ObjectRef};
@@ -72,10 +72,13 @@ use crate::topology::brep::p4::{shrink_geometry, stitch_faces};
 use crate::topology::brep::p7::{make_face_with_curves_with_kernel_context, FaceCurvesInput};
 use crate::topology::proto_topology::p1::CopyBrepMap;
 
+#[cfg(test)]
+use crate::geom::attribute::ObjectKey;
 use crate::sweep::topology_sweep::store::SweepIdentities;
 use crate::topology::edge::{NotificationStores, NotifyState};
 use crate::topology::edgeuse::{p1 as eu, p2 as eu2};
 use crate::topology::face::p2 as face;
+#[cfg(test)]
 use crate::topology::topology::Topology;
 use crate::topology::{Brep, BrepId, EdgeId, EdgeuseId, FaceId, FaceuseId, RegionId};
 
@@ -95,7 +98,7 @@ const OP_API_OFFSET: &str = "offset::offset_executive::p2::api_offset_brep_full"
 /// The context always comes from the supplied `Kernel`, never from a substitute.
 pub struct OffsetNotifications<'a> {
     /// Actual topology metadata, shared by source and result notifications.
-    pub records: &'a mut BTreeMap<ObjectKey, Topology>,
+    pub records: &'a mut crate::topology::topology::NotifyRecords,
     /// Actual attributes associated with those object identities.
     pub attributes: &'a mut AttributeStore,
     /// Object identities in the source arena.
@@ -243,6 +246,20 @@ impl OffsetExecutive {
             // cpp:217–251: the helper's scope drops any separately retained
             // executive temporary before querying the result's manifold status.
             let mut shell = run_shell_offset(kernel, original, options, faces, notifications)?;
+            // Opt-in (WR-454, #380; tangency-labs/smlib@fbe43bb): an inset of a solid whose
+            // offset leaves nothing has no cavity to take away (the difference would hand
+            // the input back unhollowed); an offset that is no closed solid bounds none.
+            if kernel.fixes.shell_empty_cavity_fails
+                && options.offset.distance < 0.0
+                && input_is_manifold
+            {
+                if bp1::num_faces(&shell) == 0 {
+                    return Err(invalid_input(OP_SHELL));
+                }
+                if !brep_is_manifold_solid(&shell)? {
+                    return Err(SolidError::sm_err(OP_SHELL));
+                }
+            }
             if !brep_is_manifold_solid(&shell)? && !options.create_offset_solid {
                 return Ok(shell);
             }
@@ -880,8 +897,7 @@ impl OffsetExecutive {
         // records and the reserved B-rep key, it did not exist before this call.
         notifications
             .records
-            .entry((notifications.result_key_of)(EntityRef::Region(region)).key)
-            .or_default();
+            .or_default((notifications.result_key_of)(EntityRef::Region(region)).key);
         temporary.set_tolerance(self.approximation_tol_3d());
         // SmOffsetExecutive.cpp:437 / 1073, after constructing the temporary.
         temporary.set_editing_enabled(true);
@@ -1109,7 +1125,7 @@ impl OffsetExecutive {
             let faces = bp1::faces(&temporary, None)?;
             for id in faces {
                 let key = (notifications.result_key_of)(EntityRef::Face(id));
-                let record = notifications.records.entry(key.key).or_default();
+                let record = notifications.records.or_default(key.key);
                 if record.is_marked(&kernel.context, mark_type) {
                     continue;
                 }
@@ -1997,13 +2013,13 @@ mod tests {
     }
 
     struct NotificationFixture {
-        records: BTreeMap<ObjectKey, Topology>,
+        records: crate::topology::topology::NotifyRecords,
         attributes: AttributeStore,
     }
 
     impl NotificationFixture {
         fn new(original: &Brep) -> Self {
-            let mut records = BTreeMap::new();
+            let mut records = crate::topology::topology::NotifyRecords::new();
             records.insert(original.key(), Topology::new());
             records.insert(
                 result_key(EntityRef::Brep(BrepId::from_index(0))).key,
@@ -2736,8 +2752,7 @@ mod tests {
                 .set_user_index1(17);
             fixture
                 .records
-                .entry(offset_key.key)
-                .or_default()
+                .or_default(offset_key.key)
                 .set_user_index1(93);
             let records_before = fixture.records.clone();
             let mut kernel = Kernel::default();
@@ -2968,7 +2983,7 @@ mod tests {
             .edit_parameterization(&kernel, &part_interval)
             .unwrap();
         let mut fixture = NotificationFixture::new(&original);
-        let source_records = fixture.records.clone();
+        let source_records = (*fixture.records).clone();
         let entities = result
             .edges()
             .iter()
@@ -4233,7 +4248,7 @@ mod tests {
         use crate::primitive::api_primitives::create_plane;
         let mut sheet = create_plane(k, Vec3::new(0.0, 0.0, 0.0), 10.0, 10.0).unwrap();
         let other = create_plane(k, Vec3::new(10.0, 0.0, 0.0), 10.0, 10.0).unwrap();
-        let mut records = BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let mut env = crate::topology::edge::NotifyEnv {
             records: &mut records,
@@ -4701,5 +4716,45 @@ mod tests {
                 "volume {volume}"
             );
         }
+    }
+
+    /// tangency-labs/solidcore#380: a closed inward shell of a box whose wall is as thick
+    /// as (or thicker than) the inradius leaves no cavity. Upstream returns the empty
+    /// offset as a success (the fork: the body unhollowed); with the opt-in it fails, and a thinner wall still shells.
+    #[test]
+    fn issue_380_shell_with_no_cavity_fails_with_the_fix() {
+        let shell = |fix: bool, wall: f64| -> Result<Brep> {
+            use crate::primitive::api_primitives::create_box;
+            let mut kernel = Kernel::default();
+            kernel.fixes.shell_empty_cavity_fails = fix;
+            let mut part =
+                create_box(&mut kernel, Vec3::new(0.0, 0.0, 0.0), 10.0, 10.0, 10.0).unwrap();
+            part.set_key(original_key(EntityRef::Brep(BrepId::from_index(0))).key);
+            let mut notifications = NotificationFixture::new(&part);
+            OffsetExecutive::shell_brep(
+                &mut kernel,
+                part,
+                ShellOptions {
+                    offset: OffsetOptions {
+                        distance: -wall,
+                        extend_convex_edges: true,
+                        merge_results: true,
+                    },
+                    create_offset_solid: false,
+                    merge_sheet_side_walls: false,
+                },
+                &[],
+                &mut notifications.context(),
+            )
+            .result
+        };
+        for wall in [5.0, 6.0] {
+            // upstream: an empty offset is "not a manifold solid", returned as a success
+            let upstream = shell(false, wall).unwrap();
+            assert_eq!(bp1::num_faces(&upstream), 0);
+            assert_status(shell(true, wall), 1007);
+        }
+        let thin = shell(true, 1.0).unwrap();
+        assert!(brep_is_manifold_solid(&thin).unwrap());
     }
 }
