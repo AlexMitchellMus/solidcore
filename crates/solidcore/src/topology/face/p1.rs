@@ -2910,6 +2910,7 @@ mod tests {
         let r = split_at_seam_merges(
             &mut k,
             &mut b,
+            None,
             f,
             &mut cu,
             &mut cv,
