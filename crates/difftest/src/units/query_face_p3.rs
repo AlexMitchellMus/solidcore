@@ -6,13 +6,12 @@
 //! builders (an upstream `.smb` file, `CreateFaceFromSurface` over a B-spline or `SmPlane`,
 //! `MakeFaceWithCurves` with line and circle UV trims and vertex loops over a B-spline or a
 //! real `SmCylinder` / `SmSphere` / `SmTorus` / `SmCone`, or an analytic surface's natural
-//! face). There is no Rust B-rep builder: the Rust side imports the graph the shim exports
-//! (unit `topology.face_p2`'s layout and importer, with unit `query.face_p4`'s exact
-//! records of analytic face surfaces and ellipse edge curves). Faces whose surface, and
-//! edges whose curve, the importer still cannot reproduce exactly (no lossless record:
-//! an `SmBSplineSurface` subclass other than `SmPlane`, an `SmBSplineCurve` subclass
-//! other than `SmLine`) are not compared: both sides report `inexact_geometry` when the
-//! operation evaluates them.
+//! face). The Rust side makes the same B-rep with the Rust kernel (unit `query.face_p4`'s
+//! `own_brep`, in the shim's traversal order), so no C++ state reaches its geometry or
+//! topology; the case the shim resolves from that B-rep (the face, the bisector's loops
+//! and props, the sector line's edge uses, parameters and ends) is still read from the
+//! export block (its graph is not). Every face is compared: the native geometry needs
+//! no `inexact_geometry` skip.
 //!
 //! **Operations.**
 //! - `tight`: `SmFace::CalculateTightBoundingBox` of a face: status and box.
@@ -47,13 +46,14 @@ use solidcore::nurbs::b_spline_surface::SurfParamType;
 use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::query::face::p3 as qf3;
 use solidcore::query::face::p4::ZEROED_CLASSIFY_LOOP_IO;
-use solidcore::topology::{edgeuse::p1 as eu1, Brep, EdgeId, EdgeuseId, FaceId, LoopId, VertexId};
+use solidcore::topology::{Brep, EdgeId, EdgeuseId, FaceId, LoopId, VertexId};
 use solidcore_ffi::units::query_face_p3::{self as ffi, Kind};
 use solidcore_ffi::units::query_face_p4::split_export;
 
-use super::query_face_p4::{brep_input, brep_path, gen_scale, gen_seam_face, rect, AnySrf, BrepIn, CurveIn};
+use super::query_face_p4::{
+    brep_input, brep_path, gen_scale, gen_seam_face, own_brep, rect, AnySrf, BrepIn, CurveIn,
+};
 use super::topology_edgeuse_p1::{domain, gen_surface, FILES};
-use super::topology_face_p2::{import, Exact};
 use crate::case::CaseContext;
 use crate::runner::default_cases;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -262,39 +262,6 @@ fn surf_param(code: i64) -> Result<SurfParamType, HarnessError> {
         .ok_or_else(|| harness("bad SmSurfParamType"))
 }
 
-// ---- exactness ------------------------------------------------------------------------------
-
-fn face_inexact(exact: &Exact, f: FaceId) -> bool {
-    !exact.faces.get(f.index() as usize).copied().unwrap_or(true)
-}
-
-fn edge_inexact(exact: &Exact, e: EdgeId) -> bool {
-    !exact.edges.get(e.index() as usize).copied().unwrap_or(true)
-}
-
-/// Whether the face's surface or the curve of an edge of the face was not imported
-/// exactly.
-fn face_or_edges_inexact(b: &Brep, exact: &Exact, f: FaceId) -> bool {
-    if face_inexact(exact, f) {
-        return true;
-    }
-    let Ok(face) = b.face(f) else {
-        return false;
-    };
-    let Some(fu) = face.faceuse else {
-        return false;
-    };
-    let Ok(lus) = eu1::faceuse_loopuses(b, fu, false, None) else {
-        return false;
-    };
-    lus.into_iter().any(|lu| {
-        eu1::loopuse_edgeuses(b, lu).is_ok_and(|eus| {
-            eus.into_iter()
-                .any(|eu| eu1::edge(b, eu).ok().flatten().is_some_and(|e| edge_inexact(exact, e)))
-        })
-    })
-}
-
 // ---- the resolved cases -------------------------------------------------------------------
 
 /// What the export of a case gives the Rust side.
@@ -335,33 +302,38 @@ struct SectorCase {
     uv_ok: bool,
 }
 
-/// The export of `i`: the imported B-rep and the resolved case; `Err(output)` for a
-/// failed build, a rejected case or inexact geometry (the same output on both sides).
-fn export(i: &Inputs) -> Result<Result<(Brep, Resolved), Output>, HarnessError> {
+/// The case of `i`: with `own` the Rust B-rep (the Rust kernel's own build of the
+/// source, unit `query.face_p4`'s [`own_brep`]; no C++ state) and the case the shim
+/// resolves from its export block (face, loops, props, sector line), whose graph is
+/// not read; `Err(output)` for a failed build or a rejected case (the same output on
+/// both sides). Without `own` (the C++ side, for the same rejections) the B-rep is
+/// empty.
+fn export(i: &Inputs, own: bool) -> Result<Result<(Brep, Resolved), Output>, HarnessError> {
+    let b = if own {
+        match own_brep(&i.brep, i.validate_only, i.init_gaps)? {
+            Ok((b, _)) => b,
+            Err(o) => return Ok(Err(o)),
+        }
+    } else {
+        Brep::new()
+    };
     let o = run_ffi(i, true)?;
     if o.first() != Some(&0.0) {
-        return Ok(Err(Output::err(format!(
-            "build_failed: {}",
-            o.get(1).copied().unwrap_or(-9.0)
-        ))));
+        let status = o.get(1).copied().unwrap_or(-9.0);
+        return Ok(Err(Output::err(if own {
+            format!("build_failed_cpp_only: {status}")
+        } else {
+            format!("build_failed: {status}")
+        })));
     }
-    let (graph, block) = split_export(&o).ok_or_else(|| harness("bad export"))?;
+    let (_, block) = split_export(&o).ok_or_else(|| harness("bad export"))?;
     let mut rd = Rd { v: block, at: 0 };
     if rd.num()? != 0.0 {
         return Ok(Err(Output::err("rejected")));
     }
-    let (mut b, exact) = import(graph)?;
-    // the cached gaps the export only marks as set get their values (unit
-    // `query.face_p4`'s runner does the same)
-    super::topology_vertexuse::refill_gaps(&mut b);
     let face = FaceId::from_index(rd.index()?);
     let resolved = match &i.op {
-        OpIn::Tight | OpIn::Internal => {
-            if face_or_edges_inexact(&b, &exact, face) {
-                return Ok(Err(Output::err("inexact_geometry")));
-            }
-            Resolved::Face(face)
-        }
+        OpIn::Tight | OpIn::Internal => Resolved::Face(face),
         OpIn::Bisector { .. } => {
             let target = rd.count()?;
             let n = rd.count()?;
@@ -377,9 +349,6 @@ fn export(i: &Inputs) -> Result<Result<(Brep, Resolved), Output>, HarnessError> 
             let pole_points = (0..n_pp).map(|_| rd.pt()).collect::<Result<Vec<_>, _>>()?;
             let missing_seam = surf_param(rd.int()?)?;
             let zone_tol = rd.num()?;
-            if face_or_edges_inexact(&b, &exact, face) {
-                return Ok(Err(Output::err("inexact_geometry")));
-            }
             Resolved::Bisector(BisectorCase {
                 face,
                 target,
@@ -408,14 +377,6 @@ fn export(i: &Inputs) -> Result<Result<(Brep, Resolved), Output>, HarnessError> 
             let singular = rd.num()? != 0.0;
             let sing_uv = Point2::new(rd.num()?, rd.num()?);
             let uv_ok = rd.num()? != 0.0;
-            let edge_of = |eu| eu1::edge(&b, eu).ok().flatten();
-            if face_or_edges_inexact(&b, &exact, face)
-                || edge_of(eu1).is_some_and(|e| edge_inexact(&exact, e))
-                || edge_of(eu2).is_some_and(|e| edge_inexact(&exact, e))
-                || eu1::face(&b, eu2).ok().flatten().is_some_and(|f| face_or_edges_inexact(&b, &exact, f))
-            {
-                return Ok(Err(Output::err("inexact_geometry")));
-            }
             Resolved::Sector(SectorCase {
                 face,
                 eu1,
@@ -444,8 +405,8 @@ fn status_err(status: f64) -> Output {
 }
 
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
-    // the same rejections as the Rust side (failed build, rejected, inexact geometry)
-    if let Err(out) = export(i)? {
+    // the same rejections as the Rust side (failed build, rejected)
+    if let Err(out) = export(i, false)? {
         return Ok(out);
     }
     let o = run_ffi(i, false)?;
@@ -643,13 +604,16 @@ fn point_class_pair(pc: &PointClassification<H>) -> [i64; 2] {
 
 fn rust(i: &Inputs) -> Result<Output, HarnessError> {
     let k = Kernel::default();
-    let (mut b, resolved) = match export(i)? {
+    let (mut b, resolved) = match export(i, true)? {
         Ok(x) => x,
         Err(out) => return Ok(out),
     };
     Ok(match resolved {
         Resolved::Face(f) => match &i.op {
             OpIn::Internal => {
+                // the shim's `drop_trim_cache(f)` before `CalculateAnInternalPoint`
+                // (`harness/cpp/shim/query_face_p3.cpp`)
+                super::query_face_p1::drop_trim_cache(&b, f)?;
                 match solidcore::topology::face::p2::calculate_an_internal_point(&k, &mut b, f) {
                     Ok(p) => Output::new().values("point", p.to_array()),
                     Err(e) => rust_err(&e),
