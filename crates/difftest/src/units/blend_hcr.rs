@@ -416,10 +416,14 @@ fn rust_hcr(k: &mut Kernel, i: &Inputs) -> Result<Result<Hcr, Output>, HarnessEr
     let conv = &Conventions::EDGEUSE_GRAPH;
     // `ffi::scene`'s input checks
     let (brep, hcr) = (brep_block(&i.brep)?, hcr_block(i)?);
-    if let Err(m) = check_magnitudes(&brep)
-        .and_then(|()| check_magnitudes(&hcr))
-        .and_then(|()| check_view(i))
-    {
+    if let Err(m) = check_magnitudes(&brep).and_then(|()| check_magnitudes(&hcr)) {
+        return Ok(Err(Output::err(m)));
+    }
+    // the fixture export's block checks (`fixture::eval`; pure Rust, no shim call)
+    if let Err(e) = fixture::validate_block(&path_of(&i.brep)?, &brep) {
+        return Ok(Err(Output::err(format!("rejected: {e}"))));
+    }
+    if let Err(m) = check_view(i) {
         return Ok(Err(Output::err(m)));
     }
     // the shim's `build` (`sc_topology_fixture.h`, no validate-only, no gap walk)
