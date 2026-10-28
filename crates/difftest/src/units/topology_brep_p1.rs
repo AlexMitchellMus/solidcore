@@ -2,8 +2,10 @@
 //! Rust: `solidcore::topology::brep::p1`.
 //!
 //! As the `topology.edgeuse_p1` runner, the C++ side builds a real `SmBrep` per call
-//! (an upstream `.smb` file, a wire edge, a face, or the `prog_test` wire network) and
-//! the Rust side imports the graph the shim exports in traversal order into a [`Brep`]
+//! (an upstream `.smb` file, a wire edge, a face, or the `prog_test` wire network). The
+//! Rust side builds every non-file source itself with the Rust kernel
+//! ([`crate::own_builder`], renumbered into the shim's traversal order); for an `.smb`
+//! file it imports the graph the shim exports in traversal order into a [`Brep`]
 //! (the shared import of `topology.edgeuse_p1`, plus this unit's extras: the infinite
 //! region, the editing flag, the size estimates and each vertex's vertex use list in
 //! its native order). Every op's C++ output after the build status is compared with the
@@ -768,25 +770,6 @@ fn build_failure(export: &[f64]) -> Output {
     ))
 }
 
-/// The Rust B-rep of an upstream `.smb` file at `path`, imported through this unit's
-/// export (list orders, vertex use lists and face back-links applied), for the
-/// runners of other units whose Rust side needs the file's B-rep.
-pub(crate) fn import_file(path: &str, rebuild: bool) -> Result<Brep, HarnessError> {
-    // the file block: kind 0, rebuild, validate_only, init_gaps
-    let block = [0.0, flag(rebuild), 0.0, 0.0];
-    let ex = crate::export_memo::export("topology_brep_p1", &[path], &block, || {
-        ffi::eval(Op::Export, path, &block)
-    })
-    .map_err(|e| harness(format!("c++ export: {e}")))?;
-    let Some((_, graph_at)) = ffi::counts(&ex) else {
-        return Err(harness(format!(
-            "brep_build_status_{}",
-            ex.get(1).copied().unwrap_or(0.0)
-        )));
-    };
-    Ok(import(&ex, graph_at)?.0)
-}
-
 /// The Rust B-rep of an export with this unit's extras applied, and the geometry
 /// types of the import, with its cached gaps refilled on the finished B-rep
 /// ([`super::topology_vertexuse::refill_gaps`]).
@@ -903,6 +886,11 @@ pub(crate) fn import_raw(ex: &[f64], graph_at: usize) -> Result<(Brep, ImportTyp
             }
         }
     }
+    // the import names every geometry owner by arena identity (above); record that
+    // naming (and each owner) on the B-rep, so library queries that name geometry under
+    // another scheme's identities (a glue's notification identities, overridden by
+    // recorded owners) resolve the owners instead of failing internally
+    b.use_arena_naming().map_err(|e| harness(e.to_string()))?;
     Ok((b, types))
 }
 
@@ -2068,13 +2056,25 @@ fn run_rust_op(
             eu2,
             dir,
         } => {
-            // the second B-rep in its own arena, imported from its own C++ export
-            let block2 = brep_block_of(Some(other), false, false)?;
-            let ex2 = ffi::eval(Op::Export, "", &block2)
-                .map_err(|e| harness(format!("c++ export of the second B-rep: {e}")))?;
-            let (_, graph_at2) =
-                ffi::counts(&ex2).ok_or_else(|| harness("the second B-rep does not build"))?;
-            let (mut b2, _) = import(&ex2, graph_at2)?;
+            // the second B-rep in its own arena, built by the Rust kernel
+            let mut b2 = match crate::own_builder::build(k, other, false, false)? {
+                Some(crate::own_builder::Built::Brep(b2)) => *b2,
+                Some(crate::own_builder::Built::Failed(e)) if e.is_unported() => {
+                    return Err(e.into());
+                }
+                Some(crate::own_builder::Built::Failed(_)) => {
+                    return Err(harness("the second B-rep does not build").into());
+                }
+                None => {
+                    // an `.smb` file: imported from its own C++ export
+                    let block2 = brep_block_of(Some(other), false, false)?;
+                    let ex2 = ffi::eval(Op::Export, "", &block2)
+                        .map_err(|e| harness(format!("c++ export of the second B-rep: {e}")))?;
+                    let (_, graph_at2) = ffi::counts(&ex2)
+                        .ok_or_else(|| harness("the second B-rep does not build"))?;
+                    import(&ex2, graph_at2)?.0
+                }
+            };
             let id = |i: i64| (i >= 0).then(|| EdgeuseId::from_index(i as u32));
             match bp1::create_edge_edge_blend(
                 k,
@@ -2181,18 +2181,17 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     {
         return run_rust_intersection(i, other, *tol, *ang, *want_points);
     }
-    let ex = export(i)?;
-    let Some((c, graph_at)) = ffi::counts(&ex) else {
-        return Ok(build_failure(&ex));
+    let mut k = Kernel::default();
+    let (mut b, types, c) = match rust_brep(&mut k, i)? {
+        Ok(x) => x,
+        Err(o) => return Ok(o),
     };
-    let (mut b, types) = import(&ex, graph_at)?;
     let Some(op) = resolve(&i.op, c) else {
         return Ok(no_entity());
     };
     if let Some(refused) = refused_input(&op) {
         return Ok(refused);
     }
-    let mut k = Kernel::default();
     match run_rust_op(&mut k, &mut b, &types, &op) {
         Ok(Ok(o)) => Ok(guarded_output(o)),
         Ok(Err(o)) => Ok(o),
@@ -2201,6 +2200,45 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
             None => Err(harness(format!("rust: {e}"))),
         },
         Err(Fail::Harness(h)) => Err(h),
+    }
+}
+
+/// The Rust B-rep of the case, its geometry types and entity counts, or the output of
+/// a failed build: shim-built sources are built by the Rust kernel
+/// ([`crate::own_builder`]); only `.smb` file sources are still imported from this
+/// unit's export.
+fn rust_brep(
+    k: &mut Kernel,
+    i: &Inputs,
+) -> Result<crate::own_builder::RustBrep<(Brep, ImportTypes, [usize; 10])>, HarnessError> {
+    use crate::own_builder::{build, build_status, counts, Built};
+    let src = i
+        .brep
+        .as_ref()
+        .ok_or_else(|| harness("B-rep op without brep"))?;
+    match build(k, src, i.validate_only, i.init_gaps)? {
+        Some(Built::Brep(b)) => {
+            let b = *b;
+            // geometry owners are arena identities with the naming left `Unknown`, as
+            // this unit's `.smb` import leaves it on main
+            let c = counts(&b);
+            Ok(Ok((b, ImportTypes::default(), c)))
+        }
+        Some(Built::Failed(e)) => match Output::unported(&e) {
+            Some(o) => Ok(Err(o)),
+            None => Ok(Err(Output::err(format!(
+                "brep_build_status_{}",
+                build_status(&e)
+            )))),
+        },
+        None => {
+            let ex = export(i)?;
+            let Some((c, graph_at)) = ffi::counts(&ex) else {
+                return Ok(Err(build_failure(&ex)));
+            };
+            let (b, types) = import(&ex, graph_at)?;
+            Ok(Ok((b, types, c)))
+        }
     }
 }
 
