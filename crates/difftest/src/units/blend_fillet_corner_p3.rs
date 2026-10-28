@@ -307,14 +307,6 @@ fn eu_vertex(b: &Brep, eu: EdgeuseId) -> Option<VertexId> {
     b.vertexuse(vu).ok()?.vertex
 }
 
-/// `.smb` sources the Rust side still imports from the C++ export: the Rust reader's
-/// B-rep of `Fillet/open_shell.smb` keeps 4 edge uses, an edge and a vertex no list
-/// reaches (66/22/17 records against the shim's 62/21/16 reached), and the cached
-/// edge-to-CCW-edge gap of a reached edge use names one of them, so it cannot be
-/// renumbered into the shim's traversal order
-/// (`plan/findings/blend.fillet_corner_p3--own-reader-open-shell-unreached-uses.md`).
-const KEPT_ON_IMPORT: [&str; 1] = ["Fillet/open_shell.smb"];
-
 /// The case's B-rep and its resolved selectors. With `own` (the Rust side) the B-rep is
 /// read by the Rust reader or built by the Rust kernel in the shim's traversal order
 /// ([`crate::own_reader::brep_in_order`]); else (the C++ side, to resolve its
@@ -329,7 +321,6 @@ fn create_setup(
 ) -> Result<Result<CreateSetup, Output>, HarnessError> {
     let path = path_of(Some(brep))?;
     let block = brep_block_of(Some(brep), validate_only, init_gaps)?;
-    let own = own && !matches!(brep, BrepIn::File { file, .. } if KEPT_ON_IMPORT.contains(&file.as_str()));
     let (c, built) = if own {
         use crate::own_builder::{counts, failed_output, Built, Conventions};
         let conv = &Conventions::EDGEUSE_GRAPH;
