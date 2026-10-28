@@ -809,16 +809,21 @@ impl Curve {
         }
     }
 
-    /// A copy (as `Clone`) with an empty curve cache memo of its own: the curve a
-    /// cache keeps of its own, so a memo never holds itself.
-    #[must_use]
-    pub(crate) fn clone_detached(&self) -> Self {
-        Self {
-            kind: self.kind.clone(),
+    /// The curve a cache keeps of its own: an exact copy (as
+    /// [`Curve::clone_for_evaluation`], without the copy constructor's knot fix-up,
+    /// since upstream's `SmCurveCache::m_crCurve` references the curve itself) without
+    /// owner and with an empty curve cache memo of its own, so a memo never holds
+    /// itself.
+    /// # Errors
+    /// Those of [`Curve::clone_for_evaluation`] (geometry nested too deeply).
+    pub(crate) fn clone_detached(&self) -> Result<Self> {
+        let copy = self.clone_for_evaluation()?;
+        Ok(Self {
+            kind: copy.kind,
             owner: None,
             notify_identity: IdentitySlot::new(),
             memo: CurveMemo::new(),
-        }
+        })
     }
 
     /// The curve cache memo (see [`CurveMemo`]).
@@ -1826,13 +1831,88 @@ impl Curve {
             CurveKind::Parabola(c) => Ok(Self::from(c.copy())),
             CurveKind::Hermite(_) | CurveKind::Conic(_) | CurveKind::Iso(_) => Err(base_err()),
             CurveKind::Projected(c) => c.copy(k).map(Self::from),
-            CurveKind::Offset(c) => Ok(Self::from(c.copy())),
-            CurveKind::CrvInVolume(c) => Ok(Self::from(c.copy())),
+            CurveKind::Offset(c) => c.copy().map(Self::from),
+            CurveKind::CrvInVolume(c) => c.copy().map(Self::from),
             CurveKind::CrvOnSurf(c) => c.copy(k).map(Self::from),
             // SmCrvOnSurf::Copy (not overridden): `new SmCrvOnSurf(*this)`, the base only
             CurveKind::TangentField(c) => c.base().copy(k).map(Self::from),
             CurveKind::Line(c) => Ok(Self::from(c.copy())),
         }
+    }
+
+    /// `CreateMirrorCurve` (base: `SM_ERR`): a copy mirrored about the XY plane of
+    /// `mirror_plane`.
+    ///
+    /// Every `SmBSplineCurve`-derived kind (line, ellipse and circle, parabola,
+    /// hyperbola) inherits the B-spline override: the result is a plain B-spline curve
+    /// over the NURB the kind makes first (on a copy here). A curve on a surface and a
+    /// curve in a volume mirror what they wrap.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` for kinds without the override (Hermite, projected, iso, offset,
+    /// conic and composite curves); those of the NURB construction and of the override.
+    pub fn create_mirror_curve(&self, k: &Kernel, mirror_plane: &Axis2Placement) -> Result<Self> {
+        match &self.kind {
+            CurveKind::BSpline(c) => c.create_mirror_curve(mirror_plane),
+            CurveKind::Line(c) => {
+                if c.base().gw_nurb().is_some() {
+                    c.base().create_mirror_curve(mirror_plane)
+                } else {
+                    let mut n = c.copy();
+                    n.make_nurb()?;
+                    n.base().create_mirror_curve(mirror_plane)
+                }
+            }
+            CurveKind::Ellipse(c) => {
+                if c.base().gw_nurb().is_some() {
+                    c.base().create_mirror_curve(mirror_plane)
+                } else {
+                    let mut n = c.copy(k)?;
+                    n.make_nurb(k)?;
+                    n.base().create_mirror_curve(mirror_plane)
+                }
+            }
+            CurveKind::Parabola(c) => {
+                if c.base().gw_nurb().is_some() {
+                    c.base().create_mirror_curve(mirror_plane)
+                } else {
+                    let mut n = c.copy();
+                    n.make_nurb(None)?;
+                    n.base().create_mirror_curve(mirror_plane)
+                }
+            }
+            CurveKind::Hyperbola(c) => {
+                if c.base().gw_nurb().is_some() {
+                    c.base().create_mirror_curve(mirror_plane)
+                } else {
+                    let mut n = c.copy();
+                    n.make_nurb(None)?;
+                    n.base().create_mirror_curve(mirror_plane)
+                }
+            }
+            CurveKind::CrvInVolume(c) => {
+                return c.create_mirror_curve(mirror_plane).map(Self::from)
+            }
+            CurveKind::CrvOnSurf(c) => {
+                return c.create_mirror_curve(k, mirror_plane).map(Self::from);
+            }
+            // `SmTangentField` inherits `SmCrvOnSurf::CreateMirrorCurve`, which builds a plain
+            // `SmCrvOnSurf` on the mirrored surface.
+            CurveKind::TangentField(c) => {
+                return c
+                    .base()
+                    .create_mirror_curve(k, mirror_plane)
+                    .map(Self::from);
+            }
+            CurveKind::Hermite(_)
+            | CurveKind::Conic(_)
+            | CurveKind::Projected(_)
+            | CurveKind::Iso(_)
+            | CurveKind::Offset(_)
+            | CurveKind::Composite(_) => return Err(base_err()),
+        }
+        .map(Self::from)
     }
 
     /// `CreateAnalyticCurve` (base: no analytic curve): an analytic equivalent
