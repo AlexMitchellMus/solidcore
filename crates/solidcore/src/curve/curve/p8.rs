@@ -438,6 +438,9 @@ impl Curve {
     /// handle geometry is not that owned object supplies the tolerance here. A slot is
     /// used exactly as in [`Curve::global_curve_intersect_cached`]: nothing is built
     /// before the body reaches it, and a `None` tolerance builds as that method does.
+    /// A populated slot must also match its supplied owner tolerance. These hints
+    /// govern the two intersection-tree slots only; nested coincidence and drop
+    /// routines retain their existing curve-owner context.
     ///
     /// # Errors
     ///
