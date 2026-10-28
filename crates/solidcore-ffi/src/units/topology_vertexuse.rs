@@ -387,7 +387,8 @@ fn analytic_face_block(rd: &mut Reader<'_>) -> Result<(), FfiError> {
 
 /// A B-rep block.
 fn brep_block(rd: &mut Reader<'_>, path: &str) -> Result<(), FfiError> {
-    let kind = rd.index(10)?;
+    // 14 is the highest block kind (the edge-loop face, kind 14)
+    let kind = rd.index(14)?;
     match kind {
         0 => {
             let p = Path::new(path);

@@ -734,7 +734,7 @@ fn own_brep(i: &Inputs) -> Result<crate::own_builder::RustBrep<(Brep, [usize; 10
             super::topology_face_p1::own_built(src, i.validate_only, i.init_gaps)?
         }
         (CaseBrep::EdgeLoop(f), _) => {
-            let raw = rust_edge_loop_face(&k, f);
+            let raw = rust_edge_loop_face(&mut k, f);
             finish(&mut k, raw, i.validate_only, i.init_gaps, conv)?
         }
         (CaseBrep::Faces(FacesBrep::Faces { faces }), _) => {
@@ -771,25 +771,27 @@ fn own_brep(i: &Inputs) -> Result<crate::own_builder::RustBrep<(Brep, [usize; 10
 
 /// The Rust B-rep of an edge-loop face source (block kind 14): the records the shim's
 /// `SmBrepConstructor` realises (`support/edge_loop_face_fixture.h`), built on the Rust
-/// side — one face on a real `Plane` over the given UV domain, one loop with its two loop
-/// uses (the upward one and its mate), the given edge curves in loop order with one edge
-/// per curve and its own interval and tolerance, one edge use pair per edge (same then
-/// opposite orientation), and one vertex per edge start (a closed loop's consecutive
-/// edges share their vertex). The loop use starts at the first edge and its mate at that
-/// edge's mate, as `StartEdge` leaves them.
-fn rust_edge_loop_face(k: &Kernel, f: &EdgeLoopFaceIn) -> Result<Brep, SolidError> {
+/// side — the ported `SmBrep(ctx)` root (`new_brep`: the infinite region on the region
+/// list, the context tolerance, the construction notification), its shell inserted into
+/// that region as `StartShell` does, then one face on a real `Plane` over the given UV
+/// domain, one loop with its two loop uses (the upward one and its mate), the given edge
+/// curves in loop order with one edge per curve and its own interval and tolerance, one
+/// edge use pair per edge (same then opposite orientation), and one vertex per edge start
+/// (a closed loop's consecutive edges share their vertex). The loop use starts at the
+/// first edge and its mate at that edge's mate, as `StartEdge` leaves them.
+fn rust_edge_loop_face(k: &mut Kernel, f: &EdgeLoopFaceIn) -> Result<Brep, SolidError> {
     use solidcore::curve::hermite_curve::HermiteCurve;
     use solidcore::curve::line::Line;
     use solidcore::geom::vector2d::Point2;
     use solidcore::geom::vector3d::Vec3;
     use solidcore::surface::plane::Plane;
     use solidcore::surface::surface::Surface;
+    use solidcore::topology::shell::ShellMembers;
     use solidcore::topology::{
-        Edge, Edgeuse, EdgeuseId, EdgeuseOwner, Face, Faceuse, FaceuseId, Loop, LoopEdge, Loopuse,
-        LoopuseId, LoopuseStart, RegionId, ShellId, Vertex, VertexId, Vertexuse, VertexuseId,
+        Edge, EdgeId, Edgeuse, EdgeuseId, EdgeuseOwner, Face, Faceuse, FaceuseId, Loop, LoopEdge,
+        Loopuse, LoopuseId, LoopuseStart, ShellId, Vertex, VertexId, Vertexuse, VertexuseId,
         VertexuseOwner,
     };
-    use solidcore::topology::shell::ShellMembers;
 
     let n = f.edges.len();
     if n == 0 {
@@ -827,22 +829,26 @@ fn rust_edge_loop_face(k: &Kernel, f: &EdgeLoopFaceIn) -> Result<Brep, SolidErro
         Point2::new(f.dom[0], f.dom[1]),
         Point2::new(f.dom[2], f.dom[3]),
     );
-    let mut b = Brep::new();
-    // `StartBrep`'s infinite region, which `StartShell` inserts the shell into
-    let region = b.add_region_record(solidcore::topology::Region {
-        shells: vec![ShellId::from_index(0)],
-        ..solidcore::topology::Region::default()
-    })?;
-    b.set_infinite_region_record(Some(region));
+    // `StartBrep`: the ported `SmBrep(ctx)` root -- infinite region on the B-rep's
+    // region list, the context tolerance, the construction notification
+    let mut b = solidcore::topology::brep::p3::new_brep(
+        k,
+        solidcore::geom::tol::USE_DEFAULT,
+        solidcore::geom::tol::USE_DEFAULT,
+    )?;
+    let region = b
+        .infinite_region()
+        .ok_or_else(|| SolidError::null_pointer("difftest::face_p3::edge_loop_face"))?;
     b.add_shell_record(solidcore::topology::Shell {
         faces: vec![FaceId::from_index(0)],
-        region: Some(RegionId::from_index(0)),
-        members: ShellMembers::Faceuses(vec![
-            FaceuseId::from_index(0),
-            FaceuseId::from_index(1),
-        ]),
+        region: Some(region),
+        // `StartShell`'s `SetShellType(SmFaceuse_TYPE)`
+        shell_type: solidcore::topology::shell::ShellType::Faceuse,
+        members: ShellMembers::Faceuses(vec![FaceuseId::from_index(0), FaceuseId::from_index(1)]),
         ..solidcore::topology::Shell::default()
     })?;
+    // `StartShell`'s `m_pOuterRegion->PostInsert(m_pOuterShell)`
+    b.region_mut(region)?.shells.push(ShellId::from_index(0));
     b.add_face_record(Face {
         loops: vec![LoopId::from_index(0)],
         surface: Some(Surface::from(Plane::from_normal(
@@ -899,8 +905,7 @@ fn rust_edge_loop_face(k: &Kernel, f: &EdgeLoopFaceIn) -> Result<Brep, SolidErro
         orientation: OrientType::Same,
     })?;
     // the brep tolerance the constructor gives its vertices (`m_pBrep->GetTolerance()`)
-    let vertex_tol =
-        solidcore::geom::tol::zone_tol_3d(k, solidcore::geom::tol::SmallTopoType::NormalSize);
+    let vertex_tol = b.tolerance();
     for (i, &point) in starts.iter().enumerate() {
         b.add_vertex_record(Vertex {
             point,
@@ -1309,12 +1314,7 @@ fn sliver_curves(s: f64, bend: f64, sep: f64) -> Vec<LoopCurveIn> {
     let p1 = [s, 0.0, 0.0];
     let ds = 4.0 * sep;
     vec![
-        hermite(
-            p0,
-            [0.5 * s, bend * s, 0.0],
-            p1,
-            [0.5 * s, -bend * s, 0.0],
-        ),
+        hermite(p0, [0.5 * s, bend * s, 0.0], p1, [0.5 * s, -bend * s, 0.0]),
         hermite(
             p1,
             [-0.5 * s, bend * s + ds, 0.0],
@@ -1328,12 +1328,7 @@ fn sliver_curves(s: f64, bend: f64, sep: f64) -> Vec<LoopCurveIn> {
 /// are a third of the chord plus a bend perpendicular to it, so no two edges are
 /// coincident.
 fn quad_curves(s: f64) -> Vec<LoopCurveIn> {
-    let c = [
-        [0.0, 0.0, 0.0],
-        [s, 0.0, 0.0],
-        [s, s, 0.0],
-        [0.0, s, 0.0],
-    ];
+    let c = [[0.0, 0.0, 0.0], [s, 0.0, 0.0], [s, s, 0.0], [0.0, s, 0.0]];
     (0..4)
         .map(|i| {
             let a = c[i];
@@ -1438,13 +1433,7 @@ fn hermite_degenerate_cases() -> Vec<(String, Value)> {
         ),
         (
             "hermite_quad_skip_scale1e3",
-            hermite_case(
-                quad_curves(1e3),
-                &[1e-10, 1e-3, 1.0, 1e-7],
-                1e3,
-                true,
-                None,
-            ),
+            hermite_case(quad_curves(1e3), &[1e-10, 1e-3, 1.0, 1e-7], 1e3, true, None),
         ),
         // the quick check classifies a point stepped into the face
         (
