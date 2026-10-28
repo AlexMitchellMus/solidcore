@@ -3421,7 +3421,7 @@ fn merge_primary(target: &mut Brep, other: &mut Brep) -> Result<(), HarnessError
 pub(super) fn own_breps(
     a: &BrepIn,
     b: Option<&BrepIn>,
-) -> Result<Result<(Brep, Option<Brep>), Output>, HarnessError> {
+) -> Result<Result<BrepPair, Output>, HarnessError> {
     use crate::own_builder::{build_any, build_status, Built, Conventions};
     let mut k = Kernel::default();
     let mut one = |src: &BrepIn, which: &str| -> Result<Result<Brep, Output>, HarnessError> {
@@ -3451,6 +3451,9 @@ pub(super) fn own_breps(
     Ok(Ok((brep_a, brep_b)))
 }
 
+/// A case's two B-reps (the second optional).
+pub(super) type BrepPair = (Brep, Option<Brep>);
+
 /// The B-reps a side resolves the script on: the Rust side's own build
 /// ([`own_breps`]). The C++ side resolves on the same Rust build, so both get the same
 /// numbers (parameters relative to an edge's interval, points on its curve), and only
@@ -3458,7 +3461,7 @@ pub(super) fn own_breps(
 fn side_breps(
     rust: bool,
     i: &Inputs,
-) -> Result<(Brep, Option<Brep>), Box<Result<Output, HarnessError>>> {
+) -> Result<BrepPair, Box<Result<Output, HarnessError>>> {
     match own_breps(&i.brep_a, i.brep_b.as_ref()) {
         Ok(Ok(x)) => return Ok(x),
         Ok(Err(o)) if rust => return Err(Box::new(Ok(o))),

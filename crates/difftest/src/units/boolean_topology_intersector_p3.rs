@@ -68,7 +68,7 @@ use solidcore_ffi::units::boolean_topology_intersector_p1 as ffi1;
 use solidcore_ffi::units::boolean_topology_intersector_p3::{self as ffi, Op};
 
 use super::boolean_topology_intersector_p1::{
-    brep_block, brep_h, build_failure, own_breps, eid, fid, flag, harness, hd, path_of, put_h, BrepIn, Hin,
+    brep_block, brep_h, build_failure, own_breps, BrepPair, eid, fid, flag, harness, hd, path_of, put_h, BrepIn, Hin,
     Two, H, K_BREP, K_EDGE, K_EDGE_CURVE, K_FACE, K_FACE_SURFACE, K_NULL, K_TRIM_CURVE, K_VERTEX,
     K_VERTEXUSE,
     NULL_DEREF, TI_HANDLE,
@@ -335,7 +335,7 @@ fn apply_vertex_use_order(
 fn side_breps(
     rust: bool,
     i: &Inputs,
-) -> Result<(Brep, Option<Brep>), Box<Result<Output, HarnessError>>> {
+) -> Result<BrepPair, Box<Result<Output, HarnessError>>> {
     match own_breps(&i.brep_a, i.brep_b.as_ref()) {
         Ok(Ok(x)) => return Ok(x),
         Ok(Err(o)) if rust => return Err(Box::new(Ok(o))),

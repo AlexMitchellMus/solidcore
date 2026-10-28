@@ -403,7 +403,7 @@ fn resolve_own(i: &TopoIn) -> Result<Result<Resolved, Output>, HarnessError> {
     let path = path_of(Some(&i.brep))?;
     let block = brep_block_of(Some(&i.brep), false, false)?;
     let mut k = Kernel::default();
-    let mut one = |k: &mut Kernel| -> Result<Result<Brep, Output>, HarnessError> {
+    let one = |k: &mut Kernel| -> Result<Result<Brep, Output>, HarnessError> {
         match build_any(k, &i.brep, false, false, &Conventions::EDGEUSE_GRAPH)? {
             Built::Brep(b) => {
                 let mut b = *b;
