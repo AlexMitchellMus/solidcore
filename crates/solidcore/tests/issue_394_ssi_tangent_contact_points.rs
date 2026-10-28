@@ -33,9 +33,7 @@ use solidcore::Kernel;
 fn bezier(deg: usize, points: &[[f64; 3]]) -> Surface {
     let n = deg + 1;
     assert_eq!(points.len(), n * n);
-    let knots: Vec<f64> = (0..2 * n)
-        .map(|i| if i < n { 0.0 } else { 1.0 })
-        .collect();
+    let knots: Vec<f64> = (0..2 * n).map(|i| if i < n { 0.0 } else { 1.0 }).collect();
     let net: Vec<Vec<CPoint>> = points
         .chunks(n)
         .map(|row| {
@@ -89,7 +87,11 @@ fn touching_points(x: &SurfaceIntersection, a: &Surface, b: &Surface) -> Vec<Vec
                 .unwrap();
             assert!(p.distance(q) < 1e-9, "curve {i}: {p:?} vs {q:?}");
         }
-        assert!(x.deviations[i] < 1e-12, "curve {i}: gap {}", x.deviations[i]);
+        assert!(
+            x.deviations[i] < 1e-12,
+            "curve {i}: gap {}",
+            x.deviations[i]
+        );
         points.push(p);
     }
     points
