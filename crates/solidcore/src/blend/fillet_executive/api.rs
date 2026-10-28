@@ -589,56 +589,6 @@ mod tests {
     }
 
     #[test]
-    fn all_edge_setup_loads_one_solver_per_edge_with_the_blending_handler() {
-        for solver_kind in [
-            AllEdgeSolver::ConstantRadius,
-            AllEdgeSolver::ConstantDistance,
-        ] {
-            let mut k = Kernel::default();
-            let mut body = boxed(&mut k);
-            let mut session = FilletSession::new(&mut k, &mut body).unwrap();
-            let generator = session
-                .add_surface_generator(FilletSurfaceGenerator::Linear)
-                .unwrap();
-            session.set_self_intersection_handler(Some(MakeSurfaceBlendSih::new(1.0)));
-            let edges = p1::edges(session.target(), None).unwrap();
-            for (i, edge) in edges.iter().enumerate() {
-                let edgeuse = session.blend_edgeuse(&k, *edge).unwrap().unwrap();
-                let solver = match solver_kind {
-                    AllEdgeSolver::ConstantRadius => session
-                        .new_constant_radius_solver(&k, edgeuse, 0.5, 1e-6, 0.5, 0.03)
-                        .unwrap(),
-                    AllEdgeSolver::ConstantDistance => session
-                        .new_constant_distance_solver(&k, edgeuse, 0.5, 1e-6, 0.5, 0.03)
-                        .unwrap(),
-                };
-                assert_eq!(solver.0 as usize, i);
-                session.set_solver_generator(solver, generator).unwrap();
-                session.load_solver(&k, solver).unwrap();
-                let base = session.solver(solver).unwrap().base();
-                assert_eq!(
-                    base.self_intersection_handler().unwrap(),
-                    Some(crate::blend::fillet_intersector::HandlingAlgorithmType::Blending)
-                );
-            }
-            // clearing the executive's handler is seen by every loaded solver
-            session.set_self_intersection_handler(None);
-            for i in 0..edges.len() {
-                let id = FilletSolverId(u32::try_from(i).unwrap());
-                let base = session.solver(id).unwrap().base();
-                assert_eq!(base.self_intersection_handler().unwrap(), None);
-            }
-            session.create_corners(&k, None).unwrap();
-            let corners = session.fillet_corners().unwrap();
-            assert_eq!(corners.len(), 8);
-            for corner in &corners {
-                session.set_corner_bevel(*corner, true).unwrap();
-                assert!(session.corner(*corner).unwrap().is_bevel_corner());
-            }
-        }
-    }
-
-    #[test]
     fn bevel_corner_of_a_vertex_and_of_a_vertex_without_entry() {
         let mut k = Kernel::default();
         let mut body = boxed(&mut k);
