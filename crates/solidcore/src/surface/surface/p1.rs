@@ -404,6 +404,11 @@ impl StepSurface {
         }
     }
 
+    /// The base surface, mutable, for [`Surface::detach_nurb_cells`].
+    pub(crate) fn nested_surfaces_mut(&mut self) -> Vec<&mut Surface> {
+        self.surface.as_deref_mut().into_iter().collect()
+    }
+
     /// `GetTypeString()`.
     pub const TYPE_STRING: &'static str = "SmSTEPSurface_TYPE";
     /// `GetClassString()`.
@@ -1236,6 +1241,23 @@ pub trait SurfaceSolveContext<O: Copy + PartialEq> {
         surface: &Surface,
         handle: Option<O>,
     ) -> Result<SurfaceCache<O>>;
+
+    /// This surface's cache as `smsurf_GetSurfaceCache` hands it out to a reader that
+    /// does not call `GetTree` (the state bits `GlobalPointSolve`'s fast-drop face
+    /// test reads). Upstream's factory defers the tree during a Boolean operation, and
+    /// the tree build may change those bits, so a context that keeps face caches
+    /// answers the cache without the deferred tree; by default the solve's cache.
+    ///
+    /// # Errors
+    /// As [`SurfaceSolveContext::build_surface_cache`].
+    fn surface_cache_state(
+        &mut self,
+        k: &Kernel,
+        surface: &Surface,
+        handle: Option<O>,
+    ) -> Result<SurfaceCache<O>> {
+        self.build_surface_cache(k, surface, handle)
+    }
 
     /// Read-only classification of the topology prepared by this context.
     fn face_queries(&self) -> Option<&dyn FaceQueries<O>>;
@@ -2111,6 +2133,22 @@ impl Surface {
             // (the other kinds are never lazy)
             _ => self.natural_uv_domain_if_built(),
         })
+    }
+
+    /// [`Surface::natural_uv_domain_with_nurb`] for the port's stand-in object key of
+    /// this surface (where upstream names `this` in a solution, and reads its natural
+    /// domain only if and when it compares objects): a lazy plane's domain is read from
+    /// a NURB made on a copy, so taking the key does not make and keep the plane's NURB
+    /// ahead of upstream (a solver built next tests whether the surface has one).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::natural_uv_domain_with_nurb`].
+    pub(crate) fn stand_in_key_domain(&self, k: &Kernel) -> Result<Extent2d> {
+        match self.kind() {
+            SurfaceKind::Plane(p) => Ok(p.natural_uv_domain_without_keeping()),
+            _ => self.natural_uv_domain_with_nurb(k),
+        }
     }
 
     /// The B-spline part of an analytic kind with its NURB (`GetOrCreateGwNurbPointer`
