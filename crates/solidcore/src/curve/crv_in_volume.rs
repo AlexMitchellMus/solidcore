@@ -509,7 +509,7 @@ impl CrvInVolume {
     /// Those of [`Volume::mirror`].
     pub fn create_mirror_curve(&self, mirror_plane: &Axis2Placement) -> Result<Self> {
         // copy this curve
-        let mut new_curve = self.copy();
+        let mut new_curve = self.copy()?;
         // mirror the the volume
         new_curve.volume.mirror(mirror_plane)?;
         Ok(new_curve)

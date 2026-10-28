@@ -1897,6 +1897,14 @@ impl Curve {
             CurveKind::CrvOnSurf(c) => {
                 return c.create_mirror_curve(k, mirror_plane).map(Self::from);
             }
+            // `SmTangentField` inherits `SmCrvOnSurf::CreateMirrorCurve`, which builds a plain
+            // `SmCrvOnSurf` on the mirrored surface.
+            CurveKind::TangentField(c) => {
+                return c
+                    .base()
+                    .create_mirror_curve(k, mirror_plane)
+                    .map(Self::from);
+            }
             CurveKind::Hermite(_)
             | CurveKind::Conic(_)
             | CurveKind::Projected(_)
