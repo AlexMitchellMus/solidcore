@@ -225,6 +225,8 @@ pub struct UpstreamFixes {
     pub bspline_trim_preserves_uv_spans: bool,
     /// `SmCone::IntersectWithCone` tests the line of two parallel cylinders against both face domains at its middle, not its bottom end (WR-259, #711).
     pub cone_parallel_line_midpoint: bool,
+    /// `SmCone::IntersectWithCone` clips parallel-cylinder lines to both requested face domains, including overlaps away from the full line's middle (WR-259, #711). Independent of `cone_parallel_line_midpoint`; off by default for pinned SMLib compatibility.
+    pub cone_parallel_line_domains: bool,
     /// The Boolean's topology intersector treats a self-loop proto edge whose ends a vertex definition on a vertex combined (`CanCombineVertexDefinitions`) as degenerate, instead of `SmProtoEdge::Resolve` splitting it onto that one vertex, after which `SmMerge::MakeFaceuse` returns `SM_ERR` (WR-214, #480; `plan/upstream-issues/WR-214--smprotoedge-resolve-splits-a-self-loop-proto-edge-onto-one.md`).
     pub proto_edge_self_loop_on_vertex_degenerate: bool,
     /// `SM_BO_SLICE` keeps a coincident pair whose primary face bounds material on one side only when that material lies on the side the sheet's `SM_OT_SAME` faceuse bounds (step 7.4d's rule), instead of falling through to the difference rule, which keeps a face lying in the slicing sheet in both parts (WR-254, #528; `plan/upstream-issues/WR-254--manifoldboolean-keeps-a-face-lying-in-the-slicing-sheet-in.md`).
@@ -291,6 +293,8 @@ pub struct UpstreamFixes {
     pub curve_contacts_at_curve_ends: bool,
     /// `SmOffsetExecutive::ShellBrep` of a solid inward fails when the inset leaves no cavity (an empty offset, `SM_ERR_INVALID_INPUT`) or the offset is not a closed solid (`SM_ERR`), instead of handing the input back unhollowed as a success (WR-454, #380; the fork's tangency-labs/smlib@fbe43bb).
     pub shell_empty_cavity_fails: bool,
+    /// `create_fillet_brep` refuses a blend whose rolling ball does not fit the faces it rolls on (a face curves tighter than the ball at a section of the edge: `BallFitsItsFaces`) before the corners, with `FilletErrorType::NoRoom` (error info code 8, not an upstream code), where the corners fail with the generic status looking for a rail end that is not there (WR-462, #1172; SolidCraft change, diff `2c5baae..e5696ca` in the issue).
+    pub fillet_refuse_ball_not_fitting: bool,
 }
 
 /// Options for [`Kernel::new`].
@@ -353,10 +357,7 @@ pub struct Kernel {
     /// (`topology::brep::p3`), kept only to reuse its allocation; every edit resets it
     /// to the records of a fresh seeding, so it never carries state between edits.
     #[doc(hidden)]
-    pub notify_records: std::collections::BTreeMap<
-        crate::geom::attribute::ObjectKey,
-        crate::topology::topology::Topology,
-    >,
+    pub notify_records: crate::topology::topology::NotifyRecords,
 }
 
 impl Default for Kernel {
@@ -378,7 +379,7 @@ impl Kernel {
             upstream_ub_passed: Vec::new(),
             memoize_curve_caches: !cfg!(feature = "curve-memo-off"),
             fixes: UpstreamFixes::default(),
-            notify_records: std::collections::BTreeMap::new(),
+            notify_records: crate::topology::topology::NotifyRecords::new(),
         }
     }
 
