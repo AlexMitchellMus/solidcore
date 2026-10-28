@@ -254,8 +254,7 @@ struct SessionObjects<'target> {
     pseudo: FilletBrep,
     intermediate: Option<Brep>,
     insertion_curves: insertion::curves::InsertionCurves,
-    notification_records:
-        BTreeMap<crate::geom::attribute::ObjectKey, crate::topology::topology::Topology>,
+    notification_records: crate::topology::topology::NotifyRecords,
     solvers: Vec<Option<SolverObject>>,
     corners: Vec<FilletCorner>,
     generators: Vec<FilletSurfaceGenerator>,
@@ -286,30 +285,22 @@ impl SessionObjects<'_> {
         &self,
         geom: crate::blend::fillet_geom::p1::FilletGeomId,
     ) -> Result<Option<&Surface>> {
-        use crate::blend::fillet_geom::p1::FilletSurfaceStorage;
-        match self.pseudo.geom(geom)?.fillet_surface.as_ref() {
-            None => Ok(None),
-            Some(FilletSurfaceStorage::Owned(surface)) => Ok(Some(surface)),
-            Some(FilletSurfaceStorage::ManagedFace { body, face }) => {
-                let actual = self.intermediate_identity(EntityRef::Brep(
+        use crate::blend::fillet_geom::p1::{FilletSurfaceOwner, FilletSurfaceStorage};
+        let geometry = self.pseudo.geom(geom)?;
+        // Before installation no intermediate body may exist yet.
+        let owner = match geometry.fillet_surface {
+            Some(FilletSurfaceStorage::ManagedFace { .. }) => Some(FilletSurfaceOwner {
+                identity: self.intermediate_identity(EntityRef::Brep(
                     crate::topology::BrepId::from_index(0),
-                ))?;
-                if *body != actual {
-                    return Err(invalid("fillet surface names a foreign managed body"));
-                }
-                let managed = self
+                ))?,
+                body: self
                     .intermediate
                     .as_ref()
-                    .ok_or_else(|| invalid("managed surface body is not allocated"))?;
-                Ok(Some(
-                    managed
-                        .face(*face)?
-                        .surface
-                        .as_ref()
-                        .ok_or_else(|| SolidError::null_pointer(OP))?,
-                ))
-            }
-        }
+                    .ok_or_else(|| invalid("managed surface body is not allocated"))?,
+            }),
+            _ => None,
+        };
+        geometry.fillet_surface(owner)
     }
     fn mapping_edge(
         &self,
@@ -1157,7 +1148,7 @@ impl<'target> FilletSession<'target> {
                 pseudo,
                 intermediate: None,
                 insertion_curves: insertion::curves::InsertionCurves::default(),
-                notification_records: BTreeMap::new(),
+                notification_records: crate::topology::topology::NotifyRecords::new(),
                 solvers: Vec::new(),
                 corners: Vec::new(),
                 generators: Vec::new(),
@@ -2358,6 +2349,23 @@ impl BrepCreationAccess<FilletObject> for SessionObjects<'_> {
         executive: &mut FilletExecutive<FilletObject>,
     ) -> Result<()> {
         executive.process_smooth_edge_sequences_narrow(k, self)
+    }
+
+    fn creation_ball_fits(&mut self, k: &mut Kernel, solver: FilletObject) -> Result<bool> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        let index = id.0 as usize;
+        let current = self
+            .solvers
+            .get_mut(index)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| invalid("solver is not live in this session"))?;
+        crate::blend::fillet_solver::ball_fit::ball_fits_its_faces(
+            live_solver_ops(current),
+            k,
+            self.target,
+        )
     }
 }
 

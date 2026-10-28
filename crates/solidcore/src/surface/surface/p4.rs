@@ -1583,7 +1583,7 @@ impl Surface {
                         let cache = if let Some(cache) = cache {
                             cache
                         } else {
-                            built = context.build_surface_cache(k, self, surface)?;
+                            built = context.surface_cache_state(k, self, surface)?;
                             &built
                         };
                         if cache.is_trimmed()
@@ -1622,12 +1622,24 @@ impl Surface {
                             }
                         }
                     } else {
-                        get_surface_cache(k, self, None::<NoObject>)?;
-                        // DISPATCH GAP: SmFace::PointClassify (bare face-owned surface without FaceQueries)
-                        return Err(SolidError::unported(
-                            "SmFace::PointClassify",
-                            "query.face_p2",
-                        ));
+                        // Without a context the surface's own cache is made here. For a
+                        // face-owned surface its trimmed cache needs the face's
+                        // topology, so `get_surface_cache` already returns `Unported`
+                        // when it would build one; a plain cache it falls back to is not
+                        // an SmTrimSrfCache (SM_CAST_PTR gives NULL): no test, as
+                        // upstream.
+                        let cache = get_surface_cache(k, self, None::<NoObject>)?;
+                        if cache.is_trimmed()
+                            && cache.point_test_enabled
+                            && !cache.face_was_modified
+                        {
+                            // SmFace::PointClassify of a bare face-owned surface: the
+                            // classifier is the context's FaceQueries
+                            return Err(SolidError::unported(
+                                "SmFace::PointClassify",
+                                "query.face_p2",
+                            ));
+                        }
                     }
                 }
 
@@ -1654,10 +1666,7 @@ impl Surface {
                 src_zone_tol_3d,
                 opt_target_distance,
                 requested,
-                Some(OperandObject::Surface(
-                    0,
-                    self.natural_uv_domain_with_nurb(k)?,
-                )),
+                Some(OperandObject::Surface(0, self.stand_in_key_domain(k)?)),
             )?
             .without_objects()
         } else if let Some(surface) = surface {
@@ -2009,6 +2018,9 @@ pub fn classify_curve_surface_xsect_point_with(
         // pCurveOwner->GetTolerance(), as the caller resolves it
         curve_tol = edge_tolerance.ok_or(
             // UNPORTED(topology.edge): SmEdge::GetTolerance (a caller without the edge)
+            // Proof (unreachable): the plain wrapper passes None, the library callers
+            // (surface p9, p10) use classify_curve_surface_xsect_point_with with the
+            // caller's edge tolerance; 0 hits in the green difftest sweep.
             SolidError::unported("SmEdge::GetTolerance", "topology.edge"),
         )?;
     } else if !curve_line {
@@ -2019,6 +2031,9 @@ pub fn classify_curve_surface_xsect_point_with(
         // surface reaches; its tolerance as cached by the B-rep
         surface_tol = surface.owner_zone_tol_3d().ok_or(
             // UNPORTED(topology.face_p2): SmFace::GetTolerance (a bare face handle)
+            // Proof (unreachable): a B-rep face's surface carries the face tolerance
+            // (Brep::sync_face_surface_tolerance invariant, see Surface::face_zone_tol_3d);
+            // 0 hits in the green difftest sweep.
             SolidError::unported("SmFace::GetTolerance", "topology.face_p2"),
         )?;
     } else if !surface_line {
