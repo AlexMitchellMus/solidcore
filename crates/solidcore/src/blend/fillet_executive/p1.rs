@@ -1429,7 +1429,7 @@ pub(crate) fn remove_topo_edges_with_notifications(
         // Now delete the edge
         match notifications.as_deref_mut() {
             Some(env) => {
-                brep_p4::delete_edge(k, b, &mut brep_p4::DeleteEnv::from_notify(env), edge, None)?
+                brep_p4::delete_edge(k, b, &mut brep_p4::DeleteEnv::from_notify(env), edge, None)?;
             }
             None => brep_p4::with_local_env(|d| brep_p4::delete_edge(k, b, d, edge, None))?,
         }
@@ -1439,12 +1439,14 @@ pub(crate) fn remove_topo_edges_with_notifications(
             let vertex = vertex.ok_or_else(|| SolidError::invalid_input(OP, "null vertex"))?;
             match vertex::edges(b, vertex, None)?[..] {
                 [] => match notifications.as_deref_mut() {
-                    Some(env) => brep_p4::delete_vertex(
-                        k,
-                        b,
-                        &mut brep_p4::DeleteEnv::from_notify(env),
-                        vertex,
-                    )?,
+                    Some(env) => {
+                        brep_p4::delete_vertex(
+                            k,
+                            b,
+                            &mut brep_p4::DeleteEnv::from_notify(env),
+                            vertex,
+                        )?;
+                    }
                     None => {
                         brep_p4::with_local_env(|d| brep_p4::delete_vertex(k, b, d, vertex))?;
                     }
