@@ -688,7 +688,7 @@ mod tests {
         let cpp = run_cpp(&i).unwrap();
         let rust = run_rust(&i).unwrap();
         assert!(crate::compare::compare(&cpp, &rust, &[]).pass());
-        let (mut s, _) = setup(&i, false).unwrap().unwrap();
+        let mut s = setup(&i).unwrap().unwrap();
         assert!(eu1::uv_trim_curve(&s.brep, s.eu).unwrap().0.is_some());
         let cached = s.brep.edgeuse_mut(s.eu).unwrap();
         assert!(cached.max_edge_face_gap.is_init());
