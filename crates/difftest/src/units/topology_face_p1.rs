@@ -798,7 +798,7 @@ fn rust_record(i: &Inputs, ex: &[f64]) -> Result<Vec<f64>, Fail> {
                 o.push(NULL_DEREF);
                 return Ok(o);
             };
-            let r = fp1::set_surface(&mut b, f, key_of(EntityRef::Face(f)), s, *delete);
+            let r = fp1::set_surface(&k, &mut b, f, key_of(EntityRef::Face(f)), s, *delete);
             status(&r)?;
             o.push(0.0);
             let face = b.face(f).map_err(e)?;
