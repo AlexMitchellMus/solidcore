@@ -121,3 +121,26 @@ fn mutated_bodies_report_exact_lines() {
         assert_eq!(c.failure_count(), want.len(), "{name}");
     }
 }
+
+/// A sphere pole moved without notification: `ValidatePointers` reuses the trimmed
+/// surface cache made while the sphere was built (as upstream does), so the moved
+/// vertex keeps its tolerance and the face loop orientation and the seam edge fail.
+#[test]
+fn moved_sphere_pole_reports_upstream_lines() {
+    let mut k = Kernel::default();
+    let mut b = ap::create_sphere(&mut k, origin(), 1.0).unwrap();
+    let pole = b.vertex_list()[0];
+    b.vertex_mut(pole).unwrap().point.x += 0.1;
+    let c = check(&mut k, &mut b);
+    assert_eq!(
+        c.lines(),
+        vec![
+            "SmTrimmingTools::Test #3 Loop Orientation: Face Loop has bad orientation [owner SmFace]",
+            "SmTrimmingTools::Test #4 Loop Orientation: Face Loop has zero area [owner SmFace]",
+            "SmBrep::Test #61 Valid: Bad Edge fails pE->ValidateGeometry(FALSE) check [owner SmEdge]",
+            "AssertValid skipped: ValidatePointers failed",
+        ]
+    );
+    assert!(!c.is_valid());
+    assert!((b.vertex(pole).unwrap().tolerance - 1e-5).abs() < 1e-12);
+}

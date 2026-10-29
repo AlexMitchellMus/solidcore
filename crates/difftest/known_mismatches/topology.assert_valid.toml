@@ -1,6 +1,0 @@
-# Sphere pole moved without notification: the pole edge uses' lazily created UV trims
-# grow the vertex tolerance in Rust (plan/findings/topology.assert_valid--sphere-moved-pole-lazy-trim.md).
-[[mismatch]]
-unit = "topology.assert_valid"
-case = "sphere_mutation6_capi"
-why = "ValidatePointers: C++ reports CheckFace tests 3/4 and edge test 61; Rust grows the moved pole vertex tolerance to 0.2 while creating the pole UV trims and reports test 82 (plan/findings/topology.assert_valid--sphere-moved-pole-lazy-trim.md)"
