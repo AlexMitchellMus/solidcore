@@ -1085,6 +1085,44 @@ impl UnitDiff for Runner {
                 }
             }
         }
+        // GlobalLineIntersect's by-value SmZoneTol3d: negative and SM_USE_DEFAULT
+        // tolerances become fabs / the system zone tolerance (review of PR #239: a
+        // negative tolerance rejected every planar hit)
+        for file in FILES {
+            for s in 0..3i64 {
+                for p in [[0.2, 0.1, 1.0], [0.0, 0.0, 0.0]] {
+                    for dir in [[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]] {
+                        for tol in [-1e-6, -1e-2, solidcore::geom::tol::USE_DEFAULT] {
+                            let inputs = Inputs {
+                                brep: BrepIn::File {
+                                    file: file.to_string(),
+                                    rebuild: false,
+                                },
+                                face: s,
+                                op: OpIn::Line {
+                                    p,
+                                    v: dir,
+                                    ivl: None,
+                                    fire: false,
+                                    tol: Some(tol),
+                                },
+                            };
+                            v.push(Case {
+                                unit: self.id().to_string(),
+                                name: format!("{file}_f{s}_tol{}", v.len()),
+                                source: crate::CaseSource::Fixture {
+                                    path: "built-in: zone tolerance cases".to_string(),
+                                    index: v.len(),
+                                    upstream_ref: None,
+                                },
+                                inputs: serde_json::to_value(inputs)
+                                    .map_err(|e| harness(e.to_string()))?,
+                            });
+                        }
+                    }
+                }
+            }
+        }
         // sm_AssertTestFace37 on the first faces of every upstream file and of bodies with
         // holed faces (the AssertValid level-0 helpers, #1419)
         for file in FILES.iter().chain(FACE37_FILES.iter()) {
@@ -1134,44 +1172,6 @@ impl UnitDiff for Runner {
                 })
                 .map_err(|e| harness(e.to_string()))?,
             });
-        }
-        // GlobalLineIntersect's by-value SmZoneTol3d: negative and SM_USE_DEFAULT
-        // tolerances become fabs / the system zone tolerance (review of PR #239: a
-        // negative tolerance rejected every planar hit)
-        for file in FILES {
-            for s in 0..3i64 {
-                for p in [[0.2, 0.1, 1.0], [0.0, 0.0, 0.0]] {
-                    for dir in [[0.0, 0.0, -1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]] {
-                        for tol in [-1e-6, -1e-2, solidcore::geom::tol::USE_DEFAULT] {
-                            let inputs = Inputs {
-                                brep: BrepIn::File {
-                                    file: file.to_string(),
-                                    rebuild: false,
-                                },
-                                face: s,
-                                op: OpIn::Line {
-                                    p,
-                                    v: dir,
-                                    ivl: None,
-                                    fire: false,
-                                    tol: Some(tol),
-                                },
-                            };
-                            v.push(Case {
-                                unit: self.id().to_string(),
-                                name: format!("{file}_f{s}_tol{}", v.len()),
-                                source: crate::CaseSource::Fixture {
-                                    path: "built-in: zone tolerance cases".to_string(),
-                                    index: v.len(),
-                                    upstream_ref: None,
-                                },
-                                inputs: serde_json::to_value(inputs)
-                                    .map_err(|e| harness(e.to_string()))?,
-                            });
-                        }
-                    }
-                }
-            }
         }
         Ok(v)
     }

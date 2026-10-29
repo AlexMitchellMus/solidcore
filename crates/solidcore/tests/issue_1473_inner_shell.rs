@@ -13,7 +13,7 @@ use solidcore::geom::a_object::BooleanOperation;
 use solidcore::kernel::Kernel;
 use solidcore::math::Vec3;
 use solidcore::primitive::api_primitives::create_box;
-use solidcore::topology::shell::{is_inner_shell_of, SM_FALSE, SM_TRUE};
+use solidcore::topology::shell::{is_inner_shell_of, ShellMembers, SM_FALSE, SM_TRUE, SM_UNSURE};
 use solidcore::topology::{brep::p1, Brep, ShellId};
 
 /// The largest |coordinate| of the shell's face vertices: 20 for the outer wall, 15 for
@@ -120,4 +120,37 @@ fn issue_1473_put_enclosing_shells_first_restores_the_head() {
     assert_eq!(shell_extent(&b, b.region(solid).unwrap().shells[0]), 15.0);
     assert_eq!(put_enclosing_shells_first(&mut k, &mut b).unwrap(), 1);
     assert_eq!(b.region(solid).unwrap().shells[0], head);
+}
+
+/// WR-496: an outer face-use shell whose closure traversal fails (its face-use list is
+/// empty, so there is no first face use). Upstream ignores the status and reads the
+/// shell as not closed (FALSE); with the opt-in fix the failure is UNSURE.
+fn failed_closure(k: &mut Kernel) -> i32 {
+    let mut b = void_body(k);
+    let solid = p1::regions(&b, None)
+        .unwrap()
+        .into_iter()
+        .find(|&r| b.region(r).unwrap().shells.len() == 2)
+        .unwrap();
+    let shells = b.region(solid).unwrap().shells.clone();
+    let (outer, cavity) = if shell_extent(&b, shells[0]) > shell_extent(&b, shells[1]) {
+        (shells[0], shells[1])
+    } else {
+        (shells[1], shells[0])
+    };
+    b.shell_mut(outer).unwrap().members = ShellMembers::Faceuses(Vec::new());
+    is_inner_shell_of(k, &mut b, cavity, Some(outer)).unwrap()
+}
+
+#[test]
+fn issue_1473_failed_closure_traversal_upstream_is_false() {
+    let mut k = Kernel::default();
+    assert_eq!(failed_closure(&mut k), SM_FALSE);
+}
+
+#[test]
+fn issue_1473_failed_closure_traversal_fix_is_unsure() {
+    let mut k = Kernel::default();
+    k.fixes.shell_inner_shell_of_statuses = true;
+    assert_eq!(failed_closure(&mut k), SM_UNSURE);
 }
