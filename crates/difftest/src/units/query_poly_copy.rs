@@ -315,11 +315,14 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
 
 // ---- generation ---------------------------------------------------------------------
 
+/// A face loop: its mode and point indices.
+type MeshLoop = (usize, Vec<usize>);
+
 /// A mesh: points and faces (shell index, loops of point indices with their mode).
 #[derive(Default)]
 struct Mesh {
     pts: Vec<[f64; 3]>,
-    faces: Vec<(usize, Vec<(usize, Vec<usize>)>)>,
+    faces: Vec<(usize, Vec<MeshLoop>)>,
 }
 
 fn cube(shell: usize, at: [f64; 3], triangulated: bool, m: &mut Mesh) {
