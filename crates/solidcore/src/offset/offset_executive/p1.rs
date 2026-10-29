@@ -3808,8 +3808,30 @@ mod tests {
             .unwrap();
         assert!((p.z - 0.25).abs() < 1.0e-6, "{p:?}");
 
-        // a base that is not a B-spline surface is SM_ERR
+        // a plane is an SmBSplineSurface too (issue #1476): its offset is approximated
         let offset = OffsetSurface::new(&kernel, 0.25, plane(0.0), true, 0).unwrap();
+        let mut brep = Brep::new();
+        let (offset_face, _) = add_face(&mut brep, Surface::from(offset));
+        OffsetExecutive::replace_implicit_offsets(
+            &mut kernel,
+            &mut brep,
+            1.0e-6,
+            &mut NotificationStores {
+                records: &mut records,
+                attributes: &mut attributes,
+                key_of: &loopuse::notify_ref,
+            },
+        )
+        .unwrap();
+        let surface = brep.face(offset_face).unwrap().surface.clone().unwrap();
+        assert!(matches!(surface.kind(), SurfaceKind::BSpline(_)));
+        let mid = surface.natural_uv_domain_if_built().mid();
+        let p = surface.evaluate_point(&kernel, mid).unwrap();
+        assert!((p.z - 0.25).abs() < 1.0e-6, "{p:?}");
+
+        // a base that is not a B-spline surface (here an offset surface) is SM_ERR
+        let inner = OffsetSurface::new(&kernel, 0.25, plane(0.0), true, 0).unwrap();
+        let offset = OffsetSurface::new(&kernel, 0.25, Surface::from(inner), true, 0).unwrap();
         let mut brep = Brep::new();
         add_face(&mut brep, Surface::from(offset));
         let status = OffsetExecutive::replace_implicit_offsets(
