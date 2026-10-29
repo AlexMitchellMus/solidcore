@@ -68,11 +68,11 @@ pub const MAX_OFFSET_SAMPLES_ANY: isize = 1 << 17;
 /// The most sample points [`Curve::offset_pt_sampling`] takes on a free-form curve of
 /// `segments` Bezier segments whose per-segment count without the curvature term
 /// (`ceil((1/tol)^exp * 2 deg)`, the least upstream samples a segment) is `floor`:
-/// `min(MAX_OFFSET_SAMPLES_ANY, max(MAX_OFFSET_SAMPLES, OFFSET_SAMPLE_SLACK * segments
-/// * floor))`. A well-formed curve samples at most `OFFSET_SAMPLE_SLACK` times its
-/// floor (its offset's second derivative `Muu` stays below `8 (2 deg
-/// OFFSET_SAMPLE_SLACK)^2` on average); a pole or a cusp of the offset drives `Muu`,
-/// and so the count, far beyond it.
+/// `OFFSET_SAMPLE_SLACK * segments * floor`, clamped to
+/// `[MAX_OFFSET_SAMPLES, MAX_OFFSET_SAMPLES_ANY]`. A well-formed curve samples at
+/// most `OFFSET_SAMPLE_SLACK` times its floor (its offset's second derivative `Muu`
+/// stays below `8 (2 deg OFFSET_SAMPLE_SLACK)^2` on average); a pole or a cusp of the
+/// offset drives `Muu`, and so the count, far beyond it.
 #[must_use]
 pub fn offset_sample_bound(segments: usize, floor: isize) -> isize {
     let scaled = isize::try_from(segments)
@@ -80,7 +80,7 @@ pub fn offset_sample_bound(segments: usize, floor: isize) -> isize {
         .and_then(|n| n.checked_mul(floor))
         .and_then(|n| n.checked_mul(OFFSET_SAMPLE_SLACK))
         .unwrap_or(isize::MAX);
-    scaled.max(MAX_OFFSET_SAMPLES).min(MAX_OFFSET_SAMPLES_ANY)
+    scaled.clamp(MAX_OFFSET_SAMPLES, MAX_OFFSET_SAMPLES_ANY)
 }
 
 /// Upstream `NL_UNITSPAN`.

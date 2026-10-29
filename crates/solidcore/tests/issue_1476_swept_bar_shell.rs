@@ -160,7 +160,7 @@ fn solidcraft_fixes() -> UpstreamFixes {
 /// cap])`), with its run time.
 fn shell(fixes: UpstreamFixes) -> (Kernel, solidcore::Result<Brep>) {
     let mut k = Kernel::default();
-    k.fixes = fixes;
+    k.fixes.clone_from(&fixes);
     let mut part = operand(&mut k);
     assert_eq!(part.face_list().len(), 14);
     let start = planar_faces_at(&k, &part, 2, 0.0);

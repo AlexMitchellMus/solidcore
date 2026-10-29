@@ -2957,7 +2957,7 @@ mod tests {
 
     /// Issue #1476: every `replace` fixture (extrusion, plane and B-spline bases)
     /// replaces its offset surface by a B-spline approximation on both sides, and the
-    /// sides agree; an extrusion base was refused with SM_ERR before.
+    /// sides agree; an extrusion base was refused with `SM_ERR` before.
     #[test]
     fn replace_fixtures_build_bspline_approximations() {
         let context = CaseContext {
