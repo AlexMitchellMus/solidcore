@@ -1861,8 +1861,16 @@ mod tests {
             .expect("a cylinder");
         assert!(found.is_cylinder());
         assert_eq!(found.semi_angle_deg(), 0.0);
-        assert!((found.base_radius() - 5.0).abs() < 1e-12, "{}", found.base_radius());
-        let z = found.rev().position().x_axis().cross(found.rev().position().y_axis());
+        assert!(
+            (found.base_radius() - 5.0).abs() < 1e-12,
+            "{}",
+            found.base_radius()
+        );
+        let z = found
+            .rev()
+            .position()
+            .x_axis()
+            .cross(found.rev().position().y_axis());
         assert!(z.is_parallel_to(Vec3::new(0.0, 0.0, 1.0), 1e-9), "{z:?}");
         assert!(found.rev().position().origin().x.abs() < 1e-12);
         assert!(found.rev().position().origin().y.abs() < 1e-12);
