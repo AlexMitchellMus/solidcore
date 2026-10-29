@@ -13,7 +13,7 @@
 //! | `vertex_check_pointers`      | `SmVertex::CheckPointers`                 |
 //! | `is_inner_shell_of`          | `SmShell::IsInnerShellOf`                 |
 //! | `assert_test_face37`         | `sm_AssertTestFace37`                     |
-//! | `surface_assert_valid`       | `SmSurface::AssertValid` (virtual)        |
+//! | `surface_assert_valid`       | `SmSurface::AssertValid` (virtual; wired) |
 //! | `offset_curve_assert_valid`  | `SmOffsetCurve::AssertValid`              |
 //! | `projected_curve_assert_valid` | `SmProjectedCurve::AssertValid`         |
 //! | `hermite_curve_assert_valid` | `SmHermiteCurve::AssertValid`             |
@@ -45,20 +45,12 @@ fn unported(upstream: &'static str, unit: &'static str) -> SolidError {
     SolidError::Unported { upstream, unit }
 }
 
-// ---- level-0 helpers (WP2) ------------------------------------------------------------
+// ---- level-0 helpers (WP2, wired: #1472) ------------------------------------------------------------
 
 /// `SmEdgeuse::HasDogLegNearPole()` of `eu`: `true` when the UV trim's control polygon
 /// turns to follow a singular surface boundary (Edgeuse test 20 fails on `true`).
-pub(super) fn has_dog_leg_near_pole(
-    _k: &mut Kernel,
-    _b: &mut Brep,
-    _eu: EdgeuseId,
-) -> Result<bool> {
-    // UNPORTED(topology.edgeuse_p2): SmEdgeuse::HasDogLegNearPole
-    Err(unported(
-        "SmEdgeuse::HasDogLegNearPole",
-        "topology.edgeuse_p2",
-    ))
+pub(super) fn has_dog_leg_near_pole(k: &mut Kernel, b: &mut Brep, eu: EdgeuseId) -> Result<bool> {
+    crate::topology::edgeuse::p2::has_dog_leg_near_pole(k, b, eu).map(|d| d.has_dog_leg)
 }
 
 /// `m_pUVTrimCurve->AssertNoPeriodicJump(bClosedU, bClosedV, sUVDomain)`: `true` when
@@ -66,55 +58,45 @@ pub(super) fn has_dog_leg_near_pole(
 /// surface domain `domain` (closed in U / V as given). Edgeuse test 7.
 pub(super) fn assert_no_periodic_jump(
     _k: &Kernel,
-    _curve: &Curve,
-    _closed_u: bool,
-    _closed_v: bool,
-    _domain: &Extent2d,
+    curve: &Curve,
+    closed_u: bool,
+    closed_v: bool,
+    domain: &Extent2d,
 ) -> Result<bool> {
-    // UNPORTED(nurbs.b_spline_curve_p3): SmBSplineCurve::AssertNoPeriodicJump
-    Err(unported(
-        "SmBSplineCurve::AssertNoPeriodicJump",
-        "nurbs.b_spline_curve_p3",
-    ))
+    crate::nurbs::b_spline_curve::p3::assert_no_periodic_jump_of(curve, closed_u, closed_v, domain)
 }
 
 /// `SmLoopuse::IsLoopuseSideInSurface()` of the loop's primary loop use `lu`. Loop
 /// test 2.
 pub(super) fn is_loopuse_side_in_surface(
-    _k: &mut Kernel,
-    _b: &mut Brep,
-    _lu: LoopuseId,
+    k: &mut Kernel,
+    b: &mut Brep,
+    lu: LoopuseId,
 ) -> Result<bool> {
-    // UNPORTED(topology.loopuse): SmLoopuse::IsLoopuseSideInSurface
-    Err(unported(
-        "SmLoopuse::IsLoopuseSideInSurface",
-        "topology.loopuse",
-    ))
+    crate::topology::loopuse::is_loopuse_side_in_surface(k, b, lu, None, None).map(|r| r.in_surface)
 }
 
 /// `SmVertex::CheckPointers()` of `v`. Vertex test 2.
-pub(super) fn vertex_check_pointers(_k: &mut Kernel, _b: &mut Brep, _v: VertexId) -> Result<bool> {
-    // UNPORTED(topology.vertex): SmVertex::CheckPointers
-    Err(unported("SmVertex::CheckPointers", "topology.vertex"))
+pub(super) fn vertex_check_pointers(_k: &mut Kernel, b: &mut Brep, v: VertexId) -> Result<bool> {
+    crate::topology::vertex::check_pointers(b, v)
 }
 
 /// `pInnerShell->IsInnerShellOf(pOuterShell)` (`== TRUE`). Brep test 12, evaluated only
 /// for the inner shells of a region other than the infinite one.
 pub(super) fn is_inner_shell_of(
-    _k: &mut Kernel,
-    _b: &mut Brep,
-    _inner: ShellId,
-    _outer: ShellId,
+    k: &mut Kernel,
+    b: &mut Brep,
+    inner: ShellId,
+    outer: ShellId,
 ) -> Result<bool> {
-    // UNPORTED(topology.shell): SmShell::IsInnerShellOf
-    Err(unported("SmShell::IsInnerShellOf", "topology.shell"))
+    use crate::topology::shell;
+    shell::is_inner_shell_of(k, b, inner, Some(outer)).map(|r| r == shell::SM_TRUE)
 }
 
 /// `sm_AssertTestFace37(this)` (`== TRUE`): the face's inner loops nest inside the
 /// outer loop and outside each other (with `sm_GetLoopSampleUVPoint`). Face test 37.
-pub(super) fn assert_test_face37(_k: &mut Kernel, _b: &mut Brep, _f: FaceId) -> Result<bool> {
-    // UNPORTED(topology.face_p4): sm_AssertTestFace37
-    Err(unported("sm_AssertTestFace37", "topology.face_p4"))
+pub(super) fn assert_test_face37(k: &mut Kernel, b: &mut Brep, f: FaceId) -> Result<bool> {
+    crate::topology::face::p4::assert_test_face37(k, b, f)
 }
 
 // ---- geometry checks (WP3a / WP3b) ---------------------------------------------------
@@ -124,18 +106,17 @@ pub(super) fn assert_test_face37(_k: &mut Kernel, _b: &mut Brep, _f: FaceId) -> 
 /// `list` about the surface object `key`. `level` is `SM_LEVEL_0`..`SM_LEVEL_2` (the
 /// call is skipped at `SM_LEVEL_GIVEN`). Called only when the face has a surface.
 pub(super) fn surface_assert_valid(
-    _k: &mut Kernel,
-    _b: &mut Brep,
-    _f: FaceId,
-    _list: Option<&mut AssertArray>,
-    _level: u8,
-    _key: ObjectKey,
+    k: &mut Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    list: Option<&mut AssertArray>,
+    level: u8,
+    key: ObjectKey,
 ) -> Result<bool> {
-    // UNPORTED(surface.surface_assert_valid): SmSurface::AssertValid
-    Err(unported(
-        "SmSurface::AssertValid",
-        "surface.surface_assert_valid",
-    ))
+    let surface = b.face(f)?.surface.as_ref().ok_or(SolidError::null_pointer(
+        "topology::brep::validation::assert_valid",
+    ))?;
+    surface.assert_valid(k, list, level, key)
 }
 
 /// `SmOffsetCurve::AssertValid` of `curve` (an offset curve), reporting about `key`.

@@ -1291,6 +1291,16 @@ impl Surface {
         self.cache_slot.same(&other.cache_slot)
     }
 
+    /// A copy as [`Clone`] that shares this surface's cache slot, standing for the same
+    /// surface object as far as its caches go: a cache built on the copy is this
+    /// surface's (a port-side stand-in for one upstream surface pointer).
+    #[must_use]
+    pub(crate) fn clone_sharing_cache(&self) -> Self {
+        let mut copy = self.clone();
+        copy.cache_slot = self.cache_slot.share();
+        copy
+    }
+
     /// The boundary curve memo of `CoincidenceCheck` (see `BoundaryMemo`).
     pub(crate) const fn boundary_memo(&self) -> &BoundaryMemo {
         &self.boundary_memo
@@ -1801,11 +1811,7 @@ impl Surface {
                 s.evaluate(uv, highest_u_deriv, highest_v_deriv, flags.only_upper_half)
             }
             // Preserve the cone's analytic position correction and inherited NURB derivatives.
-            SurfaceKind::Cone(s) => Ok(s
-                .evaluate(k, uv, highest_u_deriv, highest_v_deriv, flags)?
-                .chunks(highest_v_deriv + 1)
-                .map(<[Vec3]>::to_vec)
-                .collect()),
+            SurfaceKind::Cone(s) => s.evaluate_rows(k, uv, highest_u_deriv, highest_v_deriv, flags),
             SurfaceKind::SurfOfRevolution(s) => {
                 s.base()
                     .evaluate(uv, highest_u_deriv, highest_v_deriv, flags)
@@ -3853,6 +3859,15 @@ pub trait SurfaceEvaluate {
     /// NURB-less base's empty domain, see [`Surface::natural_uv_domain_if_built`]).
     fn natural_uv_domain_if_built(&self) -> Extent2d;
 
+    /// `GetNaturalUVDomain`, virtual: a lazy analytic [`Surface`] makes its NURB first
+    /// and reads that NURB's domain ([`Surface::natural_uv_domain_with_nurb`]). Code
+    /// generic over a surface type reads the domain through this.
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::Unported`] from the make.
+    fn natural_uv_domain_with_nurb(&self, k: &Kernel) -> Result<Extent2d>;
+
     /// `Evaluate` (see [`Surface::evaluate`]).
     ///
     /// # Errors
@@ -3981,6 +3996,10 @@ impl SurfaceEvaluate for Surface {
         Surface::natural_uv_domain_if_built(self)
     }
 
+    fn natural_uv_domain_with_nurb(&self, k: &Kernel) -> Result<Extent2d> {
+        Surface::natural_uv_domain_with_nurb(self, k)
+    }
+
     fn evaluate(
         &self,
         k: &Kernel,
@@ -4089,6 +4108,11 @@ impl SurfaceEvaluate for BSplineSurface {
 
     fn natural_uv_domain_if_built(&self) -> Extent2d {
         BSplineSurface::natural_uv_domain(self)
+    }
+
+    fn natural_uv_domain_with_nurb(&self, _k: &Kernel) -> Result<Extent2d> {
+        // (a B-spline surface is its own NURB)
+        Ok(BSplineSurface::natural_uv_domain(self))
     }
 
     fn evaluate(
@@ -6962,6 +6986,7 @@ mod tests {
         ));
         // The general iso constructor checks before clamping through nested bases.
         assert!(crate::curve::iso_curve::IsoCurve::from_surface(
+            &Kernel::default(),
             surface,
             SurfParamType::U,
             0.5,
@@ -7743,8 +7768,15 @@ mod kernel_dispatch_tests {
             let derivatives =
                 evaluate_1st_derivatives(&kernel, &surface, uv, Side::Left, Side::Left).unwrap();
             assert_eq!(derivatives.0, expected);
-            let iso = IsoCurve::from_surface(surface.clone(), SurfParamType::U, uv.x, true, true)
-                .unwrap();
+            let iso = IsoCurve::from_surface(
+                &kernel,
+                surface.clone(),
+                SurfParamType::U,
+                uv.x,
+                true,
+                true,
+            )
+            .unwrap();
             assert_eq!(
                 Curve::from(iso).evaluate_point(&kernel, uv.y).unwrap(),
                 expected
