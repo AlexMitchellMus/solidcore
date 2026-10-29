@@ -775,7 +775,12 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<f
   `sweep` (a closed `profile` in `plane` at `origin` swept along one `path` arc or line in
   the XY plane, `SmApiCreateCurveSweep`), `loft` (`SmApiCreateSkinPrimitive` through
   `sections`, each one closed `profile` with its `plane` and `origin`; `degree` 1, ruled,
-  by default; capped at both ends), `fillet` (edges by a point on each), `offset_faces`
+  by default; capped at both ends), `fillet` (edges by a point on each), `chamfer` (the same
+  edge picking, `SmApiFilletEdges` with a linear cross section: `distance` is the radius of
+  the rolling ball of the constant-radius solver, the leg on each face for a right-angle edge
+  between planes (`distance * cot(α/2)` for an interior angle `α`, varying along curved
+  faces); one distance for all edges; `SmApiChamferFillet` is not used, it chamfers every
+  edge of a body), `offset_faces`
   (faces by a point on each), `sheet_corner` (the deferred sheet-flange recipe below). Each
   writes the body `id`; the last writes `result`.
 * **Fixes** (`fixes`, optional): `Kernel::fixes` (`UpstreamFixes`) fields the case turns
@@ -790,7 +795,8 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<f
 * **Expectations** (`expect`): `lumps` (bounded regions; `0` = nothing left), `volume`
   (`value`, absolute `tol`, the `formula` it came from), `cylinder_faces_max`,
   `sheet_corner` (signed end distances and flat-pattern invariants).
-* **Verdicts**: `PASS`, `FAIL`, `UNCHECKED` (no check failed but one cannot be measured
+* **Verdicts**: `PASS`, `FAIL`, `UNCHECKED` (no expectations were supplied, or no check
+  failed but one cannot be measured
   yet: `cylinder_faces_max` until solidcore has a cylinder surface kind), `ERROR` (a step
   returned an error other than `Unported`), `DEFERRED`. A step that reaches unported code
   defers the case on the unit in its `SolidError::Unported`; `fillet` has no Rust

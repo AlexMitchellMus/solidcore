@@ -254,8 +254,7 @@ struct SessionObjects<'target> {
     pseudo: FilletBrep,
     intermediate: Option<Brep>,
     insertion_curves: insertion::curves::InsertionCurves,
-    notification_records:
-        BTreeMap<crate::geom::attribute::ObjectKey, crate::topology::topology::Topology>,
+    notification_records: crate::topology::topology::NotifyRecords,
     solvers: Vec<Option<SolverObject>>,
     corners: Vec<FilletCorner>,
     generators: Vec<FilletSurfaceGenerator>,
@@ -286,30 +285,22 @@ impl SessionObjects<'_> {
         &self,
         geom: crate::blend::fillet_geom::p1::FilletGeomId,
     ) -> Result<Option<&Surface>> {
-        use crate::blend::fillet_geom::p1::FilletSurfaceStorage;
-        match self.pseudo.geom(geom)?.fillet_surface.as_ref() {
-            None => Ok(None),
-            Some(FilletSurfaceStorage::Owned(surface)) => Ok(Some(surface)),
-            Some(FilletSurfaceStorage::ManagedFace { body, face }) => {
-                let actual = self.intermediate_identity(EntityRef::Brep(
+        use crate::blend::fillet_geom::p1::{FilletSurfaceOwner, FilletSurfaceStorage};
+        let geometry = self.pseudo.geom(geom)?;
+        // Before installation no intermediate body may exist yet.
+        let owner = match geometry.fillet_surface {
+            Some(FilletSurfaceStorage::ManagedFace { .. }) => Some(FilletSurfaceOwner {
+                identity: self.intermediate_identity(EntityRef::Brep(
                     crate::topology::BrepId::from_index(0),
-                ))?;
-                if *body != actual {
-                    return Err(invalid("fillet surface names a foreign managed body"));
-                }
-                let managed = self
+                ))?,
+                body: self
                     .intermediate
                     .as_ref()
-                    .ok_or_else(|| invalid("managed surface body is not allocated"))?;
-                Ok(Some(
-                    managed
-                        .face(*face)?
-                        .surface
-                        .as_ref()
-                        .ok_or_else(|| SolidError::null_pointer(OP))?,
-                ))
-            }
-        }
+                    .ok_or_else(|| invalid("managed surface body is not allocated"))?,
+            }),
+            _ => None,
+        };
+        geometry.fillet_surface(owner)
     }
     fn mapping_edge(
         &self,
@@ -1157,7 +1148,7 @@ impl<'target> FilletSession<'target> {
                 pseudo,
                 intermediate: None,
                 insertion_curves: insertion::curves::InsertionCurves::default(),
-                notification_records: BTreeMap::new(),
+                notification_records: crate::topology::topology::NotifyRecords::new(),
                 solvers: Vec::new(),
                 corners: Vec::new(),
                 generators: Vec::new(),
@@ -1280,6 +1271,35 @@ impl<'target> FilletSession<'target> {
             approx_tol,
             ang_tol_rad,
             tan_tol_rad,
+            None,
+        )
+    }
+
+    /// [`FilletSession::new_constant_radius_solver`] with `SmConstantRadiusFS`'s
+    /// `pdOptSecondRadius`: the offset radius of the second surface (`radius` is the
+    /// first's), for the unequal setbacks of a chamfer.
+    ///
+    /// # Errors
+    /// Those of [`FilletSession::new_constant_radius_solver`].
+    #[allow(clippy::too_many_arguments)] // the native constructor's parameters
+    pub fn new_constant_radius_solver_with_second(
+        &mut self,
+        k: &Kernel,
+        edgeuse: EdgeuseId,
+        radius: f64,
+        second_radius: f64,
+        approx_tol: f64,
+        ang_tol_rad: f64,
+        tan_tol_rad: f64,
+    ) -> Result<FilletSolverId> {
+        self.objects.allocate_constant_radius_solver(
+            k,
+            edgeuse,
+            radius,
+            approx_tol,
+            ang_tol_rad,
+            tan_tol_rad,
+            Some(second_radius),
         )
     }
 
@@ -1369,6 +1389,53 @@ impl<'target> FilletSession<'target> {
         continuity: u32,
         thumbweight: f64,
     ) -> Result<()> {
+        self.prepare_per_edge(
+            k,
+            edges,
+            radii,
+            xsect_types,
+            FilletSolverType::ConstRadius,
+            continuity,
+            thumbweight,
+        )
+    }
+
+    /// [`FilletSession::prepare_per_edge_constant_radius`] with constant-distance solvers
+    /// (`SM_FS_CONST_DIST`): `distances` are the chords across each blend.
+    ///
+    /// # Errors
+    /// Those of [`FilletSession::prepare_per_edge_constant_radius`].
+    pub fn prepare_per_edge_constant_distance(
+        &mut self,
+        k: &mut Kernel,
+        edges: &[EdgeId],
+        distances: &[f64],
+        xsect_types: &[FilletSurfaceGeneratorType],
+        continuity: u32,
+        thumbweight: f64,
+    ) -> Result<()> {
+        self.prepare_per_edge(
+            k,
+            edges,
+            distances,
+            xsect_types,
+            FilletSolverType::ConstDist,
+            continuity,
+            thumbweight,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)] // the native overload's parameters
+    fn prepare_per_edge(
+        &mut self,
+        k: &mut Kernel,
+        edges: &[EdgeId],
+        radii: &[f64],
+        xsect_types: &[FilletSurfaceGeneratorType],
+        radius_type: FilletSolverType,
+        continuity: u32,
+        thumbweight: f64,
+    ) -> Result<()> {
         if edges.is_empty() {
             return Err(SolidError::Upstream {
                 operation: OP,
@@ -1376,7 +1443,7 @@ impl<'target> FilletSession<'target> {
                 entity: None,
             });
         }
-        let radius_types = vec![FilletSolverType::ConstRadius; edges.len()];
+        let radius_types = vec![radius_type; edges.len()];
         let edges = edges
             .iter()
             .map(|id| FilletObject::Topology(FilletBody::Target, EntityRef::Edge(*id)))
@@ -2359,6 +2426,23 @@ impl BrepCreationAccess<FilletObject> for SessionObjects<'_> {
     ) -> Result<()> {
         executive.process_smooth_edge_sequences_narrow(k, self)
     }
+
+    fn creation_ball_fits(&mut self, k: &mut Kernel, solver: FilletObject) -> Result<bool> {
+        let FilletObject::Solver(id) = solver else {
+            return Err(invalid("object is not a solver"));
+        };
+        let index = id.0 as usize;
+        let current = self
+            .solvers
+            .get_mut(index)
+            .and_then(Option::as_mut)
+            .ok_or_else(|| invalid("solver is not live in this session"))?;
+        crate::blend::fillet_solver::ball_fit::ball_fits_its_faces(
+            live_solver_ops(current),
+            k,
+            self.target,
+        )
+    }
 }
 
 impl FaceShrinkAccess<FilletObject> for SessionObjects<'_> {
@@ -3236,6 +3320,7 @@ impl SessionObjects<'_> {
         approx_tol: f64,
         ang_tol_rad: f64,
         tan_tol_rad: f64,
+        second_radius: Option<f64>,
     ) -> Result<FilletSolverId> {
         let id = FilletSolverId(
             u32::try_from(self.solvers.len()).map_err(|_| invalid("too many solvers"))?,
@@ -3253,7 +3338,7 @@ impl SessionObjects<'_> {
             tan_tol_rad,
             radius,
             edgeuse,
-            None,
+            second_radius,
         )?;
         // `new SmConstantRadiusFS(..)`: the plain solver, not the assisted one
         solver.plain = true;
@@ -3420,6 +3505,7 @@ impl FilletParametersAccess<FilletObject> for SessionObjects<'_> {
                 approx_tol,
                 ang_tol_rad,
                 tan_tol_rad,
+                None,
             ),
             SolverSpec::ConstantDistance {
                 approx_tol,
