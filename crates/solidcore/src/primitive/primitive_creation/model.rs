@@ -316,6 +316,7 @@ impl SweepAccess for PrimitiveModel<'_> {
         self.add_brep(b)
     }
     fn delete_brep(&mut self, id: BrepId) {
+        // the caller's B-rep (MAIN) is never deleted: `into_brep` always returns it
         if id != Self::MAIN {
             if let Some(slot) = self.breps.get_mut(id.index() as usize) {
                 *slot = None;
@@ -591,6 +592,23 @@ mod tests {
             )
             .unwrap();
         face.unwrap()
+    }
+
+    #[test]
+    fn delete_brep_refuses_the_main_brep() {
+        let mut kernel = Kernel::default();
+        let brep = crate::topology::brep::p3::new_brep(
+            &mut kernel,
+            crate::geom::tol::USE_DEFAULT,
+            crate::geom::tol::USE_DEFAULT,
+        )
+        .unwrap();
+        let mut model = PrimitiveModel::new(&mut kernel, brep);
+        let other = SweepAccess::new_brep(&mut model, PrimitiveModel::MAIN).unwrap();
+        SweepAccess::delete_brep(&mut model, PrimitiveModel::MAIN);
+        SweepAccess::delete_brep(&mut model, other);
+        assert!(model.take_brep(other).is_err());
+        assert!(model.into_brep().is_ok());
     }
 
     #[test]
