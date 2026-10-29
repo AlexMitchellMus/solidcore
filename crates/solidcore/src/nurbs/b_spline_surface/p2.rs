@@ -1660,6 +1660,45 @@ mod tests {
         assert_eq!(r.ccw_arcs, vec![0, 1, 2]);
     }
 
+    /// Four great-circle arcs of radius 2 about the origin, closing a loop round +z (a corner
+    /// where four equal rounds meet), as rational quadratic arcs.
+    fn four_arcs() -> Vec<SmCurve> {
+        let (r, theta) = (2.0_f64, 40.0_f64.to_radians());
+        let u = |i: usize| {
+            let phi = std::f64::consts::FRAC_PI_2 * i as f64;
+            [theta.sin() * phi.cos(), theta.sin() * phi.sin(), theta.cos()]
+        };
+        (0..4)
+            .map(|i| {
+                let (a, b) = (u(i), u((i + 1) % 4));
+                let cos = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+                let c = [0, 1, 2].map(|j| r * (a[j] + b[j]) / (1.0 + cos));
+                arc3([0, 1, 2].map(|j| r * a[j]), c, (cos.acos() / 2.0).cos(), [0, 1, 2].map(|j| r * b[j]))
+            })
+            .collect()
+    }
+
+    /// `fillet_corner_sphere_from_four_arcs`: the four arcs get the sphere they lie on, where
+    /// upstream refuses ("only works for 3 now").
+    #[test]
+    fn sphere_from_four_arcs_only_with_the_fix() {
+        let mut k = Kernel::default();
+        let arcs = four_arcs();
+        assert!(BSplineSurface::create_sphere_from_arcs(&k, &arcs, 1e-6).is_err());
+        k.fixes.fillet_corner_sphere_from_four_arcs = true;
+        let sphere = BSplineSurface::create_sphere_from_arcs(&k, &arcs, 1e-6).unwrap().sphere;
+        let surface = crate::surface::surface::Surface::from(sphere);
+        let domain = surface.natural_uv_domain_with_nurb(&k).unwrap();
+        let (lo, hi) = (domain.min(), domain.max());
+        for i in 0..=6 {
+            for j in 0..=6 {
+                let uv = Point2::new(lo.x + (hi.x - lo.x) * f64::from(i) / 6.0, lo.y + (hi.y - lo.y) * f64::from(j) / 6.0);
+                let d = surface.evaluate_point(&k, uv).unwrap().length();
+                assert!((d - 2.0).abs() < 1e-9, "{uv:?}: {d}");
+            }
+        }
+    }
+
     /// A biquadratic 3 x 3 patch over `[0, 2] x [0, 1]`.
     fn patch(rational: bool) -> BSplineSurface {
         let net = (0..3)
