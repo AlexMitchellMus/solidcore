@@ -195,8 +195,12 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
         for (loop_index, loopuse) in loops.iter().enumerate() {
             let edgeuses = eu::loopuse_edgeuses(brep, *loopuse).map_err(|e| err(e.to_string()))?;
             let mut oriented = Vec::new();
+            let planar_face = matches!(
+                face.surface.as_ref().map(|surface| surface.kind()),
+                Some(solidcore::surface::surface::p2::SurfaceKind::Plane(_))
+            );
             for (use_index, edgeuse) in edgeuses.into_iter().enumerate() {
-                if let Ok((Some(uv_curve), _)) = eu::uv_trim_curve(brep, edgeuse) {
+                if !planar_face && let Ok((Some(uv_curve), _)) = eu::uv_trim_curve(brep, edgeuse) {
                     let interval = uv_curve.natural_interval();
                     let (low, high) = (interval.min(), interval.max());
                     let mut uv = Vec::with_capacity(65);
