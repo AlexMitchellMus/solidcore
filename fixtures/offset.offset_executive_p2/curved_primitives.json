@@ -590,8 +590,8 @@
    }
   },
   {
-   "name": "api_shell_cylinder_r5_top_open_issue_1453",
-   "upstream_ref": "tests/SM_API_test/src/TestSmBrep.cpp:2548-2563 (tangency-labs/solidcore#1453: the inner floor circle, seam and rim are marched, the rim split at an extra vertex)",
+   "name": "api_shell_cylinder_r5_top_open_tol_1e6",
+   "upstream_ref": "tests/SM_API_test/src/TestSmBrep.cpp:2548-2563 (the tangency-labs/solidcore#1453 cylinder at source tolerance 1e-6: inner floor circle, seam and rim marched)",
    "inputs": {
     "operation": "api_shell",
     "source": {
@@ -610,7 +610,7 @@
       "index": 1
      }
     ],
-    "tolerance": 1e-05,
+    "tolerance": 1e-06,
     "config": {
      "offset_distance": -1.0,
      "extend_convex": true,
