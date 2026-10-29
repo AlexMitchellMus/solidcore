@@ -83,7 +83,7 @@ fn compared_op(op: i32) -> std::result::Result<(), HarnessError> {
     if (1..=25).contains(&op) || op == 27 {
         Ok(())
     } else {
-        Err(HarnessError::new(format!("op {op} is not a compared query (1..=25, 27)")))
+        Err(HarnessError::new(format!("op {op} is not a compared query (1..=25)")))
     }
 }
 
