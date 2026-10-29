@@ -9,7 +9,7 @@ source `{"kind": "cylinder", "origin": [0, 0, 0], "radius": 5, "height": 10}`, o
 `{"offset_distance": -1.0, "extend_convex": true, "merge_results": true, "create_offset_solid": true}`.
 
 **Result:** the topology is identical: both sides give the 7 edges and 5 vertices of
-WR-493, so the C++ splits the inner rim at an extra vertex as well. The geometry
+WR-495, so the C++ splits the inner rim at an extra vertex as well. The geometry
 values differ in 4 of 21 (`values.result.geometry`):
 
 | field | C++ | Rust |
@@ -26,7 +26,7 @@ Rust vertex is at (-2.8284333, -2.8284193, 10). Which geometry entries belong to
 vertex was not traced.
 
 **Suspected cause:** the marched intersection of the two G1R B-spline extensions in
-`MateEdges` (WR-493) closes the rim circle at a point that depends on the march; a small
+`MateEdges` (WR-495) closes the rim circle at a point that depends on the march; a small
 difference in the march (or in how the closing gap is split into a vertex) moves the
 vertex along the circle. Not traced.
 

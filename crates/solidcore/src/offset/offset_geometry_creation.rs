@@ -111,7 +111,7 @@
 //!   line as the [`Curve`] itself, so `GetDegree` / `IsLine` / `IsArc` / `Evaluate`
 //!   dispatch on an `SmLine` (or other analytic) centre line as upstream does
 //!   (`SmFilletStandardSolver.cpp:3353-3384`).
-//! - **Opt-in fork fix.** With `Kernel::fixes.offset_analytic_mate_edges` (WR-493),
+//! - **Opt-in fork fix.** With `Kernel::fixes.offset_analytic_mate_edges` (WR-495),
 //!   `mate_edges` runs the SolidCraft fork's exact-piece swap (tangency-labs/smlib@fddc366
 //!   with @98ab1b0) between the marched intersection and its trimming; off, it is
 //!   upstream's. `exact_piece` counts the whole turns it moves a conic angle by and

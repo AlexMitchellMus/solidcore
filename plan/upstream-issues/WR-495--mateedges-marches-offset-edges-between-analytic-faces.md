@@ -1,4 +1,4 @@
-#### WR-493. `SmOffsetGeometryCreation::MateEdges` marches every offset edge between two analytic faces on their B-spline extensions, so a shelled cylinder's floor and rim are not circles and its rim is split (#1453, #1130)
+#### WR-495. `SmOffsetGeometryCreation::MateEdges` marches every offset edge between two analytic faces on their B-spline extensions, so a shelled cylinder's floor and rim are not circles and its rim is split (#1453, #1130)
 - **Severity:** Wrong result
 - **Area:** Offset and shell
 - **Location:** `source/SMLib/src/SmOffsetGeometryCreation.cpp` (at 3fd5b95), `SmOffsetGeometryCreation::MateEdges`: it intersects the two faces' extended surfaces from `SmOffsetExecutive::GetCreateExtendedSurface`, which builds each as a tangent (G1R) B-spline extension (`CreateExtendedSurface(..., SM_CT_G1R)`), so `GlobalSurfaceIntersect` marches even where both faces are planes, cylinders, cones, spheres or tori.
