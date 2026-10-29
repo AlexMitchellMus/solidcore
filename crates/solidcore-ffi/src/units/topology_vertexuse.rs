@@ -318,6 +318,20 @@ fn edge_loop_face_block(rd: &mut Reader<'_>) -> Result<(), FfiError> {
     Ok(())
 }
 
+/// The input checks [`eval`] makes on a B-rep block before any shim call (pure Rust,
+/// no C++ is run): a runner whose Rust side builds the block itself refuses exactly the
+/// blocks [`eval`] refuses.
+///
+/// # Errors
+///
+/// [`FfiError::InvalidArgument`] for a block [`eval`] rejects.
+pub fn validate_block(path: &str, input: &[f64]) -> Result<(), FfiError> {
+    let mut rd = Reader::new(input);
+    brep_block(&mut rd, path)?;
+    let block = input.get(..rd.at).ok_or_else(|| bad("input too short"))?;
+    check_block_magnitudes(block)
+}
+
 /// Most faces of a kind-10 block.
 pub const MAX_FACES: usize = 4;
 
