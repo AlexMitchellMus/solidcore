@@ -1,5 +1,5 @@
 //! Regression tests for tangency-labs/solidcore#1490: a revolve's torus is built inside
-//! out, and its flag is lost (`SmSurfOfRevolution` Test #11 "InsideOut GenCurve").
+//! out, and its flag is lost (`SmSurfOfRevolution` Test #11 `"InsideOut GenCurve"`).
 //!
 //! - With `fixes.revolve_analytic_profile_faces`, `analytic_revolution` made an arc
 //!   falling round its minor circle an inside-out torus (and a falling meridian an
