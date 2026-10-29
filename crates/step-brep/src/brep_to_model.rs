@@ -184,6 +184,8 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
 
     let mut faces = Vec::new();
     let mut face_indices = Vec::new();
+    let mut pcurves = std::collections::BTreeMap::new();
+    let mut pcurve_kernel = solidcore::kernel::Kernel::default();
     for (face_pos, id) in brep.face_list().iter().enumerate() {
         let face = brep.face(*id).map_err(|e| err(e.to_string()))?;
         let surf = face.surface.as_ref().ok_or_else(|| err("face has no surface"))?;
@@ -193,7 +195,21 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
         for (loop_index, loopuse) in loops.iter().enumerate() {
             let edgeuses = eu::loopuse_edgeuses(brep, *loopuse).map_err(|e| err(e.to_string()))?;
             let mut oriented = Vec::new();
-            for edgeuse in edgeuses {
+            for (use_index, edgeuse) in edgeuses.into_iter().enumerate() {
+                if let Ok((Some(uv_curve), _)) = eu::uv_trim_curve(brep, edgeuse) {
+                    let interval = uv_curve.natural_interval();
+                    let (low, high) = (interval.min(), interval.max());
+                    let mut uv = Vec::with_capacity(17);
+                    for step in 0..=16 {
+                        let t = low + (high - low) * step as f64 / 16.0;
+                        if let Ok(p) = uv_curve.evaluate_point(&pcurve_kernel, t) {
+                            uv.push([p.x, p.y]);
+                        }
+                    }
+                    if uv.len() >= 2 {
+                        pcurves.insert((id.index() as u64 + 1, loop_index, use_index), uv);
+                    }
+                }
                 let edge = eu::edge(brep, edgeuse).map_err(|e| err(e.to_string()))?.ok_or_else(|| err("edgeuse has no edge"))?;
                 let forward = eu::orientation(brep, edgeuse).map_err(|e| err(e.to_string()))? == solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType::Same;
                 oriented.push(OrientedEdge { edge: *edge_index.get(&edge).ok_or_else(|| err("edgeuse edge not indexed"))?, forward });
@@ -221,7 +237,7 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
         edges,
         vertices,
     };
-    Ok(Model { bodies: vec![body], ..Model::default() })
+    Ok(Model { bodies: vec![body], pcurves, ..Model::default() })
 }
 
 #[cfg(test)]

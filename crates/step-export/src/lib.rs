@@ -508,7 +508,56 @@ fn write_bspline_curve(
     Ok(entities.add(text))
 }
 
-fn shell(entities: &mut Entities, body: &Body) -> Result<u64, ExportError> {
+fn point2(entities: &mut Entities, uv: [f64; 2]) -> Result<u64, ExportError> {
+    Ok(entities.add(format!(
+        "CARTESIAN_POINT('',({},{}))",
+        number(uv[0])?,
+        number(uv[1])?
+    )))
+}
+
+fn write_pcurve_edge(
+    entities: &mut Entities,
+    points: &mut PointIds,
+    body: &Body,
+    index: usize,
+    vertex_ids: &[u64],
+    surface_id: u64,
+    context_2d: u64,
+    uv: &[[f64; 2]],
+) -> Result<u64, ExportError> {
+    let edge = body.edges.get(index).ok_or_else(|| {
+        ExportError::new(format!("body #{} references missing edge {index}", body.step_id))
+    })?;
+    let start = *vertex_ids.get(edge.start).ok_or_else(|| {
+        ExportError::new(format!("body #{} edge #{index} has a missing start vertex", body.step_id))
+    })?;
+    let end = *vertex_ids.get(edge.end).ok_or_else(|| {
+        ExportError::new(format!("body #{} edge #{index} has a missing end vertex", body.step_id))
+    })?;
+    let curve_3d = write_curve(entities, points, &edge.curve)?;
+    let mut uv_ids = Vec::with_capacity(uv.len());
+    for point in uv {
+        uv_ids.push(point2(entities, *point)?);
+    }
+    let polyline = entities.add(format!(
+        "POLYLINE('',({}))",
+        uv_ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",")
+    ));
+    let representation = entities.add(format!(
+        "DEFINITIONAL_REPRESENTATION('',(#{polyline}),#{context_2d})"
+    ));
+    let pcurve = entities.add(format!("PCURVE('',#{surface_id},#{representation})"));
+    let surface_curve = entities.add(format!(
+        "SURFACE_CURVE('',#{curve_3d},(#{pcurve}),.PCURVE_S1.)"
+    ));
+    let sense = if edge.same_sense { ".T." } else { ".F." };
+    Ok(entities.add(format!(
+        "EDGE_CURVE('',#{start},#{end},#{surface_curve},{sense})"
+    )))
+}
+
+fn shell(entities: &mut Entities, body: &Body, pcurves: &std::collections::BTreeMap<step_import::model::PcurveKey, Vec<[f64; 2]>>, context: u64) -> Result<u64, ExportError> {
     if body.shells.len() != 1 {
         return Err(ExportError::new(format!(
             "body #{} has {} shells; step-export supports one closed shell",
@@ -545,8 +594,11 @@ fn shell(entities: &mut Entities, body: &Body) -> Result<u64, ExportError> {
             ))
         })?;
         let surface_id = write_surface(entities, &mut points, &face.surface)?;
+        let context_2d = entities.add(
+            "(GEOMETRIC_REPRESENTATION_CONTEXT(2) PARAMETRIC_REPRESENTATION_CONTEXT() REPRESENTATION_CONTEXT('2D SPACE',''))".to_string(),
+        );
         let mut bounds = Vec::with_capacity(face.loops.len());
-        for loop_ in &face.loops {
+        for (loop_index, loop_) in face.loops.iter().enumerate() {
             let Bound::Edges(edges) = &loop_.bound else {
                 return Err(ExportError::new(format!(
                     "face #{} has a vertex loop; step-export needs edge loops",
@@ -554,17 +606,30 @@ fn shell(entities: &mut Entities, body: &Body) -> Result<u64, ExportError> {
                 )));
             };
             let mut oriented = Vec::with_capacity(edges.len());
-            for oriented_edge in edges {
-                let cached_id = edge_ids.get_mut(oriented_edge.edge).ok_or_else(|| {
-                    ExportError::new(format!("missing edge index {}", oriented_edge.edge))
-                })?;
-                let edge_id = if let Some(id) = *cached_id {
-                    id
+            for (use_index, oriented_edge) in edges.iter().enumerate() {
+                let pcurve = pcurves.get(&(face.step_id, loop_index, use_index));
+                let edge_id = if let Some(uv) = pcurve {
+                    write_pcurve_edge(
+                        entities,
+                        &mut points,
+                        body,
+                        oriented_edge.edge,
+                        &vertex_ids,
+                        surface_id,
+                        context_2d,
+                        uv,
+                    )?
                 } else {
-                    let id =
-                        write_edge(entities, &mut points, body, oriented_edge.edge, &vertex_ids)?;
-                    *cached_id = Some(id);
-                    id
+                    let cached_id = edge_ids.get_mut(oriented_edge.edge).ok_or_else(|| {
+                        ExportError::new(format!("missing edge index {}", oriented_edge.edge))
+                    })?;
+                    if let Some(id) = *cached_id {
+                        id
+                    } else {
+                        let id = write_edge(entities, &mut points, body, oriented_edge.edge, &vertex_ids)?;
+                        *cached_id = Some(id);
+                        id
+                    }
                 };
                 let orientation = if oriented_edge.forward { ".T." } else { ".F." };
                 oriented
@@ -1025,7 +1090,7 @@ fn write_inner(
         match mode {
             WriteMode::Auto => match body.kind {
                 BodyKind::ManifoldSolid => {
-                    let shell_id = shell(&mut entities, body)?;
+                    let shell_id = shell(&mut entities, body, &model.pcurves, context)?;
                     let name = body.name.as_deref().unwrap_or("");
                     manifold_ids.push(
                         entities.add(format!("MANIFOLD_SOLID_BREP({},#{shell_id})", quoted(name))),
@@ -1268,6 +1333,7 @@ mod tests {
             skipped: Vec::new(),
             diagnostics: Vec::new(),
             assembly_instances: 0,
+            pcurves: std::collections::BTreeMap::new(),
         }
     }
 
@@ -1396,6 +1462,7 @@ mod tests {
             skipped: Vec::new(),
             diagnostics: Vec::new(),
             assembly_instances: 0,
+            pcurves: std::collections::BTreeMap::new(),
         }
     }
 
@@ -1780,6 +1847,17 @@ mod tests {
             let text = write(&model).expect("curve write");
             assert!(text.contains("CURVE(") || text.contains("CIRCLE(") || text.contains("ELLIPSE("), "{text}");
         }
+    }
+
+    #[test]
+    fn writes_pcurves_when_the_model_carries_them() {
+        let mut model = triangle();
+        let face = model.bodies[0].faces[0].step_id;
+        model.pcurves.insert((face, 0, 0), vec![[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]]);
+        let text = write(&model).expect("pcurve write");
+        assert!(text.contains("PCURVE('',"), "{text}");
+        assert!(text.contains("SURFACE_CURVE("), "{text}");
+        assert!(text.contains("DEFINITIONAL_REPRESENTATION("), "{text}");
     }
 
     #[test]
