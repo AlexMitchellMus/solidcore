@@ -754,11 +754,11 @@ fn put_hits(k: &Kernel, out: &mut Vec<f64>, r: &CurveHits) {
 
 /// An operand the Rust constructors refuse: `rejected` (the native one refuses it too, or
 /// the constructor's own unit shows the mismatch), unported deferred.
-fn refused(e: &SolidError) -> Result<Output, HarnessError> {
+fn refused(e: &SolidError) -> Output {
     if let Some(out) = Output::unported(e) {
-        return Ok(out);
+        return out;
     }
-    Ok(Output::rejected(format!("rust operand build: {e}")))
+    Output::rejected(format!("rust operand build: {e}"))
 }
 
 fn output(raw: &[f64]) -> Result<Output, HarnessError> {
@@ -773,7 +773,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs) -> Result<Result<Vec<f64>, Output>, H
         ($e:expr) => {
             match $e {
                 Ok(x) => x,
-                Err(e) => return refused(&e).map(Err),
+                Err(e) => return Ok(Err(refused(&e))),
             }
         };
     }
@@ -953,9 +953,12 @@ fn wavy(rng: &mut Rng, n: usize, scale: f64) -> Vec<P> {
 
 fn gen_curve(rng: &mut Rng, scale: f64) -> CurveIn {
     match rng.below(4) {
-        0 => CurveIn::Points {
-            points: wavy(rng, 4 + rng.below(4) as usize, scale),
-        },
+        0 => {
+            let n = 4 + rng.below(4) as usize;
+            CurveIn::Points {
+                points: wavy(rng, n, scale),
+            }
+        }
         1 => CurveIn::Segment {
             a: point(rng, scale),
             b: point(rng, scale),
@@ -1017,7 +1020,7 @@ fn gen_surface(rng: &mut Rng, scale: f64) -> SurfaceIn {
         2 => SurfaceIn::Revolution {
             curve: (0..4)
                 .map(|j| {
-                    let t = j as f64 / 3.0;
+                    let t = f64::from(j) / 3.0;
                     [rng.uniform(0.3, 1.0) * scale, 0.0, (t * 2.0 - 1.0) * scale]
                 })
                 .collect(),
@@ -1172,7 +1175,12 @@ fn gen_ssi(rng: &mut Rng) -> Option<Value> {
     let surface1 = gen_analytic(rng, scale);
     let surface2 = if rng.chance(0.3) {
         let mut s = surface1.clone();
-        let shift = [1e-9, 1e-7, 1e-4, 0.0][rng.below(4) as usize] * scale;
+        let shift = match rng.below(4) {
+            0 => 1e-9,
+            1 => 1e-7,
+            2 => 1e-4,
+            _ => 0.0,
+        } * scale;
         if let SurfaceIn::Analytic {
             shape:
                 AnalyticIn::Plane { origin, .. }
@@ -1251,7 +1259,11 @@ fn gen_body_curve(rng: &mut Rng, scale: f64, body: &BodyIn) -> CurveIn {
     let (lo, hi) = body_bounds(body);
     let ext = [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]];
     let inside = |rng: &mut Rng, f: f64| -> P {
-        [0, 1, 2].map(|i| lo[i] + ext[i] * rng.uniform(-f, 1.0 + f))
+        let mut p = [0.0; 3];
+        for (pi, (l, e)) in p.iter_mut().zip(lo.iter().zip(ext)) {
+            *pi = l + e * rng.uniform(-f, 1.0 + f);
+        }
+        p
     };
     let is_box = matches!(body, BodyIn::Box { .. } | BodyIn::HoledBox { .. });
     match rng.below(5) {

@@ -4,7 +4,7 @@
 //!
 //! Shim: `harness/cpp/shim/intersect_api_intersectors.cpp`. Upstream:
 //! `SmApiIntersectors.cpp`. The shim builds the operands itself from an argument stream
-//! (SM_API curve, surface and primitive constructors, or
+//! (`SM_API` curve, surface and primitive constructors, or
 //! `SmBSplineSurface::CreateCanonical` over a control net) and runs the call in a fresh
 //! child process.
 //!
