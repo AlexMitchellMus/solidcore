@@ -178,15 +178,15 @@ pub(super) fn rust(input: &FilletPreview) -> Result<Output, HarnessError> {
             }
             Output::new().values("preview", out)
         }
-        Err(e) => match Output::unported(&e) {
-            Some(deferred) => return Ok(deferred),
-            None => {
-                let mut out = vec![status(&e)];
-                counts(&mut out, &body).map_err(|e| HarnessError::new(e.to_string()))?;
-                out.push(0.0);
-                Output::new().values("preview", out)
+        Err(e) => {
+            if let Some(deferred) = Output::unported(&e) {
+                return Ok(deferred);
             }
-        },
+            let mut out = vec![status(&e)];
+            counts(&mut out, &body).map_err(|e| HarnessError::new(e.to_string()))?;
+            out.push(0.0);
+            Output::new().values("preview", out)
+        }
     };
     Ok(super::with_point_step(out, super::rust_point_step(&k)))
 }
