@@ -522,9 +522,8 @@ fn write_pcurve_edge(
     body: &Body,
     index: usize,
     vertex_ids: &[u64],
-    surface_id: u64,
     context_2d: u64,
-    uv_curves: &[Vec<[f64; 2]>],
+    pcurves: &[(u64, Vec<[f64; 2]>)],
 ) -> Result<u64, ExportError> {
     let edge = body.edges.get(index).ok_or_else(|| {
         ExportError::new(format!("body #{} references missing edge {index}", body.step_id))
@@ -536,14 +535,14 @@ fn write_pcurve_edge(
         ExportError::new(format!("body #{} edge #{index} has a missing end vertex", body.step_id))
     })?;
     let curve_3d = write_curve(entities, points, &edge.curve)?;
-    let mut pcurves = Vec::with_capacity(uv_curves.len());
-    for uv in uv_curves {
+    let mut pcurve_ids = Vec::with_capacity(pcurves.len());
+    for (surface_id, uv) in pcurves {
         let mut uv_ids = Vec::with_capacity(uv.len());
         for point in uv {
             uv_ids.push(point2(entities, *point)?);
         }
         let count = uv.len();
-        let points = uv_ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
+        let point_refs = uv_ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
         let mut knots: Vec<f64> = vec![0.0];
         for index in 1..count.saturating_sub(1) {
             knots.push(index as f64);
@@ -557,23 +556,21 @@ fn write_pcurve_edge(
         let knots_text = knots.iter().map(|v| number(*v)).collect::<Result<Vec<_>, _>>()?.join(",");
         let multi_text = multi.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
         let pcurve_curve = entities.add(format!(
-            "B_SPLINE_CURVE_WITH_KNOTS('',1,({points}),.UNSPECIFIED.,.U.,.U.,({multi_text}),({knots_text}),.UNSPECIFIED.)"
+            "B_SPLINE_CURVE_WITH_KNOTS('',1,({point_refs}),.UNSPECIFIED.,.U.,.U.,({multi_text}),({knots_text}),.UNSPECIFIED.)"
         ));
         let representation = entities.add(format!(
             "DEFINITIONAL_REPRESENTATION('',(#{pcurve_curve}),#{context_2d})"
         ));
-        pcurves.push(entities.add(format!("PCURVE('',#{surface_id},#{representation})")));
+        pcurve_ids.push(entities.add(format!("PCURVE('',#{surface_id},#{representation})")));
     }
-    let pcurve_refs = pcurves.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
-    let kind = if pcurves.len() > 1 { "SEAM_CURVE" } else { "SURFACE_CURVE" };
-    let surface_curve = entities.add(format!(
-        "{kind}('',#{curve_3d},({pcurve_refs}),.PCURVE_S1.)"
-    ));
+    let refs = pcurve_ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
+    let surfaces: std::collections::BTreeSet<u64> = pcurves.iter().map(|(surface, _)| *surface).collect();
+    let kind = if pcurve_ids.len() > 1 && surfaces.len() == 1 { "SEAM_CURVE" } else { "SURFACE_CURVE" };
+    let surface_curve = entities.add(format!("{kind}('',#{curve_3d},({refs}),.PCURVE_S1.)"));
     let sense = if edge.same_sense { ".T." } else { ".F." };
-    Ok(entities.add(format!(
-        "EDGE_CURVE('',#{start},#{end},#{surface_curve},{sense})"
-    )))
+    Ok(entities.add(format!("EDGE_CURVE('',#{start},#{end},#{surface_curve},{sense})")))
 }
+
 
 fn shell(entities: &mut Entities, body: &Body, pcurves: &std::collections::BTreeMap<step_import::model::PcurveKey, Vec<Vec<[f64; 2]>>>, context: u64) -> Result<u64, ExportError> {
     if body.shells.len() != 1 {
@@ -602,7 +599,51 @@ fn shell(entities: &mut Entities, body: &Body, pcurves: &std::collections::BTree
             Ok(entities.add(format!("VERTEX_POINT('',#{point_id})")))
         })
         .collect::<Result<Vec<_>, ExportError>>()?;
+    let context_2d = entities.add(
+        "(GEOMETRIC_REPRESENTATION_CONTEXT(2) PARAMETRIC_REPRESENTATION_CONTEXT() REPRESENTATION_CONTEXT('2D SPACE',''))".to_string(),
+    );
+    // Emit every surface first so edge pcurves can reference their basis surfaces.
+    let mut face_surfaces = Vec::with_capacity(body.faces.len());
+    for face in &body.faces {
+        face_surfaces.push(write_surface(entities, &mut points, &face.surface)?);
+    }
+    let surface_by_step = body
+        .faces
+        .iter()
+        .zip(&face_surfaces)
+        .map(|(face, surface)| (face.step_id, *surface))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    // Group pcurves by BRep edge, not by edge use.
+    let mut edge_pcurves: std::collections::BTreeMap<usize, Vec<(u64, Vec<[f64; 2]>)>> = std::collections::BTreeMap::new();
+    for face in &body.faces {
+        let Some(surface) = surface_by_step.get(&face.step_id).copied() else { continue };
+        for (loop_index, loop_) in face.loops.iter().enumerate() {
+            let Bound::Edges(edges) = &loop_.bound else { continue };
+            for (use_index, oriented_edge) in edges.iter().enumerate() {
+                if let Some(curves) = pcurves.get(&(face.step_id, loop_index, use_index)) {
+                    for uv in curves {
+                        edge_pcurves.entry(oriented_edge.edge).or_default().push((surface, uv.clone()));
+                    }
+                }
+            }
+        }
+    }
     let mut edge_ids = vec![None; body.edges.len()];
+    for (index, slot) in edge_ids.iter_mut().enumerate() {
+        if let Some(curves) = edge_pcurves.get(&index) {
+            *slot = Some(write_pcurve_edge(
+                entities,
+                &mut points,
+                body,
+                index,
+                &vertex_ids,
+                context_2d,
+                curves,
+            )?);
+        } else {
+            *slot = Some(write_edge(entities, &mut points, body, index, &vertex_ids)?);
+        }
+    }
     let mut face_ids = Vec::with_capacity(step_shell.faces.len());
     for &face_index in &step_shell.faces {
         let face = body.faces.get(face_index).ok_or_else(|| {
@@ -611,10 +652,7 @@ fn shell(entities: &mut Entities, body: &Body, pcurves: &std::collections::BTree
                 body.step_id
             ))
         })?;
-        let surface_id = write_surface(entities, &mut points, &face.surface)?;
-        let context_2d = entities.add(
-            "(GEOMETRIC_REPRESENTATION_CONTEXT(2) PARAMETRIC_REPRESENTATION_CONTEXT() REPRESENTATION_CONTEXT('2D SPACE',''))".to_string(),
-        );
+        let surface_id = *face_surfaces.get(body.faces.iter().position(|item| item.step_id == face.step_id).unwrap_or(0)).ok_or_else(|| ExportError::new("missing face surface"))?;
         let mut bounds = Vec::with_capacity(face.loops.len());
         for (loop_index, loop_) in face.loops.iter().enumerate() {
             let Bound::Edges(edges) = &loop_.bound else {
@@ -624,31 +662,11 @@ fn shell(entities: &mut Entities, body: &Body, pcurves: &std::collections::BTree
                 )));
             };
             let mut oriented = Vec::with_capacity(edges.len());
-            for (use_index, oriented_edge) in edges.iter().enumerate() {
-                let pcurve = pcurves.get(&(face.step_id, loop_index, use_index));
-                let edge_id = if let Some(uv) = pcurve {
-                    write_pcurve_edge(
-                        entities,
-                        &mut points,
-                        body,
-                        oriented_edge.edge,
-                        &vertex_ids,
-                        surface_id,
-                        context_2d,
-                        uv,
-                    )?
-                } else {
-                    let cached_id = edge_ids.get_mut(oriented_edge.edge).ok_or_else(|| {
-                        ExportError::new(format!("missing edge index {}", oriented_edge.edge))
-                    })?;
-                    if let Some(id) = *cached_id {
-                        id
-                    } else {
-                        let id = write_edge(entities, &mut points, body, oriented_edge.edge, &vertex_ids)?;
-                        *cached_id = Some(id);
-                        id
-                    }
-                };
+            for oriented_edge in edges {
+                let edge_id = edge_ids
+                    .get(oriented_edge.edge)
+                    .and_then(|id| *id)
+                    .ok_or_else(|| ExportError::new(format!("missing edge index {}", oriented_edge.edge)))?;
                 let orientation = if oriented_edge.forward { ".T." } else { ".F." };
                 oriented
                     .push(entities.add(format!("ORIENTED_EDGE('',*,*,#{edge_id},{orientation})")));
