@@ -224,10 +224,10 @@ pub(super) fn assert_test_edge13(_k: &mut Kernel, _b: &mut Brep, _e: EdgeId) -> 
 /// (`IsWithinXSectTol3dOfFaces`, `IsOnFaceCorner`). Called at every level; its report
 /// (Vertex test 1) is level 2.
 pub(super) fn assert_test_vertex1(
-    _k: &mut Kernel,
-    _b: &mut Brep,
-    _v: VertexId,
+    k: &mut Kernel,
+    b: &mut Brep,
+    v: VertexId,
 ) -> Result<(bool, f64)> {
-    // UNPORTED(topology.vertex): sm_AssertTestVertex1
-    Err(unported("sm_AssertTestVertex1", "topology.vertex"))
+    let (passed, max_gap_3d, _) = crate::topology::vertex::corner::assert_test_vertex1(k, b, v)?;
+    Ok((passed, max_gap_3d))
 }
