@@ -112,3 +112,36 @@ fn torus_mass_properties_hold_their_accuracy() {
     assert_rel("torus Iyy", m.inertia.y, ixx);
     assert_rel("torus Izz", m.inertia.z, izz);
 }
+
+/// Flag off (upstream v1.0.1, the default): the issue's repro misses the accuracy it
+/// asks for, as the C++ reference does: the cylinder's side face 5.2e-8 off 2πrh.
+#[test]
+fn upstream_cylinder_side_face_area_misses_its_accuracy() {
+    let mut k = Kernel::default();
+    let mut b = create_cylinder(&mut k, Vec3::new(1.0, 2.0, -3.0), 5.0, 12.0).unwrap();
+    let side = faces(&b, None).unwrap()[0];
+    let a = face_area(&k, &mut b, side, ACCURACY).unwrap();
+    let exact = 2.0 * PI * 5.0 * 12.0;
+    let err = (a - exact).abs() / exact;
+    assert!(err > ACCURACY, "{a} vs {exact} ({err:e} relative)");
+}
+
+/// Flag off: the issue's torus inertia, 1.7e-9 off V (R^2/2 + 5 r^2/8).
+#[test]
+fn upstream_torus_inertia_misses_1e_9() {
+    let mut k = Kernel::default();
+    let centre = Vec3::new(1.0, -1.0, 0.5);
+    let (rr, r) = (10.0, 3.0);
+    let mut b = create_torus(&mut k, centre, rr, r).unwrap();
+    let store = AttributeStore::default();
+    let key_of = |_| ObjectKey(0);
+    let attributes = PropertyAttributes {
+        store: &store,
+        key_of: &key_of,
+    };
+    let m = brep_mass_properties(&k, &mut b, ACCURACY, 1.0, centre, &attributes).unwrap();
+    let volume = 2.0 * PI * PI * rr * r * r;
+    let ixx = volume * (rr * rr / 2.0 + 5.0 * r * r / 8.0);
+    let err = (m.inertia.x - ixx).abs() / ixx;
+    assert!(err > REL, "{} vs {ixx} ({err:e} relative)", m.inertia.x);
+}
