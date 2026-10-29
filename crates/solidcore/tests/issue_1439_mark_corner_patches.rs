@@ -6,7 +6,7 @@
 //! patch face and one other face. As in the fork's own test (`ops_kernel.cpp`, the
 //! same box), removing the patch would leave 9 faces, 30 edges and 22 vertices and a
 //! hole of twelve edges. Off (the default), no face is marked and the body is the same.
-#![allow(clippy::unwrap_used)] // test helpers
+#![allow(clippy::unwrap_used, clippy::indexing_slicing)] // test helpers
 
 use std::collections::BTreeSet;
 

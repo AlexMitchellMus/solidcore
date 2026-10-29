@@ -5,7 +5,7 @@
 //! 2/3 of the way from each contact to the corner, so the body loses exactly that
 //! section's area to the corner times the edge length. Off (the default), the sections
 //! are the pinned C++'s faired Hermite and the volume differs.
-#![allow(clippy::unwrap_used)] // test helpers
+#![allow(clippy::unwrap_used, clippy::indexing_slicing)] // test helpers
 
 use solidcore::blend::fillet_executive::session::FilletSession;
 use solidcore::blend::fillet_solver::p1::FilletSurfaceGeneratorType;

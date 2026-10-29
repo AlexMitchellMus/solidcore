@@ -3257,8 +3257,8 @@ impl BlendCurveCrossSectionFsg {
                         let k0 = (n / 3.0) * u / l0;
                         let k1 = (n / 3.0) * v / l1;
                         let [v0, v1] = &mut vectors;
-                        *v0 = *v0 * k0;
-                        *v1 = *v1 * k1;
+                        *v0 *= k0;
+                        *v1 *= k1;
                         if let Some(h) = higher_order_vecs.as_mut() {
                             let len = h.len();
                             for (index, vec) in h.iter_mut().enumerate() {
