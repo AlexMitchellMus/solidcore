@@ -13,7 +13,7 @@
 //! | `vertex_check_pointers`      | `SmVertex::CheckPointers`                 |
 //! | `is_inner_shell_of`          | `SmShell::IsInnerShellOf`                 |
 //! | `assert_test_face37`         | `sm_AssertTestFace37`                     |
-//! | `surface_assert_valid`       | `SmSurface::AssertValid` (virtual)        |
+//! | `surface_assert_valid`       | `SmSurface::AssertValid` (virtual; wired) |
 //! | `offset_curve_assert_valid`  | `SmOffsetCurve::AssertValid`              |
 //! | `projected_curve_assert_valid` | `SmProjectedCurve::AssertValid`         |
 //! | `hermite_curve_assert_valid` | `SmHermiteCurve::AssertValid`             |
@@ -124,18 +124,17 @@ pub(super) fn assert_test_face37(_k: &mut Kernel, _b: &mut Brep, _f: FaceId) -> 
 /// `list` about the surface object `key`. `level` is `SM_LEVEL_0`..`SM_LEVEL_2` (the
 /// call is skipped at `SM_LEVEL_GIVEN`). Called only when the face has a surface.
 pub(super) fn surface_assert_valid(
-    _k: &mut Kernel,
-    _b: &mut Brep,
-    _f: FaceId,
-    _list: Option<&mut AssertArray>,
-    _level: u8,
-    _key: ObjectKey,
+    k: &mut Kernel,
+    b: &mut Brep,
+    f: FaceId,
+    list: Option<&mut AssertArray>,
+    level: u8,
+    key: ObjectKey,
 ) -> Result<bool> {
-    // UNPORTED(surface.surface_assert_valid): SmSurface::AssertValid
-    Err(unported(
-        "SmSurface::AssertValid",
-        "surface.surface_assert_valid",
-    ))
+    let surface = b.face(f)?.surface.as_ref().ok_or(SolidError::null_pointer(
+        "topology::brep::validation::assert_valid",
+    ))?;
+    surface.assert_valid(k, list, level, key)
 }
 
 /// `SmOffsetCurve::AssertValid` of `curve` (an offset curve), reporting about `key`.

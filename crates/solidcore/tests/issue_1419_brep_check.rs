@@ -3,7 +3,7 @@
 //!
 //! Valid primitive bodies must report no failure at level 2, and bodies broken by a
 //! direct edit must report the exact upstream report lines and `is_valid() == false`.
-//! Checks that need a dependency seam not yet ported (the WP2/WP3a/WP4 packages of
+//! Checks that need a dependency seam not yet ported (the WP2/WP4 packages of
 //! #1419) are `#[ignore]`d with the seam named, and a live test pins that they still
 //! return `Unported` so the ignore is removed when the seam is wired.
 
@@ -41,9 +41,9 @@ fn check(k: &mut Kernel, b: &mut Brep) -> BrepCheck {
 
 /// Pending: every non-empty body reaches `sm_AssertTestVertex1` (WP4) and
 /// `SmEdgeuse::HasDogLegNearPole` (WP2), and faces reach `sm_AssertTestFace32/37`
-/// (packages 2 and 4) and `SmSurface::AssertValid` (package 3a).
+/// (packages 2 and 4). `SmSurface::AssertValid` (package 3a) is wired.
 #[test]
-#[ignore = "pending #1419 WP2/WP3a/WP4 seams: sm_AssertTestVertex1, HasDogLegNearPole, sm_AssertTestFace32/33/37/38, SmSurface::AssertValid"]
+#[ignore = "pending #1419 WP2/WP4 seams: sm_AssertTestVertex1, HasDogLegNearPole, sm_AssertTestFace32/33/37/38"]
 fn valid_bodies_report_no_failures_at_level_2() {
     let mut k = Kernel::default();
     for (name, mut b) in bodies(&mut k) {
@@ -61,13 +61,7 @@ fn valid_bodies_are_pending_on_seams() {
     for (name, mut b) in bodies(&mut k) {
         match check_brep(&mut k, &mut b, CheckLevel::Level2) {
             Err(SolidError::Unported { unit, .. }) => assert!(
-                [
-                    "topology.vertex",
-                    "topology.edgeuse_p2",
-                    "topology.face_p4",
-                    "surface.surface_assert_valid"
-                ]
-                .contains(&unit),
+                ["topology.vertex", "topology.edgeuse_p2", "topology.face_p4"].contains(&unit),
                 "{name}: {unit}"
             ),
             other => panic!("{name}: seam wired? {:?}", other.map(|c| c.lines())),

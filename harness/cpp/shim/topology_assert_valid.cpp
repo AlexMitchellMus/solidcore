@@ -5,6 +5,7 @@
 #include <SmApiPrimitives.h>
 #include <SmAssertArray.h>
 #include <SmEllipse.h>
+#include <SmPlane.h>
 #include <array>
 #include <cstdio>
 #include <cstring>
@@ -34,8 +35,14 @@ Id identity(const Graph& g, const void* p, const SmBrep* b) {
         if (g.edges[i]->GetCurve() == p) return {20001, (int64_t)i};
         if (polar_of(g.edges[i]->GetCurve()) == p) return {20004, (int64_t)i};
     }
-    for (size_t i = 0; i < g.faces.size(); i++)
-        if (g.faces[i]->GetSurface() == p) return {20002, (int64_t)i};
+    for (size_t i = 0; i < g.faces.size(); i++) {
+        const SmSurface* s = g.faces[i]->GetSurface();
+        if (s == p) return {20002, (int64_t)i};
+        // SmPlane::AssertValid's m_vPosition.AssertValid reports name the placement; the
+        // port has no separate placement object and names its surface.
+        if (s && s->IsKindOf(SmPlane_TYPE) && (const void*)&((const SmPlane*)s)->GetPosition() == p)
+            return {20002, (int64_t)i};
+    }
     for (size_t i = 0; i < g.edgeuses.size(); i++) {
         SmBSplineCurve* uv = g.edgeuses[i]->*EuPeek::uv();
         if (uv == p) return {20003, (int64_t)i};
