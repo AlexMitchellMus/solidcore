@@ -59,7 +59,7 @@ mod sys {
 fn args(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
     match op {
         Op::ExportGaps => {}
-        Op::Create => {
+        Op::Create | Op::GetOrCreate => {
             rd.flag()?;
             rd.flag()?;
             rd.flag()?;
@@ -71,11 +71,6 @@ fn args(op: Op, rd: &mut Reader<'_>) -> Result<(), FfiError> {
         }
         Op::Normalized => {
             rd.finite()?;
-            rd.flag()?;
-            rd.flag()?;
-            rd.flag()?;
-        }
-        Op::GetOrCreate => {
             rd.flag()?;
             rd.flag()?;
             rd.flag()?;

@@ -1043,7 +1043,7 @@ mod hermite_sheet_tests {
     #[test]
     fn brep_block_rejects_reserved_kinds() {
         for kind in 10..=14 {
-            let input = [kind as f64];
+            let input = [f64::from(kind)];
             let mut rd = Reader { input: &input, at: 0 };
             assert!(
                 brep_block_with_plane_limit(&mut rd, "", 1e4).is_err(),
