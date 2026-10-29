@@ -948,7 +948,15 @@ impl SurfOfRevolution {
             *out = SurfaceIntersection::default();
             return Ok(true);
         }
-        intersect_revolved_into(self, k, uv_domain, sphere, sphere_uv_domain, approx_tol_3d, out)
+        intersect_revolved_into(
+            self,
+            k,
+            uv_domain,
+            sphere,
+            sphere_uv_domain,
+            approx_tol_3d,
+            out,
+        )
     }
 
     // ---- analytic data from the NURB ------------------------------------------------

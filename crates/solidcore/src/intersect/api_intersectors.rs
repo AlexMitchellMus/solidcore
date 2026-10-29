@@ -709,7 +709,8 @@ mod tests {
         let k = Kernel::default();
         let frame = |z: f64| {
             let mut f = crate::geom::axis2_placement::Axis2Placement::default();
-            f.set_canonical(Point3::new(0.0, 0.0, z), Vec3::X, Vec3::Y).unwrap();
+            f.set_canonical(Point3::new(0.0, 0.0, z), Vec3::X, Vec3::Y)
+                .unwrap();
             f
         };
         let sphere = Surface::from(
@@ -722,7 +723,10 @@ mod tests {
         status.unwrap();
         assert!(!curves.is_empty());
         let (curves, status) = intersect_surfaces(&k, &sphere, &plane(5.0));
-        assert!(matches!(status, Err(SolidError::Upstream { .. })), "{status:?}");
+        assert!(
+            matches!(status, Err(SolidError::Upstream { .. })),
+            "{status:?}"
+        );
         assert!(curves.is_empty());
     }
 

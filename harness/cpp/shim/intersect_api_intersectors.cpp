@@ -30,6 +30,7 @@
 #include <SmContext.h>
 #include <SmApiBrep.h>
 #include <SmApiCurves.h>
+#include <SmApiGeneral.h>
 #include <SmApiIntersectors.h>
 #include <SmApiPrimitives.h>
 #include <SmApiSurfaces.h>
