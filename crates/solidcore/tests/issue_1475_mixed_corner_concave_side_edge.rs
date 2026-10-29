@@ -136,7 +136,7 @@ fn round(fix: bool, radius: f64) -> (Kernel, Brep, Result<(), (solidcore::SolidE
                 1,
                 1.0,
             )
-            .and_then(|()| s.create_corners(&mut k, None))
+            .and_then(|()| s.create_corners(&k, None))
             .and_then(|()| s.do_filleting(&mut k, None));
         let code = s.error_info().code;
         step.map_err(|e| (e, code))
