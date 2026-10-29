@@ -1,6 +1,13 @@
 //! Regression test for #1473: `SmShell::IsInnerShellOf` on a box with a sealed internal
 //! void (the issue's repro: a 20 mm cube minus a 10 mm cube at (5, 5, 5)).
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)] // test helpers
+
 use solidcore::boolean::api_brep as sm;
 use solidcore::geom::a_object::BooleanOperation;
 use solidcore::kernel::Kernel;
@@ -29,7 +36,9 @@ fn shell_extent(b: &Brep, s: ShellId) -> f64 {
 fn void_body(k: &mut Kernel) -> Brep {
     let outer = create_box(k, Vec3::new(0.0, 0.0, 0.0), 20.0, 20.0, 20.0).unwrap();
     let cavity = create_box(k, Vec3::new(5.0, 5.0, 5.0), 10.0, 10.0, 10.0).unwrap();
-    sm::boolean(k, outer, cavity, BooleanOperation::Difference).unwrap().result
+    sm::boolean(k, outer, cavity, BooleanOperation::Difference)
+        .unwrap()
+        .result
 }
 
 fn check(k: &mut Kernel) {
@@ -43,13 +52,19 @@ fn check(k: &mut Kernel) {
             // the infinite region's one shell (the 20 mm cube's outside) is an inner
             // shell of the infinite region
             assert_eq!(shells.len(), 1);
-            assert_eq!(is_inner_shell_of(k, &mut b, shells[0], None).unwrap(), SM_TRUE);
+            assert_eq!(
+                is_inner_shell_of(k, &mut b, shells[0], None).unwrap(),
+                SM_TRUE
+            );
             continue;
         }
         if shells.len() == 1 {
             // the void: another shell contains it
             assert_eq!(shell_extent(&b, shells[0]), 15.0);
-            assert_eq!(is_inner_shell_of(k, &mut b, shells[0], None).unwrap(), SM_FALSE);
+            assert_eq!(
+                is_inner_shell_of(k, &mut b, shells[0], None).unwrap(),
+                SM_FALSE
+            );
             continue;
         }
         // the solid region: the outer wall encloses the cavity's wall
@@ -60,8 +75,14 @@ fn check(k: &mut Kernel) {
             (shells[1], shells[0])
         };
         assert_eq!(shell_extent(&b, outer), 20.0);
-        assert_eq!(is_inner_shell_of(k, &mut b, cavity, Some(outer)).unwrap(), SM_TRUE);
-        assert_eq!(is_inner_shell_of(k, &mut b, outer, Some(cavity)).unwrap(), SM_FALSE);
+        assert_eq!(
+            is_inner_shell_of(k, &mut b, cavity, Some(outer)).unwrap(),
+            SM_TRUE
+        );
+        assert_eq!(
+            is_inner_shell_of(k, &mut b, outer, Some(cavity)).unwrap(),
+            SM_FALSE
+        );
         solid_checked = true;
     }
     assert!(solid_checked, "no region with two shells");
@@ -78,4 +99,25 @@ fn issue_1473_box_with_sealed_void_fork_statuses() {
     let mut k = Kernel::default();
     k.fixes.shell_inner_shell_of_statuses = true;
     check(&mut k);
+}
+
+#[test]
+fn issue_1473_put_enclosing_shells_first_restores_the_head() {
+    use solidcore::topology::shell::put_enclosing_shells_first;
+    let mut k = Kernel::default();
+    let mut b = void_body(&mut k);
+    let solid = p1::regions(&b, None)
+        .unwrap()
+        .into_iter()
+        .find(|&r| b.region(r).unwrap().shells.len() == 2)
+        .unwrap();
+    // already in order: nothing changes
+    assert_eq!(put_enclosing_shells_first(&mut k, &mut b).unwrap(), 0);
+    let head = b.region(solid).unwrap().shells[0];
+    assert_eq!(shell_extent(&b, head), 20.0);
+    // the data's order: cavity wall first
+    b.region_mut(solid).unwrap().shells.reverse();
+    assert_eq!(shell_extent(&b, b.region(solid).unwrap().shells[0]), 15.0);
+    assert_eq!(put_enclosing_shells_first(&mut k, &mut b).unwrap(), 1);
+    assert_eq!(b.region(solid).unwrap().shells[0], head);
 }

@@ -1461,7 +1461,6 @@ pub fn calc_quad_num(origin: Point3, test: Point3) -> u32 {
     }
 }
 
-
 /// The result of [`is_loopuse_side_in_surface`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LoopuseSide {

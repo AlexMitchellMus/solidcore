@@ -1256,7 +1256,6 @@ pub fn set_point(
     Ok(())
 }
 
-
 // ---- pointer check (SmVertex::CheckPointers) ------------------------------------------------
 
 /// `SmVertex::CheckPointers()`: whether the topology around `v` is linked consistently,

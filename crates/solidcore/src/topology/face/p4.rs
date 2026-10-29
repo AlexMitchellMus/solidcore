@@ -2605,7 +2605,6 @@ pub(crate) fn has_seam_problem_in_brep_cached<O: LoopObject>(
     has_seam_problem_cached(k, b, f, &objects, opts, cache)
 }
 
-
 // ---- AssertValid helpers (sm_GetLoopSampleUVPoint, sm_AssertTestFace37) -------------------
 
 /// `sm_GetLoopSampleUVPoint(pLoop, rUVPoint)` (file static of `SmFace.cpp`): the UV
@@ -2675,11 +2674,9 @@ pub fn assert_test_face37(k: &Kernel, b: &mut Brep, f: FaceId) -> Result<bool> {
         };
 
         let uv_tol = {
-            let surface = b
-                .face(f)?
-                .surface
-                .as_ref()
-                .ok_or_else(|| SolidError::invalid_input(OP, "AssertTestFace37: face without surface"))?;
+            let surface = b.face(f)?.surface.as_ref().ok_or_else(|| {
+                SolidError::invalid_input(OP, "AssertTestFace37: face without surface")
+            })?;
             crate::surface::surface::p1::map_to_2d(k, zone_tol_3d, sample_uv, surface)?
         };
 

@@ -80,8 +80,8 @@ use crate::surface::surface::p2::DropCurveFail;
 use crate::surface::surface::p7::drop_points_to_tangent_plane;
 use crate::surface::surface::Surface;
 use crate::topology::edgeuse::p1::{
-    brep_handle, drop_curve_fail, edge, edge_brep, edge_is_lamina, face, faceuse, mate, radial,
-    orientation, set_uv_trim_curve, uv_trim_curve, FindStepOff, UvTrimCurveArg,
+    brep_handle, drop_curve_fail, edge, edge_brep, edge_is_lamina, face, faceuse, mate,
+    orientation, radial, set_uv_trim_curve, uv_trim_curve, FindStepOff, UvTrimCurveArg,
 };
 use crate::topology::edgeuse::p3::{create_uv_trim_curve, evaluate_binormal, BinormalOptions};
 use crate::topology::topology::{self as topo, TopologyRecords};
@@ -869,7 +869,6 @@ pub fn notify<R: TopologyRecords + ?Sized>(
     )
 }
 
-
 // ---- side and pole checks (SmEdgeuse::IsEdgeuseSideInSurface, HasDogLegNearPole) ----------
 
 /// `SM_IS_CONTAINED(c, a, b)` (`SmMath.h`): `c` inside or on `[a, b]` (either order),
@@ -1026,9 +1025,8 @@ pub fn is_edgeuse_side_in_surface(
             operation: SolverOperation::Minimize,
             ..DropPointOptions::default()
         };
-        let drop = surface.drop_point::<crate::surface::surface::p4::NoObject>(
-            k, edge_point, &uv_domain, &opts,
-        );
+        let drop = surface
+            .drop_point::<crate::surface::surface::p4::NoObject>(k, edge_point, &uv_domain, &opts);
         match ignored(drop)? {
             // with a guess `rResultUV` starts as the guess; without one it is written
             // only by a successful drop
@@ -1059,10 +1057,8 @@ pub fn is_edgeuse_side_in_surface(
 
         // accumulate the classifications and the UV incremental step directions
         uv_classify &= uv_loc;
-        if let (Some(prev), Some(cur)) = (
-            uv_drop_points.iter().rev().nth(1),
-            uv_drop_points.last(),
-        ) {
+        if let (Some(prev), Some(cur)) = (uv_drop_points.iter().rev().nth(1), uv_drop_points.last())
+        {
             if prev.x < cur.x {
                 up_u += 1;
             }
@@ -1189,7 +1185,11 @@ pub fn has_dog_leg_near_pole(k: &Kernel, b: &Brep, eu: EdgeuseId) -> Result<DogL
         CurveKind::Ellipse(c) => Cow::Borrowed(c.base()),
         CurveKind::Parabola(c) => Cow::Borrowed(c.base()),
         CurveKind::Hyperbola(c) => Cow::Borrowed(c.base()),
-        _ => return Err(null("HasDogLegNearPole: UV trim curve is not an SmBSplineCurve")),
+        _ => {
+            return Err(null(
+                "HasDogLegNearPole: UV trim curve is not an SmBSplineCurve",
+            ))
+        }
     };
     let control_points = base.polygon(&base.natural_interval())?;
     let num = control_points.len();

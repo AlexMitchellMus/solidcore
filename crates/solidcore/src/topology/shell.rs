@@ -34,6 +34,7 @@
 //! | [`shell_remove_faceuse`], [`shell_post_insert_faceuse`] | `SmOwningTopology::Remove` / `PostInsert` of one face use (CO-PORTED, `topology.brep_p3`) |
 //! | [`shell_list_size`] | `SmShell::GetSize` (`m_lListSize`; CO-PORTED, `topology.brep_p3`) |
 //! | [`is_inner_shell_of`], [`SM_TRUE`], [`SM_FALSE`], [`SM_UNSURE`] | `SmShell::IsInnerShellOf` (its `SmBoolean`) |
+//! | [`put_enclosing_shells_first`] | none (the fork capi's `PutEnclosingShellsFirst` rule, #1473) |
 //!
 //! Deviations: circular lists are typed vectors in head-first order, as in the
 //! shared Brep arena model. `GetWireEdges`, `GetMatedShells` and `RayFire` claim and
@@ -1352,7 +1353,6 @@ pub trait RegionLookup {
     fn resolve_region(&self, object: crate::geom::attribute::ObjectKey) -> Result<RegionRef<'_>>;
 }
 
-
 // ---- SmShell::IsInnerShellOf ------------------------------------------------------------
 
 /// `TRUE` of an `SmBoolean`.
@@ -1372,7 +1372,10 @@ struct RayGeometry<'a> {
 impl crate::intersect::point_class::ClassGeometry<crate::topology::brep_cache::CacheObject>
     for RayGeometry<'_>
 {
-    fn curve(&self, o: crate::topology::brep_cache::CacheObject) -> Option<&crate::curve::curve::Curve> {
+    fn curve(
+        &self,
+        o: crate::topology::brep_cache::CacheObject,
+    ) -> Option<&crate::curve::curve::Curve> {
         use crate::topology::brep_cache::CacheObject;
         match o {
             CacheObject::Other(_) => Some(self.line),
@@ -1386,9 +1389,7 @@ impl crate::intersect::point_class::ClassGeometry<crate::topology::brep_cache::C
     ) -> Option<&crate::surface::surface::Surface> {
         use crate::topology::brep_cache::CacheObject;
         match o {
-            CacheObject::Face(f) | CacheObject::Surface(f) => {
-                self.b.face(f).ok()?.surface.as_ref()
-            }
+            CacheObject::Face(f) | CacheObject::Surface(f) => self.b.face(f).ok()?.surface.as_ref(),
             _ => None,
         }
     }
@@ -1400,7 +1401,9 @@ impl crate::intersect::point_class::ClassGeometry<crate::topology::brep_cache::C
     }
     fn point(&self, o: crate::topology::brep_cache::CacheObject) -> Option<crate::math::Point3> {
         match o {
-            crate::topology::brep_cache::CacheObject::Vertex(v) => Some(self.b.vertex(v).ok()?.point),
+            crate::topology::brep_cache::CacheObject::Vertex(v) => {
+                Some(self.b.vertex(v).ok()?.point)
+            }
             _ => None,
         }
     }
@@ -1410,7 +1413,10 @@ impl crate::intersect::point_class::ClassGeometry<crate::topology::brep_cache::C
     ) -> Option<crate::math::Point3> {
         self.point(vertex)
     }
-    fn topology_zone_tol_3d(&self, object: crate::topology::brep_cache::CacheObject) -> Option<f64> {
+    fn topology_zone_tol_3d(
+        &self,
+        object: crate::topology::brep_cache::CacheObject,
+    ) -> Option<f64> {
         use crate::topology::brep_cache::CacheObject;
         match object {
             CacheObject::Vertex(v) => Some(self.b.vertex(v).ok()?.tolerance),
@@ -1487,16 +1493,26 @@ fn ray_brep_solve(
     )
 }
 
+/// The outcome of a call whose status upstream ignores (see [`checked`]).
+enum Checked<T> {
+    /// It succeeded.
+    Value(T),
+    /// It failed and the status is ignored, as upstream.
+    Ignored,
+    /// It failed and, with
+    /// [`crate::kernel::UpstreamFixes::shell_inner_shell_of_statuses`], decides.
+    Decides,
+}
+
 /// The status-checked variant of an ignored upstream call: with
-/// [`crate::kernel::UpstreamFixes::shell_inner_shell_of_statuses`] `Err` decides
-/// (`Ok(None)`); without it the error is ignored (`Ok(Some(None))`), except
-/// [`SolidError::Unported`].
-fn checked<T>(k: &Kernel, r: Result<T>) -> Result<Option<Option<T>>> {
+/// [`crate::kernel::UpstreamFixes::shell_inner_shell_of_statuses`] an `Err` decides;
+/// without it the error is ignored, except [`SolidError::Unported`].
+fn checked<T>(k: &Kernel, r: Result<T>) -> Result<Checked<T>> {
     match r {
-        Ok(v) => Ok(Some(Some(v))),
+        Ok(v) => Ok(Checked::Value(v)),
         Err(e) if e.is_unported() => Err(e),
-        Err(_) if k.fixes.shell_inner_shell_of_statuses => Ok(None),
-        Err(_) => Ok(Some(None)),
+        Err(_) if k.fixes.shell_inner_shell_of_statuses => Ok(Checked::Decides),
+        Err(_) => Ok(Checked::Ignored),
     }
 }
 
@@ -1536,7 +1552,7 @@ pub fn is_inner_shell_of(
     use crate::curve::line::{BoundedLineOptions, Line};
     use crate::geom::extent1d::Extent1d;
     use crate::geom::extent3d::Extent3d;
-    use crate::geom::solution_array::{SolutionType, SolutionObject, ObjectKind};
+    use crate::geom::solution_array::{ObjectKind, SolutionObject, SolutionType};
     use crate::intersect::curve_class::p1::CurveClassification;
     use crate::intersect::curve_class::p4::ClassificationInit;
     use crate::math::{Point3, Vec3, EFF_ZERO};
@@ -1561,19 +1577,17 @@ pub fn is_inner_shell_of(
             )?;
             let mut marks = Marks::default();
             let r = match first {
-                Some(fu) => {
-                    crate::topology::topology_traverser::closure_traversal(
-                        k, b, &mut marks, fu, &lock, None,
-                    )
-                }
+                Some(fu) => crate::topology::topology_traverser::closure_traversal(
+                    k, b, &mut marks, fu, &lock, None,
+                ),
                 None => Err(SolidError::null_pointer(OP_ISO)),
             };
             let mut lock = lock;
             lock.release(std::slice::from_mut(&mut k.context))?;
             match checked(k, r)? {
-                Some(Some(c)) => is_closed = c,
-                Some(None) => (),
-                None => return Ok(SM_UNSURE),
+                Checked::Value(c) => is_closed = c,
+                Checked::Ignored => (),
+                Checked::Decides => return Ok(SM_UNSURE),
             }
         }
         if !is_closed {
@@ -1594,9 +1608,9 @@ pub fn is_inner_shell_of(
         ),
     )?;
     let mut bbox = match bbox {
-        Some(Some(x)) => x,
-        Some(None) => Extent3d::new(),
-        None => return Ok(SM_UNSURE),
+        Checked::Value(x) => x,
+        Checked::Ignored => Extent3d::new(),
+        Checked::Decides => return Ok(SM_UNSURE),
     };
     bbox.expand_absolute(1.0);
     let size = 2.0 * bbox.size().length();
@@ -1620,7 +1634,9 @@ pub fn is_inner_shell_of(
         // sPV[0,2,4,...] = point to start ray for each SmpPoint,
         // sPV[1,3,5,...] = direction to run ray for each SmpPoint
         if is_fu_shell {
-            let fu = *inner_faceuses.get(ii).ok_or_else(|| null("face use index"))?;
+            let fu = *inner_faceuses
+                .get(ii)
+                .ok_or_else(|| null("face use index"))?;
             let fu_rec = b.faceuse(fu)?;
             let (f, orientation) = (
                 fu_rec.face.ok_or_else(|| null("face use without face"))?,
@@ -1630,7 +1646,7 @@ pub fn is_inner_shell_of(
             // here leaves them empty)
             let r = crate::topology::face::p2::points_in_face(k, b, f, smp_cnt);
             match checked(k, r)? {
-                Some(Some(points)) => {
+                Checked::Value(points) => {
                     let mut pv = points.pv;
                     if orientation == OrientType::Opposite {
                         for n in pv.iter_mut().skip(1).step_by(2) {
@@ -1639,14 +1655,19 @@ pub fn is_inner_shell_of(
                     }
                     smp_pv = pv;
                 }
-                Some(None) => smp_pv.clear(),
-                None => return Ok(SM_UNSURE),
+                Checked::Ignored => smp_pv.clear(),
+                Checked::Decides => return Ok(SM_UNSURE),
             }
         } else if is_wire_shell {
-            let e = *inner_wire_edges.first().ok_or_else(|| null("wire shell without edge"))?;
+            let e = *inner_wire_edges
+                .first()
+                .ok_or_else(|| null("wire shell without edge"))?;
             let edge = b.edge(e)?;
             let ivl = edge.interval;
-            let curve = edge.curve.clone().ok_or_else(|| null("wire edge without curve"))?;
+            let curve = edge
+                .curve
+                .clone()
+                .ok_or_else(|| null("wire edge without curve"))?;
             let mut point = Point3::UNDEF;
             for jj in 0..smp_cnt {
                 // sample the curve and pick varying directions for the vector
@@ -1654,9 +1675,9 @@ pub fn is_inner_shell_of(
                     k,
                     curve.evaluate_point(k, ivl.evaluate((jj + 1) as f64 / (smp_cnt + 1) as f64)),
                 )? {
-                    Some(Some(p)) => point = p,
-                    Some(None) => (),
-                    None => return Ok(SM_UNSURE),
+                    Checked::Value(p) => point = p,
+                    Checked::Ignored => (),
+                    Checked::Decides => return Ok(SM_UNSURE),
                 }
                 let mut dir = Vec3::new(
                     k.rng.next_signed_unit(),
@@ -1707,9 +1728,9 @@ pub fn is_inner_shell_of(
 
             // intersect line with Brep
             let mut solutions = match checked(k, ray_brep_solve(k, b, &line, tol))? {
-                Some(Some(s)) => s,
-                Some(None) => crate::geom::solution_array::SolutionArray::new(),
-                None => continue,
+                Checked::Value(s) => s,
+                Checked::Ignored => crate::geom::solution_array::SolutionArray::new(),
+                Checked::Decides => continue,
             };
 
             // keep things simple - only use classifications which have point
@@ -1787,7 +1808,7 @@ pub fn is_inner_shell_of(
                     solutions.as_slice(),
                     0,
                 );
-                if checked(k, r)?.is_none() {
+                if matches!(checked(k, r)?, Checked::Decides) {
                     continue;
                 }
             }
@@ -1816,8 +1837,14 @@ pub fn is_inner_shell_of(
                     // pFace->GetUpwardFaceuse() on NULL
                     return Err(null("crossing without face"));
                 };
-                let up = b.face(face)?.faceuse.ok_or_else(|| null("face without face use"))?;
-                let down = b.faceuse(up)?.mate.ok_or_else(|| null("face use without mate"))?;
+                let up = b
+                    .face(face)?
+                    .faceuse
+                    .ok_or_else(|| null("face without face use"))?;
+                let down = b
+                    .faceuse(up)?
+                    .mate
+                    .ok_or_else(|| null("face use without mate"))?;
                 let up_shell = b.faceuse(up)?.shell;
                 let down_shell = b.faceuse(down)?.shell;
 
@@ -1833,14 +1860,15 @@ pub fn is_inner_shell_of(
                     .as_ref()
                     .ok_or_else(|| null("crossing face without surface"))?;
                 let pv0 = checked(k, surface.evaluate_point(k, uv))?;
-                if pv0.is_none() {
+                if matches!(pv0, Checked::Decides) {
                     return Ok(SM_UNSURE);
                 }
-                let normal = match checked(k, surface.evaluate_normal(k, uv, Side::Left, Side::Left))? {
-                    Some(Some(n)) => n,
-                    Some(None) => Vec3::UNDEF,
-                    None => return Ok(SM_UNSURE),
-                };
+                let normal =
+                    match checked(k, surface.evaluate_normal(k, uv, Side::Left, Side::Left))? {
+                        Checked::Value(n) => n,
+                        Checked::Ignored => Vec3::UNDEF,
+                        Checked::Decides => return Ok(SM_UNSURE),
+                    };
 
                 // figure out which shell is being exited and which shell is being
                 // entered
@@ -1887,6 +1915,77 @@ pub fn is_inner_shell_of(
 
     // arrive here when no candidate ray produced a simple set of intersections
     Ok(SM_UNSURE)
+}
+
+/// Puts the enclosing shell of every bounded region of `b` with more than one shell at
+/// the head of the region's shell list, the order `SmBrep::AssertValid` test 12 and
+/// the region queries expect, for a B-rep built from data that listed its shells in
+/// another order. The candidates are the region's closed face-use shells, in
+/// decreasing volume of their face bounding boxes (stable); the first for which every
+/// other shell of the region [`is_inner_shell_of`] it ([`SM_TRUE`]) becomes the head,
+/// the others keeping their order. A region where no candidate encloses the others is
+/// left as it is. Returns the number of regions whose head changed.
+///
+/// No SMLib counterpart: the rule of the fork's capi import (tangency-labs/smlib
+/// 41e7dca, `PutEnclosingShellsFirst`) as #1473 describes it; SMLib itself never
+/// reorders a region from containment.
+///
+/// # Errors
+///
+/// Those of the face bounding boxes and of [`is_inner_shell_of`].
+pub fn put_enclosing_shells_first(k: &mut Kernel, b: &mut Brep) -> Result<usize> {
+    let mut changed = 0;
+    let infinite = b.infinite_region();
+    for r in crate::topology::brep::p1::regions(b, None)? {
+        if Some(r) == infinite {
+            continue;
+        }
+        let shells = b.region(r)?.shells.clone();
+        if shells.len() < 2 {
+            continue;
+        }
+
+        // closed face-use shells by bounding-box volume, largest first (stable)
+        let mut candidates: Vec<(f64, ShellId)> = Vec::new();
+        for &s in &shells {
+            let shell = b.shell(s)?;
+            if !shell.is_faceuse_shell() || !shell.is_closed(b, s)? {
+                continue;
+            }
+            let mut bbox = crate::geom::extent3d::Extent3d::new();
+            for fu in shell.get_faceuses()? {
+                let f = b.faceuse(fu)?.face.ok_or_else(|| {
+                    SolidError::null_pointer("topology::shell::put_enclosing_shells_first")
+                })?;
+                let fb = crate::query::face::p1::calculate_bounding_box(k, &*b, f, false)?;
+                bbox = bbox.union(&fb);
+            }
+            let size = bbox.size();
+            candidates.push((size.x * size.y * size.z, s));
+        }
+        candidates.sort_by(|a, c| c.0.total_cmp(&a.0));
+
+        // the first that encloses every other shell becomes the list head
+        for &(_, cand) in &candidates {
+            let mut encloses = true;
+            for &other in &shells {
+                if other != cand && is_inner_shell_of(k, b, other, Some(cand))? != SM_TRUE {
+                    encloses = false;
+                    break;
+                }
+            }
+            if encloses {
+                if shells.first() != Some(&cand) {
+                    let mut order = vec![cand];
+                    order.extend(shells.iter().copied().filter(|&x| x != cand));
+                    b.region_mut(r)?.shells = order;
+                    changed += 1;
+                }
+                break;
+            }
+        }
+    }
+    Ok(changed)
 }
 
 #[cfg(test)]
