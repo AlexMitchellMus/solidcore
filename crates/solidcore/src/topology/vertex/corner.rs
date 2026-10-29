@@ -24,8 +24,8 @@
 //!   intersection tolerance is `2 * GetBrep()->GetTolerance()`. A vertex outside any
 //!   B-rep (`GetBrep()` null, which upstream dereferences) returns
 //!   [`SolidError::InvalidInput`]. `SmTol::GetApproxTol3d(GetContext())` reads the
-//!   context zone tolerance; topology here carries no context of its own, so it is the
-//!   system value, as the other topology ports use (`context_*_tol_3d(k, None, ..)`).
+//!   zone tolerance of the vertex's context, the B-rep's: the kernel's context
+//!   (`context_approx_tol_3d(k, Some(&k.context), ..)`, as the B-rep constructor reads it).
 //! - **Temporary point.** `SmTemporaryChangeValue<SmPoint3d>` (the parallel-face branch
 //!   of `CalcCornerFromFaces`) sets the vertex point and restores it afterwards; it is
 //!   restored before any error is returned too.
@@ -315,7 +315,8 @@ pub fn calc_corner_from_faces(k: &Kernel, b: &mut Brep, v: VertexId) -> Result<F
         return Ok(out);
     }
 
-    let approx_tol_3d = tol::context_approx_tol_3d(k, None, tol::SmallTopoType::NormalSize);
+    let approx_tol_3d =
+        tol::context_approx_tol_3d(k, Some(&k.context), tol::SmallTopoType::NormalSize);
 
     let parallel = has_parallel_faces(k, b, v, Some(tol::ANG_TOL_DEG))?;
 
