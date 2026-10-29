@@ -1291,6 +1291,16 @@ impl Surface {
         self.cache_slot.same(&other.cache_slot)
     }
 
+    /// A copy as [`Clone`] that shares this surface's cache slot, standing for the same
+    /// surface object as far as its caches go: a cache built on the copy is this
+    /// surface's (a port-side stand-in for one upstream surface pointer).
+    #[must_use]
+    pub(crate) fn clone_sharing_cache(&self) -> Self {
+        let mut copy = self.clone();
+        copy.cache_slot = self.cache_slot.share();
+        copy
+    }
+
     /// The boundary curve memo of `CoincidenceCheck` (see `BoundaryMemo`).
     pub(crate) const fn boundary_memo(&self) -> &BoundaryMemo {
         &self.boundary_memo
@@ -1801,11 +1811,7 @@ impl Surface {
                 s.evaluate(uv, highest_u_deriv, highest_v_deriv, flags.only_upper_half)
             }
             // Preserve the cone's analytic position correction and inherited NURB derivatives.
-            SurfaceKind::Cone(s) => Ok(s
-                .evaluate(k, uv, highest_u_deriv, highest_v_deriv, flags)?
-                .chunks(highest_v_deriv + 1)
-                .map(<[Vec3]>::to_vec)
-                .collect()),
+            SurfaceKind::Cone(s) => s.evaluate_rows(k, uv, highest_u_deriv, highest_v_deriv, flags),
             SurfaceKind::SurfOfRevolution(s) => {
                 s.base()
                     .evaluate(uv, highest_u_deriv, highest_v_deriv, flags)
