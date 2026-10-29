@@ -3,7 +3,7 @@
 //!
 //! Valid primitive bodies must report no failure at level 2, and bodies broken by a
 //! direct edit must report the exact upstream report lines and `is_valid() == false`.
-//! Checks that need a dependency seam not yet ported (the WP2/WP4 packages of
+//! Checks that need a dependency seam not yet ported (the WP4 package of
 //! #1419) are `#[ignore]`d with the seam named, and a live test pins that they still
 //! return `Unported` so the ignore is removed when the seam is wired.
 
@@ -39,11 +39,11 @@ fn check(k: &mut Kernel, b: &mut Brep) -> BrepCheck {
     check_brep(k, b, CheckLevel::Level2).unwrap()
 }
 
-/// Pending: every non-empty body reaches `sm_AssertTestVertex1` (WP4) and
-/// `SmEdgeuse::HasDogLegNearPole` (WP2), and faces reach `sm_AssertTestFace32/37`
-/// (packages 2 and 4). `SmSurface::AssertValid` (package 3a) is wired.
+/// Pending: every non-empty body reaches `sm_AssertTestVertex1` (WP4, every level), and
+/// level 2 reaches `sm_AssertTestFace32/33/38` and `sm_AssertTestEdge13` (WP4). The
+/// WP2 helpers (#1472) and `SmSurface::AssertValid` (WP3a, #1460) are wired.
 #[test]
-#[ignore = "pending #1419 WP2/WP4 seams: sm_AssertTestVertex1, HasDogLegNearPole, sm_AssertTestFace32/33/37/38"]
+#[ignore = "pending #1419 WP4 seams (#1478): sm_AssertTestVertex1, sm_AssertTestFace32/33/38, sm_AssertTestEdge13"]
 fn valid_bodies_report_no_failures_at_level_2() {
     let mut k = Kernel::default();
     for (name, mut b) in bodies(&mut k) {
@@ -61,7 +61,7 @@ fn valid_bodies_are_pending_on_seams() {
     for (name, mut b) in bodies(&mut k) {
         match check_brep(&mut k, &mut b, CheckLevel::Level2) {
             Err(SolidError::Unported { unit, .. }) => assert!(
-                ["topology.vertex", "topology.edgeuse_p2", "topology.face_p4"].contains(&unit),
+                ["topology.vertex", "topology.edge", "topology.face_p4"].contains(&unit),
                 "{name}: {unit}"
             ),
             other => panic!("{name}: seam wired? {:?}", other.map(|c| c.lines())),
