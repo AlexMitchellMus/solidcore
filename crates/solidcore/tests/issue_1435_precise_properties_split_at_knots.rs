@@ -31,7 +31,11 @@ fn assert_rel(name: &str, got: f64, exact: f64) {
 
 #[test]
 fn flag_is_off_by_default() {
-    assert!(!Kernel::default().fixes.precise_properties_split_at_surface_knots);
+    assert!(
+        !Kernel::default()
+            .fixes
+            .precise_properties_split_at_surface_knots
+    );
 }
 
 /// The issue's repro: the cylindrical face of `create_cylinder`.
