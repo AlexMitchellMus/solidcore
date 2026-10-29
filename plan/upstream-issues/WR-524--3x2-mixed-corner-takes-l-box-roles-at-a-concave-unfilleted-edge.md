@@ -1,4 +1,4 @@
-#### WR-501. A 3x2 mixed-convexity fillet corner whose unfilleted edge is concave takes an L-shaped box's rail roles (status 1001)
+#### WR-524. A 3x2 mixed-convexity fillet corner whose unfilleted edge is concave takes an L-shaped box's rail roles (status 1001)
 - **Severity:** Wrong result
 - **Area:** Blends
 - **Location:** `source/SMLib/src/SmFilletCorner.cpp`, `SmFillet3x2MixedConvexityCorner::MakeCornerTopology` (`:4755`-`:4897`).

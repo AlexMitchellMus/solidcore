@@ -1,4 +1,4 @@
-//! tangency-labs/solidcore#1475 (WR-501): a bar 100 x 30 x 10 (x 0..100, y -15..15)
+//! tangency-labs/solidcore#1475 (WR-524): a bar 100 x 30 x 10 (x 0..100, y -15..15)
 //! joined with a boss r 20, height 20, on the origin (SolidCraft rig case fillets/1207).
 //! The bar's top front edge (y = -15, z = 10) and the boss's concave base arc over the
 //! bar (both halves, split at the cylinder's seam) are rounded r 2 together. They meet

@@ -14,7 +14,7 @@
 //! caller (`GetFilletSolverOfEdgeuse`, which has no effects) and swapped with them.
 //! Edge uses, faces and edges that upstream dereferences are input errors when
 //! missing. There is no recursion. With `Kernel::fixes.fillet_3x2_mixed_concave_side_edge`
-//! (WR-501, off by default) the roles of the two fillets follow the unfilleted edge's
+//! (WR-524, off by default) the roles of the two fillets follow the unfilleted edge's
 //! convexity, as tangency-labs/smlib@1255993: where that edge is concave, the convex
 //! fillet's rail crosses it and the concave one's crosses its continuation.
 
@@ -134,7 +134,7 @@ impl FilletCorner {
             .find(|&eu| eu != convex_eu && eu != concave_eu);
         // By default the concave fillet's rail crosses the unfilleted edge (pCrossEU) and
         // the convex one's its continuation (pExtEU), as in an L-shaped box. With
-        // `fillet_3x2_mixed_concave_side_edge` (WR-501) the roles follow the unfilleted
+        // `fillet_3x2_mixed_concave_side_edge` (WR-524) the roles follow the unfilleted
         // edge's convexity, as tangency-labs/smlib@1255993: that fork resolves the
         // in-between edge use and its convexity before the solvers.
         let (cross_eu, ext_eu, cross_id, ext_id) = if k.fixes.fillet_3x2_mixed_concave_side_edge {
