@@ -652,11 +652,14 @@ fn gen_case(rng: &mut Rng) -> In {
                 distance: F(if rng.chance(0.05) { 0.0 } else { rng.uniform(-3.0, 3.0) }),
             },
         },
-        3 => In::Drop {
-            curve: gen_curve(rng, 2.0, 28.0, rng.uniform(-20.0, 20.0)),
-            surface: gen_surface(rng),
-            lift: rng.chance(0.7),
-        },
+        3 => {
+            let z = rng.uniform(-20.0, 20.0);
+            In::Drop {
+                curve: gen_curve(rng, 2.0, 28.0, z),
+                surface: gen_surface(rng),
+                lift: rng.chance(0.7),
+            }
+        }
         _ => In::Lift {
             uv_curve: gen_curve(rng, 0.05, 0.95, 0.0),
             surface: gen_surface(rng),
