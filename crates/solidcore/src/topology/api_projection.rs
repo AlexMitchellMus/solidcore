@@ -598,7 +598,7 @@ mod tests {
 
         // the same circle without its NURB, owned by that edge (tolerance recorded)
         let mut bare = Ellipse::create_canonical_circle(&k, &frame, 2.0, None, None).unwrap();
-        bare.base_mut().set_from_gw_nurb(None).unwrap();
+        bare.base_mut().nurb = None;
         let mut curve = Curve::from(bare);
         let _ = curve.set_owner(owner, None);
         curve.set_owner_zone_tol_3d(Some(tol));
@@ -615,7 +615,7 @@ mod tests {
         // without the recorded edge tolerance the edge cannot be reached: an error, not a
         // deferral and not an unowned NURB
         let mut bare = Ellipse::create_canonical_circle(&k, &frame, 2.0, None, None).unwrap();
-        bare.base_mut().set_from_gw_nurb(None).unwrap();
+        bare.base_mut().nurb = None;
         let mut curve = Curve::from(bare);
         let _ = curve.set_owner(owner, None);
         let r = plane_projection(&k, &curve, point, normal, direction);
