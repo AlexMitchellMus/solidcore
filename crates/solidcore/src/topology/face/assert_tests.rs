@@ -491,7 +491,7 @@ mod tests {
             let mut b = b.clone();
             // move the inner loop's edge (and its vertex) 4 along x, dropping its UV
             // trims so they are rebuilt from the moved curve
-            let inner = crate::topology::loopuse::loop_edges(&b, loops[1]).unwrap();
+            let inner = loopuse::loop_edges(&b, loops[1]).unwrap();
             let shift = Axis2Placement::new(
                 Point3::new(4.0, 0.0, 0.0),
                 Vec3::new(0.0, 0.0, 1.0),

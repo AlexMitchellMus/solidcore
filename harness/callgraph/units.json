@@ -39702,13 +39702,6 @@
    },
    {
     "file": "source/SMLib/src/SmEdge.cpp",
-    "line": 2717,
-    "lines": 522,
-    "name": "SmEdge::CalcEdgeFormFromFaces",
-    "usr": "c:@S@SmEdge@F@CalcEdgeFormFromFaces#1"
-   },
-   {
-    "file": "source/SMLib/src/SmEdge.cpp",
     "line": 5460,
     "lines": 51,
     "name": "SmEdge::IsOnFaceEdgeForm",
