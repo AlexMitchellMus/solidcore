@@ -54,10 +54,12 @@
 //!   [`RotationalSweepGeometry::set_analytic_revolutions`] (off by default, so the
 //!   default follows `c9c5979`; `PrimitiveCreation`'s partial rotational sweep sets it
 //!   from `Kernel::fixes.revolve_analytic_profile_faces`), `EdgeSweepHigher` gives a line or circular arc its
-//!   cylinder, cone, sphere or torus in the B-spline surface's layout instead of
+//!   cylinder, cone, sphere or torus in the B-spline surface's layout (a line
+//!   falling along the axis: the reversed line's, its cylinder or cone built from the
+//!   low end and never inside out, as 9853e54's `AnalyticSurface`, #1463) instead of
 //!   `CopyAndAddAnalytics` of the B-spline. The trims are the analytic surface's own
-//!   boundary, in the loop order and orientation the B-spline's give; the normal is
-//!   still the B-spline's, taken before the copy as upstream.
+//!   boundary; the normal is the analytic surface's, taken before the copy as the
+//!   fork does (`AnalyticSurface` replaces `sm_CreateRotSrf`).
 //! - **Recursion.** None.
 
 use crate::curve::curve::p8::CurveIntersectOptions;
@@ -873,6 +875,28 @@ impl RotationalSweepGeometry {
         };
         let mut new_surf = Surface::from(new_surf);
 
+        // SolidCraft change (tangency-labs/smlib 0b143f7, 9853e54): the cylinder,
+        // cone, sphere or torus the curve sweeps, in place of the B-spline before its
+        // normal is taken (AnalyticSurface precedes it), which CopyAndAddAnalytics
+        // does not give
+        let analytic = if self.base.make_analytics && self.analytic_revolutions && !is_plane {
+            analytic_revolution(
+                k,
+                &copied_orig_edge_curve,
+                self.base_pt,
+                self.axis,
+                self.angle,
+                eps,
+                Some(&new_surf),
+            )?
+        } else {
+            None
+        };
+        let is_analytic = analytic.is_some();
+        if let Some(surface) = analytic {
+            new_surf = surface;
+        }
+
         let start_uv = new_surf.natural_uv_domain_with_nurb(k)?.min();
         let normal = new_surf.evaluate_normal(k, start_uv, Side::Left, Side::Left)?;
         out.normal = Some(normal);
@@ -891,28 +915,9 @@ impl RotationalSweepGeometry {
         }
 
         // Create corresponding analytics if requested
-        if self.base.make_analytics {
-            // SolidCraft change (tangency-labs/smlib 0b143f7): the cylinder, cone,
-            // sphere or torus in the B-spline's layout, which CopyAndAddAnalytics
-            // does not give
-            let analytic = if self.analytic_revolutions && !is_plane {
-                analytic_revolution(
-                    k,
-                    &copied_orig_edge_curve,
-                    self.base_pt,
-                    self.axis,
-                    self.angle,
-                    eps,
-                    Some(&new_surf),
-                )?
-            } else {
-                None
-            };
-            new_surf = match analytic {
-                Some(surface) => surface,
-                // Copy pNewSurf, when possible as an analytic surface
-                None => new_surf.copy_and_add_analytics(k)?,
-            };
+        if self.base.make_analytics && !is_analytic {
+            // Copy pNewSurf, when possible as an analytic surface
+            new_surf = new_surf.copy_and_add_analytics(k)?;
         }
 
         // eStartTrimCurveParam fixes which of the umin/vmin line of the surface
