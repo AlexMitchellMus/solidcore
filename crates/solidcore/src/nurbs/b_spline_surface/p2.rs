@@ -725,7 +725,7 @@ impl BSplineSurface {
             ends.push((s, e));
         }
         // The arcs meet end to end (in some order and direction) and close.
-        let mut open = vec![false; 4];
+        let mut open = [false; 4];
         for (i, (s, e)) in ends.iter().enumerate() {
             for p in [s, e] {
                 let others = ends
@@ -740,7 +740,10 @@ impl BSplineSurface {
                 }
             }
         }
-        if open.iter().any(|&o| o) || !(radius > tol_3d) || !(towards.length() > tol_3d) {
+        if open.iter().any(|&o| o)
+            || radius.partial_cmp(&tol_3d) != Some(core::cmp::Ordering::Greater)
+            || towards.length().partial_cmp(&tol_3d) != Some(core::cmp::Ordering::Greater)
+        {
             return Err(err());
         }
         let m = towards.unitize()?;
