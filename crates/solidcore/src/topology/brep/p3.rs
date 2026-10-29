@@ -167,6 +167,7 @@ fn ignore_soft<T>(r: Result<T>) -> Result<()> {
         Err(
             e @ (SolidError::Unported { .. }
             | SolidError::InvalidInput { .. }
+            | SolidError::PortInvariant { .. }
             | SolidError::NotFound { .. }),
         ) => Err(e),
         Ok(_) | Err(_) => Ok(()),
@@ -3547,7 +3548,7 @@ fn squeeze_loops(
 /// # Errors
 ///
 /// [`SolidError::Unported`] from a surface of revolution's `MakeNurb`.
-fn with_nurb<'a>(k: &Kernel, s: &'a Surface) -> Result<Option<Cow<'a, BSplineSurface>>> {
+pub(crate) fn with_nurb<'a>(k: &Kernel, s: &'a Surface) -> Result<Option<Cow<'a, BSplineSurface>>> {
     // a cone, sphere, torus or surface of revolution makes its NURB on the surface and
     // keeps it (`Surface::kind_with_nurb`, status ignored)
     if let Some(base) = s.revolution_base_with_nurb(k)? {
