@@ -3190,8 +3190,8 @@ mod tests {
             .iter()
             .filter(|case| matches!(case.source, CaseSource::Fixture { .. }))
             .collect();
-        assert_eq!(fixtures.len(), 93 + 16 + 312 + 27);
-        // 93 original, 16 vertex, 312 face_tail, 27 map_twin.
+        assert_eq!(fixtures.len(), 93 + 16 + 312 + 27 + 12);
+        // 93 original, 16 vertex, 312 face_tail, 27 map_twin, 12 replace (#1476).
         for case in fixtures {
             case.parse::<Inputs>().unwrap();
         }
