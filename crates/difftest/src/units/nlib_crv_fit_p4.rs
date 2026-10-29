@@ -336,7 +336,7 @@ fn gen_case(rng: &mut Rng) -> Inputs {
                 let z = if dim == 2 && rng.chance(0.5) { 0.0 } else { q[2] };
                 b.extend([q[0], q[1], z]);
             }
-            b.push(nvec as f64);
+            b.push(f64::from(nvec));
             for _ in 0..nvec {
                 b.extend(vec3(rng, s));
             }
