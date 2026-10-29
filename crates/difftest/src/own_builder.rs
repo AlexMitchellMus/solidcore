@@ -72,6 +72,7 @@ pub(crate) enum Built {
 /// How a runner's shim orders, names and initialises the B-rep it builds: the
 /// differences between `sc_edgeuse_graph.h` ([`Conventions::EDGEUSE_GRAPH`]) and
 /// `sc_topology_fixture.h` as the `topology.brep_p2` shim uses it.
+#[allow(clippy::struct_excessive_bools)] // independent per-shim switches
 pub(crate) struct Conventions<'a> {
     /// Register the B-rep's face, edge and vertex lists (`GetFaces`, `GetEdges`,
     /// `GetVertices`) before the traversal (the `topology.brep_p2` shim).
@@ -79,6 +80,12 @@ pub(crate) struct Conventions<'a> {
     /// The `init_gaps` walk also calls `GetVertexEdgeGap` on vertex uses that have one
     /// (`sc_topology_fixture.h`).
     pub(crate) vertex_edge_gaps: bool,
+    /// The traversal follows the vertex use lists after the loops' loop uses (the
+    /// `topology.vertex` shim's own `walk`) instead of before them.
+    pub(crate) vertex_lists_last: bool,
+    /// The traversal does not register the B-rep's edge list (`GetEdges`) before the
+    /// regions' contents (the `query.edge` shim's own `walk`).
+    pub(crate) skip_edge_list: bool,
     /// The owner identity of face `f`'s surface (when the surface has an owner).
     pub(crate) face_owner: &'a dyn Fn(FaceId) -> ObjectRef,
     /// The owner identity (and its B-rep's) of edge `e`'s curve (when it has an owner).
@@ -102,9 +109,81 @@ impl Conventions<'static> {
     pub(crate) const EDGEUSE_GRAPH: Self = Self {
         prefix_lists: false,
         vertex_edge_gaps: false,
+        vertex_lists_last: false,
+        skip_edge_list: false,
         face_owner: &arena_face_owner,
         edge_owner: &arena_edge_owner,
     };
+
+    /// `sc_topology_fixture.h` (`build`, then `walk` for the export of its
+    /// `run_brep_op`): the traversal alone, `GetVertexEdgeGap` in the `init_gaps` walk,
+    /// geometry owned under the `topology.vertexuse` import's identities
+    /// ([`fixture_key`]: a face `(SmFace_TYPE, 1 + index)`).
+    pub(crate) const TOPOLOGY_FIXTURE: Self = Self {
+        prefix_lists: false,
+        vertex_edge_gaps: true,
+        vertex_lists_last: false,
+        skip_edge_list: false,
+        face_owner: &fixture_face_owner,
+        edge_owner: &fixture_edge_owner,
+    };
+}
+
+/// The owner identity of an entity of kind `type_code` at arena index `index` under the
+/// `sc_topology_fixture.h` runners' naming (as `topology.brep_p2`'s `key_of`): a face is
+/// `(SmFace_TYPE, 1 + index)`, the surface owner the `topology.vertexuse` import gives;
+/// every other kind gets its own key range `(type << 32) | (1 + index)`.
+pub(crate) fn fixture_key(type_code: i64, index: u32) -> ObjectRef {
+    let key = 1 + u64::from(index);
+    ObjectRef {
+        type_code,
+        key: solidcore::geom::attribute::ObjectKey(
+            if type_code == solidcore::topology::face::p2::TYPE {
+                key
+            } else {
+                (type_code.unsigned_abs() << 32) | key
+            },
+        ),
+    }
+}
+
+fn fixture_face_owner(f: FaceId) -> ObjectRef {
+    fixture_key(solidcore::topology::face::p2::TYPE, f.index())
+}
+
+fn fixture_edge_owner(e: EdgeId) -> (ObjectRef, ObjectRef) {
+    // `SmBrep_TYPE` has no Rust constant; 16999 is the B-rep code the runners' `key_of`
+    // use
+    (
+        fixture_key(solidcore::topology::edge::TYPE, e.index()),
+        fixture_key(16999, 0),
+    )
+}
+
+/// [`build_with`] for a runner's own source type: any value whose JSON has the shape
+/// of a [`BrepIn`] (the runners' `BrepIn` copies, `kind`-tagged).
+///
+/// # Errors
+///
+/// As [`build`]; a harness error when the value is not a [`BrepIn`].
+pub(crate) fn build_as<T: serde::Serialize>(
+    k: &mut Kernel,
+    src: &T,
+    validate_only: bool,
+    init_gaps: bool,
+    conv: &Conventions<'_>,
+) -> Result<Option<Built>, HarnessError> {
+    let src: BrepIn = serde_json::to_value(src)
+        .and_then(serde_json::from_value)
+        .map_err(|e| harness(format!("B-rep source: {e}")))?;
+    build_with(k, &src, validate_only, init_gaps, conv)
+}
+
+/// The output of a failed build as the graph runners report the shim's NULL build:
+/// the deferral of an unported callee, else `brep_build_status_<status>`.
+pub(crate) fn failed_output(e: &SolidError) -> crate::Output {
+    crate::Output::unported(e)
+        .unwrap_or_else(|| crate::Output::err(format!("brep_build_status_{}", build_status(e))))
 }
 
 /// Builds the B-rep of `src` as the shim's `build` (`sc_edgeuse_graph.h`) does, with
@@ -222,18 +301,39 @@ pub(crate) fn build_with(
             )
         })?,
     };
+    finish(k, raw, validate_only, init_gaps, conv).map(Some)
+}
+
+/// The tail of a shim's `build` for a B-rep a runner made itself (or its build's
+/// error): `m_bValidateOnly` set, renumbered into the shim's traversal order under
+/// `conv`, and with `init_gaps` the shim's gap initialisation walk.
+///
+/// # Errors
+///
+/// As [`build`].
+pub(crate) fn finish(
+    k: &mut Kernel,
+    raw: Result<Brep, SolidError>,
+    validate_only: bool,
+    init_gaps: bool,
+    conv: &Conventions<'_>,
+) -> Result<Built, HarnessError> {
     let mut raw = match raw {
         Ok(b) => b,
-        Err(e) => return Ok(Some(Built::Failed(e))),
+        Err(e) => return Ok(Built::Failed(e)),
     };
     raw.set_validate_only(validate_only);
+    // the edges' cached end vertices as their uses give them (upstream has no such
+    // field; a merge inside the build, as `CreateWireEdgeFromCurve`'s glue of a
+    // degenerate curve, rewires only the uses)
+    raw.refresh_cached_topology();
     let mut b = renumber_with(&raw, conv)?;
     if init_gaps {
         if let Err(e) = init_gap_walk(k, &mut b, conv.vertex_edge_gaps) {
-            return Ok(Some(Built::Failed(e)));
+            return Ok(Built::Failed(e));
         }
     }
-    Ok(Some(Built::Brep(Box::new(b))))
+    Ok(Built::Brep(Box::new(b)))
 }
 
 /// The B-rep of an `.smb` file source as the shim's `build` makes it: `new SmBrep`,
@@ -268,8 +368,54 @@ pub(crate) fn read_with(
     Ok(Built::Brep(Box::new(b)))
 }
 
+/// A shim's `.smb` file source (`SmBrep::ReadFromFile(ctx, path, SM_ASCII, rebuild)`
+/// into `new (ctx) SmBrep()`), read by the Rust reader ([`crate::own_reader`]) and
+/// finished as a built source ([`finish`]): renumbered into the shim's traversal order
+/// under `conv`, so selector indices name the same entities on both sides. A failed
+/// Rust read is the build's error, as the shim's NULL build reports its status.
+///
+/// # Errors
+///
+/// A harness error when the file cannot be opened, or as [`finish`].
+pub(crate) fn read_as(
+    k: &mut Kernel,
+    path: &str,
+    rebuild: bool,
+    validate_only: bool,
+    init_gaps: bool,
+    conv: &Conventions<'_>,
+) -> Result<Built, HarnessError> {
+    let raw = crate::own_reader::read_file_rebuild(k, path, rebuild)?;
+    finish(k, raw, validate_only, init_gaps, conv)
+}
+
+/// Any source of the shim's `build` under `conv`: an `.smb` file read by the Rust
+/// reader ([`read_as`]), every other kind built by the Rust kernel ([`build_with`]).
+///
+/// # Errors
+///
+/// As [`read_as`] and [`build_with`].
+pub(crate) fn build_any(
+    k: &mut Kernel,
+    src: &BrepIn,
+    validate_only: bool,
+    init_gaps: bool,
+    conv: &Conventions<'_>,
+) -> Result<Built, HarnessError> {
+    if let BrepIn::File { rebuild, .. } = src {
+        let path = crate::units::topology_edgeuse_p1::path_of(Some(src))?;
+        return read_as(k, &path, *rebuild, validate_only, init_gaps, conv);
+    }
+    build_with(k, src, validate_only, init_gaps, conv)?
+        .ok_or_else(|| harness("own builder: a non-file source was not built"))
+}
+
 /// `new (ctx) SmBrep()` then `f` on it: the B-rep, or the build's error.
-fn in_new_brep(
+///
+/// # Errors
+///
+/// A harness error when the empty B-rep cannot be made.
+pub(crate) fn in_new_brep(
     k: &mut Kernel,
     f: impl FnOnce(&mut Kernel, &mut Brep) -> Result<(), SolidError>,
 ) -> Result<Result<Brep, SolidError>, HarnessError> {
@@ -279,7 +425,7 @@ fn in_new_brep(
 }
 
 /// `CreateFaceFromSurface(s, SmExtent2d(a, b), pFace)` on the infinite region.
-fn create_face(
+pub(crate) fn create_face(
     k: &mut Kernel,
     b: &mut Brep,
     surface: Surface,
@@ -361,7 +507,7 @@ fn set_curve_owner(b: &mut Brep, e: EdgeId) -> Result<(), SolidError> {
 
 /// `MakeEdgeTopology(region, a, b, edge)`, then the edge's curve as the shim sets it:
 /// `SetCurve(line, TRUE)`, `SetOwner`, `SetInterval(natural)`, `SetOrientation(SAME)`.
-fn edge_with_curve(
+pub(crate) fn edge_with_curve(
     k: &mut Kernel,
     b: &mut Brep,
     env: &mut NotifyEnv<'_>,
@@ -389,7 +535,8 @@ fn edge_with_curve(
     Ok(e)
 }
 
-fn line(a: Vec3, b: Vec3) -> Result<Curve, SolidError> {
+/// `SmBSplineCurve::CreateLineSegment(ctx, 3, a, b, c)`.
+pub(crate) fn line(a: Vec3, b: Vec3) -> Result<Curve, SolidError> {
     BSplineCurve::create_line_segment(3, a, b).map(Curve::from)
 }
 
@@ -661,7 +808,11 @@ fn ellipse_face(k: &mut Kernel, b: &mut Brep, i: &EllipseIn) -> Result<(), Solid
 /// (the arena order of a [`renumber_with`]ed B-rep); with `vertex_edge_gaps` each vertex
 /// use's `GetVertexEdgeGap` follows when `HasVertexEdgeGap`. Their statuses are
 /// ignored, as there; an unported callee is returned.
-fn init_gap_walk(k: &Kernel, b: &mut Brep, vertex_edge_gaps: bool) -> Result<(), SolidError> {
+pub(crate) fn init_gap_walk(
+    k: &Kernel,
+    b: &mut Brep,
+    vertex_edge_gaps: bool,
+) -> Result<(), SolidError> {
     use solidcore::topology::vertexuse as vu1;
     let vus: Vec<VertexuseId> = b.vertexuses().ids().collect();
     for vu in vus {
@@ -775,6 +926,18 @@ pub(crate) fn walk(b: &Brep) -> Result<Walk, SolidError> {
 ///
 /// A dangling id.
 pub(crate) fn walk_with(b: &Brep, prefix_lists: bool) -> Result<Walk, SolidError> {
+    walk_order(b, prefix_lists, false, false)
+}
+
+/// [`walk_with`]; with `vertex_lists_last` the vertex use lists are followed after the
+/// loops' loop uses ([`Conventions::vertex_lists_last`]); with `skip_edge_list` the edge
+/// list is not registered ahead of the traversal ([`Conventions::skip_edge_list`]).
+fn walk_order(
+    b: &Brep,
+    prefix_lists: bool,
+    vertex_lists_last: bool,
+    skip_edge_list: bool,
+) -> Result<Walk, SolidError> {
     let mut g = Walk {
         regions: Reg::new(),
         shells: Reg::new(),
@@ -801,8 +964,10 @@ pub(crate) fn walk_with(b: &Brep, prefix_lists: bool) -> Result<Walk, SolidError
     for id in solidcore::topology::brep::p1::regions(b, None)? {
         g.regions.add(Some(id), RegionId::index);
     }
-    for &id in b.edge_list() {
-        g.edges.add(Some(id), EdgeId::index);
+    if !skip_edge_list {
+        for &id in b.edge_list() {
+            g.edges.add(Some(id), EdgeId::index);
+        }
     }
     let (mut r, mut s, mut fu, mut lu, mut eu, mut vu, mut l, mut e, mut v) =
         (0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -903,17 +1068,28 @@ pub(crate) fn walk_with(b: &Brep, prefix_lists: bool) -> Result<Walk, SolidError
             vu += 1;
             more = true;
         }
-        while let Some(&id) = g.vertices.items.get(v) {
-            for &x in &b.vertex(id)?.vertexuses {
-                g.vertexuses.add(Some(x), VertexuseId::index);
+        if !vertex_lists_last {
+            while let Some(&id) = g.vertices.items.get(v) {
+                for &x in &b.vertex(id)?.vertexuses {
+                    g.vertexuses.add(Some(x), VertexuseId::index);
+                }
+                v += 1;
+                more = true;
             }
-            v += 1;
-            more = true;
         }
         while let Some(&id) = g.loops.items.get(l) {
             g.loopuses.add(b.loop_(id)?.loopuse, LoopuseId::index);
             l += 1;
             more = true;
+        }
+        if vertex_lists_last {
+            while let Some(&id) = g.vertices.items.get(v) {
+                for &x in &b.vertex(id)?.vertexuses {
+                    g.vertexuses.add(Some(x), VertexuseId::index);
+                }
+                v += 1;
+                more = true;
+            }
         }
     }
     Ok(g)
@@ -967,6 +1143,26 @@ impl Map<'_> {
     }
 }
 
+/// The renumbered second edge use of edge use `id`'s cached CCW gap
+/// (`m_sEdgeCCWEdgeGap3d.m_pEdgeuse1`, `edgeuse1`). A gap stays cached after
+/// `SmBrep::SqueezeEdge` takes its CCW neighbour out of the loop and deletes it
+/// (`ReadFromFile`'s healer on `Fillet/open_shell.smb`: the C++ gap then names a freed
+/// edge use, the Rust one an unlinked arena record). No live entity corresponds, so
+/// such a reference takes the convention of the C++ export import, which carries only
+/// the gap's `IsInit` flag: the edge use's own CCW edge use (itself without one). Every
+/// other unreached reference is still a renumbering error.
+fn stale_ccw_gap_edgeuse(
+    m: &Map<'_>,
+    edgeuse1: Option<EdgeuseId>,
+    ccw: Option<EdgeuseId>,
+    id: EdgeuseId,
+) -> Result<Option<EdgeuseId>, HarnessError> {
+    match edgeuse1 {
+        Some(x) if m.edgeuse(x).is_err() => Ok(Some(m.edgeuse(ccw.unwrap_or(id))?)),
+        _ => opt(edgeuse1, |x| m.edgeuse(x)),
+    }
+}
+
 fn opt<T, F: Fn(T) -> Result<T, HarnessError>>(
     x: Option<T>,
     f: F,
@@ -984,7 +1180,13 @@ fn opt<T, F: Fn(T) -> Result<T, HarnessError>>(
 ///
 /// A reached object referring to one the traversal did not reach.
 pub(crate) fn renumber_with(src: &Brep, conv: &Conventions<'_>) -> Result<Brep, HarnessError> {
-    let g = walk_with(src, conv.prefix_lists).map_err(solid)?;
+    let g = walk_order(
+        src,
+        conv.prefix_lists,
+        conv.vertex_lists_last,
+        conv.skip_edge_list,
+    )
+    .map_err(solid)?;
     // the geometry `src` itself counts as owned by its face / edge (`GetSurfaces` /
     // `GetCurves`, under its own naming; either errs on a face without surface or an
     // edge without curve, then any recorded owner counts): relabelled to the new ids
@@ -1178,7 +1380,8 @@ pub(crate) fn renumber_with(src: &Brep, conv: &Conventions<'_>) -> Result<Brep, 
         max_edge_face_gap.edgeuse = opt(max_edge_face_gap.edgeuse, |x| m.edgeuse(x))?;
         let mut edge_ccw_edge_gap = e.edge_ccw_edge_gap;
         edge_ccw_edge_gap.edgeuse0 = opt(edge_ccw_edge_gap.edgeuse0, |x| m.edgeuse(x))?;
-        edge_ccw_edge_gap.edgeuse1 = opt(edge_ccw_edge_gap.edgeuse1, |x| m.edgeuse(x))?;
+        edge_ccw_edge_gap.edgeuse1 =
+            stale_ccw_gap_edgeuse(&m, edge_ccw_edge_gap.edgeuse1, e.ccw, id)?;
         b.add_edgeuse_record(Edgeuse {
             edge: opt(e.edge, |x| m.edge(x))?,
             owner: match e.owner {

@@ -2016,6 +2016,32 @@ impl Surface {
         want: [bool; 3],
         expand_pos_boxes_by_zone_tol_3d: bool,
     ) -> Result<SurfaceBoxes> {
+        self.calculate_bounding_box_with_guesses(
+            k,
+            uv_domain,
+            want,
+            expand_pos_boxes_by_zone_tol_3d,
+            None,
+            None,
+        )
+    }
+
+    /// [`Surface::calculate_bounding_box`] with upstream's optional basis guesses
+    /// (`pOptPseudoBasisGuess`, `pOptPolarBasisGuess`): the B-spline override uses them,
+    /// an offset surface passes them to its base surface, the base body ignores them.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::calculate_bounding_box`].
+    pub fn calculate_bounding_box_with_guesses(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        want: [bool; 3],
+        expand_pos_boxes_by_zone_tol_3d: bool,
+        pseudo_guess: Option<&PseudoBox>,
+        polar_guess: Option<&PolarBox>,
+    ) -> Result<SurfaceBoxes> {
         match self.kind() {
             // (SmSurfOfRevolution inherits the B-spline override)
             SurfaceKind::Cone(_)
@@ -2038,8 +2064,8 @@ impl Surface {
                     normal: want[0],
                     pseudo: want[1],
                     polar: want[2],
-                    pseudo_guess: None,
-                    polar_guess: None,
+                    pseudo_guess,
+                    polar_guess,
                     expand_by_zone_tol: expand_pos_boxes_by_zone_tol_3d,
                     expand_tolerance,
                 };
@@ -2064,9 +2090,24 @@ impl Surface {
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) | SurfaceKind::SrfInVolume(_) => {
                 self.base_calculate_bounding_box(k, want, expand_pos_boxes_by_zone_tol_3d)
             }
-            SurfaceKind::OffsetSurface(s) => {
-                s.calculate_bounding_box(k, self, uv_domain, want, expand_pos_boxes_by_zone_tol_3d)
-            }
+            // (the basis guesses are passed along to the base surface's boxes)
+            SurfaceKind::OffsetSurface(s) => s.calculate_bounding_box_with(
+                k,
+                self,
+                uv_domain,
+                want,
+                expand_pos_boxes_by_zone_tol_3d,
+                |base| {
+                    base.calculate_bounding_box_with_guesses(
+                        k,
+                        uv_domain,
+                        [true, true, true],
+                        expand_pos_boxes_by_zone_tol_3d,
+                        pseudo_guess,
+                        polar_guess,
+                    )
+                },
+            ),
         }
     }
 
@@ -2099,9 +2140,10 @@ impl Surface {
 
     /// [`Surface::natural_uv_domain_with_nurb`] for the port's stand-in object key of
     /// this surface (where upstream names `this` in a solution, and reads its natural
-    /// domain only if and when it compares objects): a lazy plane's domain is read from
-    /// a NURB made on a copy, so taking the key does not make and keep the plane's NURB
-    /// ahead of upstream (a solver built next tests whether the surface has one).
+    /// domain only if and when it compares objects): a lazy plane's, cone's, sphere's,
+    /// torus's or surface of revolution's domain is read from a NURB made on a copy, so
+    /// taking the key does not make and keep the surface's NURB ahead of upstream (a
+    /// solver built next tests whether the surface has one).
     ///
     /// # Errors
     ///
@@ -2109,7 +2151,10 @@ impl Surface {
     pub(crate) fn stand_in_key_domain(&self, k: &Kernel) -> Result<Extent2d> {
         match self.kind() {
             SurfaceKind::Plane(p) => Ok(p.natural_uv_domain_without_keeping()),
-            _ => self.natural_uv_domain_with_nurb(k),
+            _ => match self.revolution_natural_uv_domain_without_keeping(k)? {
+                Some(domain) => Ok(domain),
+                None => self.natural_uv_domain_with_nurb(k),
+            },
         }
     }
 
