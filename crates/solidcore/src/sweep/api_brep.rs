@@ -87,6 +87,7 @@ pub use crate::primitive::primitive_creation::p2::{CornerRefusal, TaperCornerRef
 /// draft could not close (the fork's `SM_ERR_INVALID_INPUT` with `pOptRefusal` set;
 /// no B-rep is returned then).
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // returned once, by value, like the `Brep` of `create_taper_extrude`
 pub enum TaperExtrude {
     /// `rpResult`: the drafted solid.
     Solid(Brep),
