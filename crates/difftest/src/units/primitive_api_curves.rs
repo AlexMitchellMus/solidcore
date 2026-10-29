@@ -839,7 +839,7 @@ fn gen_removable(rng: &mut Rng) -> In {
     let mut knots: Vec<f64> = std::iter::repeat_n(0.0, p + 1)
         .chain(std::iter::repeat_n(1.0, p + 1))
         .collect();
-    for _ in 0..1 + rng.below(5) {
+    for _ in 0..=rng.below(5) {
         // a new knot, or (sometimes) one more copy of an earlier one
         let interior: Vec<f64> = knots
             .iter()

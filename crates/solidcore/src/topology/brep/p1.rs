@@ -534,22 +534,18 @@ pub fn tessellate_boundaries(
             None => None,
             Some(curve) => match curve.tessellate(k, &edge.interval, 0.0, angle_tol_deg, 1) {
                 Ok(t) if !t.points.is_empty() => Some(t.points),
-                Ok(_) => None,
                 Err(
                     err @ (SolidError::Unported { .. } | SolidError::PreparationRequired { .. }),
                 ) => return Err(err),
-                Err(_) => None,
+                Ok(_) | Err(_) => None,
             },
         };
-        match points {
-            Some(points) => {
-                out.vertex_counts.push(points.len());
-                out.points.extend(points);
-            }
-            None => {
-                out.complete = false;
-                out.vertex_counts.push(0);
-            }
+        if let Some(points) = points {
+            out.vertex_counts.push(points.len());
+            out.points.extend(points);
+        } else {
+            out.complete = false;
+            out.vertex_counts.push(0);
         }
     }
     Ok(out)

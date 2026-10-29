@@ -1747,7 +1747,7 @@ fn gen_tessellate(rng: &mut Rng) -> Inputs {
         _ => rng.uniform(0.5, 30.0),
     };
     let drop_curves = if rng.chance(0.2) {
-        (0..1 + rng.below(3)).map(|_| rng.below(4)).collect()
+        (0..=rng.below(3)).map(|_| rng.below(4)).collect()
     } else {
         Vec::new()
     };
