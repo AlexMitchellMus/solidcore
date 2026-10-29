@@ -2026,3 +2026,56 @@ impl UnitDiff for Runner {
         rust(&case.parse()?)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The `IsNurbCurveCircle` flag of the first op of `case` (Rust side).
+    fn first_flag(case: &Case) -> f64 {
+        let i: Inputs = case.parse().unwrap();
+        let out = rust(&i).unwrap();
+        let rec = out.values.get("rec").unwrap();
+        // construction status, op code 21, op status 0, flag
+        assert_eq!(&rec[..3], &[0.0, 21.0, 0.0], "{}", case.name);
+        rec[3]
+    }
+
+    /// The inline `IsNurbCurveCircle` cases reach both outcomes (the circle is built
+    /// for the issue's repro and the clean raw arcs; not for non-circles).
+    #[test]
+    fn nurb_circle_cases_reach_both_outcomes() {
+        let cases = nurb_circle_cases("curve.ellipse_p1");
+        let flag = |name: &str| {
+            first_flag(cases.iter().find(|c| c.name == name).unwrap())
+        };
+        for yes in [
+            "inc_issue_unit_circle",
+            "inc_raw_quarter",
+            "inc_raw_quarter_weights_x2",
+            "inc_raw_full_4span",
+            "inc_raw_tilted_120",
+            "inc_circle_arc_1",
+            "inc_ellipse_equal_radii",
+        ] {
+            assert_eq!(flag(yes), 1.0, "{yes}");
+        }
+        for no in [
+            "inc_raw_non_rational",
+            "inc_raw_rational_cubic",
+            "inc_raw_hyperbola_weight",
+            "inc_raw_degenerate_point",
+            "inc_raw_collinear",
+            "inc_ellipse_unequal_radii",
+        ] {
+            assert_eq!(flag(no), 0.0, "{no}");
+        }
+        let gen: Vec<f64> = cases
+            .iter()
+            .filter(|c| c.name.starts_with("incgen"))
+            .map(first_flag)
+            .collect();
+        let yes = gen.iter().filter(|&&f| f == 1.0).count();
+        assert!(yes > gen.len() / 5 && gen.len() - yes > gen.len() / 10, "{yes} of {}", gen.len());
+    }
+}
