@@ -144,7 +144,8 @@ fn planes(
             p.z + n.z * r.offset,
         );
         let tilted = Vec3::new(n.x + r.tilt[0], n.y + r.tilt[1], n.z + r.tilt[2]);
-        if !(tilted.x * tilted.x + tilted.y * tilted.y + tilted.z * tilted.z > 1e-12) {
+        let n2 = tilted.x * tilted.x + tilted.y * tilted.y + tilted.z * tilted.z;
+        if n2.is_nan() || n2 <= 1e-12 {
             return Ok(None);
         }
         faces.push(face);
