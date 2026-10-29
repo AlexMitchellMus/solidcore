@@ -99,7 +99,7 @@ enum Body {
     /// `SmApiCreateTorus(0, major, minor)`.
     Torus { major: f64, minor: f64 },
     /// `SmApiCreateBox(0, size)` with face 0's surface replaced by its
-    /// `CopyAnalyticAsNurb` (`ReplaceSurface(face, nurb, FALSE)`), as SM_API_test
+    /// `CopyAnalyticAsNurb` (`ReplaceSurface(face, nurb, FALSE)`), as `SM_API_test`
     /// `TestSmBrepCopyRepresentation` makes a mixed model.
     MixedBox { size: [f64; 3] },
 }
@@ -424,7 +424,7 @@ fn prefilled(prefill: u8) -> SolidResult<Part> {
 /// `create_box(0, size)`, then `circular_fillet(fillet)` when `fillet > 0`.
 fn build_box(k: &mut Kernel, size: [f64; 3], fillet: f64) -> SolidResult<Brep> {
     let mut b =
-        solidcore::primitive::api_primitives::create_box(k, Vec3::ZERO, size[0], size[1], size[2])?;
+        api_primitives::create_box(k, Vec3::ZERO, size[0], size[1], size[2])?;
     if fillet > 0.0 {
         solidcore::blend::fillet_executive::api::circular_fillet(k, &mut b, fillet)?;
     }
