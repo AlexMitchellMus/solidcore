@@ -12,6 +12,13 @@
 //!   tangency-labs/smlib 9853e54, which that flag ports, builds them from the low end
 //!   upwards, never inside out.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)] // test helpers
+
 use solidcore::curve::curve::Curve;
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::mass::integrator::properties::{brep_volume, PropertyAttributes};
@@ -126,7 +133,7 @@ fn seg(a: Vec3, b: Vec3) -> Curve {
 /// manifold solid of the profile's swept volume.
 fn revolve_cones(k: &mut Kernel, reverse: bool, angle: f64, scale: f64) -> Vec<Cone> {
     let p = |x: f64, z: f64| Vec3::new(x * scale, 0.0, z * scale);
-    let mut pts = vec![
+    let mut pts = [
         p(8.0, 0.0),
         p(30.0, 0.0),
         p(30.0, 22.0),
