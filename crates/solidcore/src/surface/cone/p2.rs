@@ -266,7 +266,9 @@ impl Cone {
     pub fn lean_cylinder(&self, k: &Kernel, slope: f64, neutral_height: f64) -> Result<Cone> {
         let err = || SolidError::sm_err("surface::cone::p2::Cone::lean_cylinder");
         let canonical = self.canonical();
-        if !self.is_cylinder() || !(canonical.radius > EFF_ZERO) {
+        if !self.is_cylinder()
+            || canonical.radius.partial_cmp(&EFF_ZERO) != Some(core::cmp::Ordering::Greater)
+        {
             return Err(err());
         }
         let origin = canonical.origin.origin();
@@ -287,7 +289,7 @@ impl Cone {
                 let d = p - origin;
                 let height = d.dot(axis);
                 let radius = canonical.radius + slope * (height - neutral_height);
-                if !(radius > EFF_ZERO) {
+                if radius.partial_cmp(&EFF_ZERO) != Some(core::cmp::Ordering::Greater) {
                     return Err(err());
                 }
                 let moved =
