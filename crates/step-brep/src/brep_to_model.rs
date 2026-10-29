@@ -161,6 +161,23 @@ fn surface(surface: &solidcore::surface::surface::Surface) -> Result<ModelSurfac
     }
 }
 
+fn edge_start_is_end(brep: &Brep, edge: solidcore::topology::EdgeId) -> bool {
+    use solidcore::topology::edge;
+    let Ok((start, end)) = edge::start_end_vertices(brep, edge) else {
+        return false;
+    };
+    match (start, end) {
+        (Some(start), Some(end)) if start == end => true,
+        (Some(start), Some(end)) => {
+            let Ok(a) = brep.vertex(start) else { return false; };
+            let Ok(b) = brep.vertex(end) else { return false; };
+            let (a, b) = (a.point, b.point);
+            (a.x - b.x).abs() < 1.0e-7 && (a.y - b.y).abs() < 1.0e-7 && (a.z - b.z).abs() < 1.0e-7
+        }
+        _ => false,
+    }
+}
+
 /// Maps one B-rep to the neutral STEP model.
 pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
     let vertex_ids = brep.vertex_list().to_vec();
@@ -200,7 +217,11 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
                 Some(solidcore::surface::surface::p2::SurfaceKind::Plane(_))
             );
             for (use_index, edgeuse) in edgeuses.into_iter().enumerate() {
-                if !planar_face && let Ok((Some(uv_curve), _)) = eu::uv_trim_curve(brep, edgeuse) {
+                let edge = eu::edge(brep, edgeuse).map_err(|e| err(e.to_string()))?.ok_or_else(|| err("edgeuse has no edge"))?;
+                if !planar_face {
+                    let Ok((Some(uv_curve), _)) = eu::uv_trim_curve(brep, edgeuse) else {
+                        continue;
+                    };
                     let interval = uv_curve.natural_interval();
                     let (low, high) = (interval.min(), interval.max());
                     let mut uv = Vec::with_capacity(65);
@@ -217,10 +238,32 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
                         if opposite {
                             uv.reverse();
                         }
-                        pcurves.insert((id.index() as u64 + 1, loop_index, use_index), uv);
+                        let mut curves = vec![uv.clone()];
+                        let periodic = matches!(
+                            face.surface.as_ref().map(|surface| surface.kind()),
+                            Some(
+                                solidcore::surface::surface::p2::SurfaceKind::Cone(_)
+                                    | solidcore::surface::surface::p2::SurfaceKind::Sphere(_)
+                                    | solidcore::surface::surface::p2::SurfaceKind::Torus(_)
+                                    | solidcore::surface::surface::p2::SurfaceKind::SurfOfRevolution(_)
+                                    | solidcore::surface::surface::p2::SurfaceKind::BSpline(_)
+                            )
+                        );
+                        if periodic {
+                            let closed_edge = edge_start_is_end(brep, edge);
+                            if closed_edge {
+                                let mean_u = uv.iter().map(|p| p[0]).sum::<f64>() / uv.len() as f64;
+                                let shift = if mean_u > 180.0 { -360.0 } else { 360.0 };
+                                let mut other = uv.clone();
+                                for point in &mut other {
+                                    point[0] += shift;
+                                }
+                                curves.push(other);
+                            }
+                        }
+                        pcurves.insert((id.index() as u64 + 1, loop_index, use_index), curves);
                     }
                 }
-                let edge = eu::edge(brep, edgeuse).map_err(|e| err(e.to_string()))?.ok_or_else(|| err("edgeuse has no edge"))?;
                 let forward = eu::orientation(brep, edgeuse).map_err(|e| err(e.to_string()))? == solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType::Same;
                 oriented.push(OrientedEdge { edge: *edge_index.get(&edge).ok_or_else(|| err("edgeuse edge not indexed"))?, forward });
             }
@@ -272,5 +315,12 @@ mod tests {
             assert!(!body.vertices.is_empty());
             assert!(body.faces.iter().any(|face| matches!(face.surface, ModelSurface::Plane { .. } | ModelSurface::Sphere { .. })));
         }
+        let cylinder = api::create_cylinder(&mut kernel, Point3::new(0.0, 0.0, -2.0), 2.0, 4.0).unwrap();
+        let model = brep_to_model(&cylinder).expect("cylinder to model");
+        assert!(
+            model.pcurves.values().any(|curves| curves.len() >= 2),
+            "cylinder seam edge should carry two pcurves: {:?}",
+            model.pcurves
+        );
     }
 }

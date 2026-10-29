@@ -331,5 +331,5 @@ pub struct Model {
     pub assembly_instances: usize,
     /// Surface-space trim curves, keyed by face/loop/edge use. Importers that carry
     /// pcurves populate this; exporters that do not need them leave it empty.
-    pub pcurves: std::collections::BTreeMap<PcurveKey, Vec<[f64; 2]>>,
+    pub pcurves: std::collections::BTreeMap<PcurveKey, Vec<Vec<[f64; 2]>>>,
 }

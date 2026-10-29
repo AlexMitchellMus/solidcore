@@ -524,7 +524,7 @@ fn write_pcurve_edge(
     vertex_ids: &[u64],
     surface_id: u64,
     context_2d: u64,
-    uv: &[[f64; 2]],
+    uv_curves: &[Vec<[f64; 2]>],
 ) -> Result<u64, ExportError> {
     let edge = body.edges.get(index).ok_or_else(|| {
         ExportError::new(format!("body #{} references missing edge {index}", body.step_id))
@@ -536,33 +536,38 @@ fn write_pcurve_edge(
         ExportError::new(format!("body #{} edge #{index} has a missing end vertex", body.step_id))
     })?;
     let curve_3d = write_curve(entities, points, &edge.curve)?;
-    let mut uv_ids = Vec::with_capacity(uv.len());
-    for point in uv {
-        uv_ids.push(point2(entities, *point)?);
+    let mut pcurves = Vec::with_capacity(uv_curves.len());
+    for uv in uv_curves {
+        let mut uv_ids = Vec::with_capacity(uv.len());
+        for point in uv {
+            uv_ids.push(point2(entities, *point)?);
+        }
+        let count = uv.len();
+        let points = uv_ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
+        let mut knots: Vec<f64> = vec![0.0];
+        for index in 1..count.saturating_sub(1) {
+            knots.push(index as f64);
+        }
+        knots.push((count.saturating_sub(1)) as f64);
+        let mut multi = vec![2u32];
+        for _ in 1..count.saturating_sub(1) {
+            multi.push(1);
+        }
+        multi.push(2);
+        let knots_text = knots.iter().map(|v| number(*v)).collect::<Result<Vec<_>, _>>()?.join(",");
+        let multi_text = multi.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+        let pcurve_curve = entities.add(format!(
+            "B_SPLINE_CURVE_WITH_KNOTS('',1,({points}),.UNSPECIFIED.,.U.,.U.,({multi_text}),({knots_text}),.UNSPECIFIED.)"
+        ));
+        let representation = entities.add(format!(
+            "DEFINITIONAL_REPRESENTATION('',(#{pcurve_curve}),#{context_2d})"
+        ));
+        pcurves.push(entities.add(format!("PCURVE('',#{surface_id},#{representation})")));
     }
-    let count = uv.len();
-    let points = uv_ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
-    let mut knots: Vec<f64> = vec![0.0];
-    for index in 1..count.saturating_sub(1) {
-        knots.push(index as f64);
-    }
-    knots.push((count.saturating_sub(1)) as f64);
-    let mut multi = vec![2u32];
-    for _ in 1..count.saturating_sub(1) {
-        multi.push(1);
-    }
-    multi.push(2);
-    let knots_text = knots.iter().map(|v| number(*v)).collect::<Result<Vec<_>, _>>()?.join(",");
-    let multi_text = multi.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
-    let pcurve_curve = entities.add(format!(
-        "B_SPLINE_CURVE_WITH_KNOTS('',1,({points}),.UNSPECIFIED.,.U.,.U.,({multi_text}),({knots_text}),.UNSPECIFIED.)"
-    ));
-    let representation = entities.add(format!(
-        "DEFINITIONAL_REPRESENTATION('',(#{pcurve_curve}),#{context_2d})"
-    ));
-    let pcurve = entities.add(format!("PCURVE('',#{surface_id},#{representation})"));
+    let pcurve_refs = pcurves.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
+    let kind = if pcurves.len() > 1 { "SEAM_CURVE" } else { "SURFACE_CURVE" };
     let surface_curve = entities.add(format!(
-        "SURFACE_CURVE('',#{curve_3d},(#{pcurve}),.PCURVE_S1.)"
+        "{kind}('',#{curve_3d},({pcurve_refs}),.PCURVE_S1.)"
     ));
     let sense = if edge.same_sense { ".T." } else { ".F." };
     Ok(entities.add(format!(
@@ -570,7 +575,7 @@ fn write_pcurve_edge(
     )))
 }
 
-fn shell(entities: &mut Entities, body: &Body, pcurves: &std::collections::BTreeMap<step_import::model::PcurveKey, Vec<[f64; 2]>>, context: u64) -> Result<u64, ExportError> {
+fn shell(entities: &mut Entities, body: &Body, pcurves: &std::collections::BTreeMap<step_import::model::PcurveKey, Vec<Vec<[f64; 2]>>>, context: u64) -> Result<u64, ExportError> {
     if body.shells.len() != 1 {
         return Err(ExportError::new(format!(
             "body #{} has {} shells; step-export supports one closed shell",
@@ -1866,11 +1871,24 @@ mod tests {
     fn writes_pcurves_when_the_model_carries_them() {
         let mut model = triangle();
         let face = model.bodies[0].faces[0].step_id;
-        model.pcurves.insert((face, 0, 0), vec![[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]]);
+        model.pcurves.insert((face, 0, 0), vec![vec![[0.0, 0.0], [0.5, 0.5], [1.0, 1.0]]]);
         let text = write(&model).expect("pcurve write");
         assert!(text.contains("PCURVE('',"), "{text}");
         assert!(text.contains("SURFACE_CURVE("), "{text}");
         assert!(text.contains("DEFINITIONAL_REPRESENTATION("), "{text}");
+    }
+
+    #[test]
+    fn writes_seam_curves_when_an_edge_has_two_pcurves() {
+        let mut model = triangle();
+        let face = model.bodies[0].faces[0].step_id;
+        model.pcurves.insert(
+            (face, 0, 0),
+            vec![vec![[0.0, 0.0], [1.0, 1.0]], vec![[360.0, 0.0], [361.0, 1.0]]],
+        );
+        let text = write(&model).expect("seam write");
+        assert!(text.contains("SEAM_CURVE("), "{text}");
+        assert!(text.matches("PCURVE('',").count() >= 2, "{text}");
     }
 
     #[test]
