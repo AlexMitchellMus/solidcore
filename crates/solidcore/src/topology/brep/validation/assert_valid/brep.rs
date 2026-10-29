@@ -288,10 +288,26 @@ fn tolerances_validate_only(k: &mut Kernel, b: &mut Brep, cx: &mut Cx<'_>) -> Re
 
             // report bad edgeuse start and end vertex/edge and vertex/face gaps
             let gaps = [
-                (0, start_edge_gap.then_some(start.vertex_edge_gap.gap_3d), start_tol),
-                (1, start_face_gap.then_some(start.vertex_face_gap.gap_3d), start_tol),
-                (2, end_edge_gap.then_some(end.vertex_edge_gap.gap_3d), end_tol),
-                (3, end_face_gap.then_some(end.vertex_face_gap.gap_3d), end_tol),
+                (
+                    0,
+                    start_edge_gap.then_some(start.vertex_edge_gap.gap_3d),
+                    start_tol,
+                ),
+                (
+                    1,
+                    start_face_gap.then_some(start.vertex_face_gap.gap_3d),
+                    start_tol,
+                ),
+                (
+                    2,
+                    end_edge_gap.then_some(end.vertex_edge_gap.gap_3d),
+                    end_tol,
+                ),
+                (
+                    3,
+                    end_face_gap.then_some(end.vertex_face_gap.gap_3d),
+                    end_tol,
+                ),
             ];
             for (index, gap, tol) in gaps {
                 let ok = !need || gap.is_none_or(|g| g <= tol / 2.0);
