@@ -1,4 +1,4 @@
-//! WR-500: the four equal rounds of a square pyramid's apex (SolidCraft oracle case 37).
+//! WR-502: the four equal rounds of a square pyramid's apex (SolidCraft oracle case 37).
 //! SMLib's `CreateSphereFromArcs` only takes three arcs, so the four-sided corner gets an
 //! approximating blend whose top is 0.2 mm low; with
 //! `Kernel::fixes.fillet_corner_sphere_from_four_arcs` the corner is the sphere the four
