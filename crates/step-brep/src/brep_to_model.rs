@@ -199,14 +199,20 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
                 if let Ok((Some(uv_curve), _)) = eu::uv_trim_curve(brep, edgeuse) {
                     let interval = uv_curve.natural_interval();
                     let (low, high) = (interval.min(), interval.max());
-                    let mut uv = Vec::with_capacity(17);
-                    for step in 0..=16 {
-                        let t = low + (high - low) * step as f64 / 16.0;
+                    let mut uv = Vec::with_capacity(65);
+                    for step in 0..=64 {
+                        let t = low + (high - low) * step as f64 / 64.0;
                         if let Ok(p) = uv_curve.evaluate_point(&pcurve_kernel, t) {
                             uv.push([p.x, p.y]);
                         }
                     }
                     if uv.len() >= 2 {
+                        let opposite = eu::orientation(brep, edgeuse)
+                            .map(|orientation| orientation != solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType::Same)
+                            .unwrap_or(false);
+                        if opposite {
+                            uv.reverse();
+                        }
                         pcurves.insert((id.index() as u64 + 1, loop_index, use_index), uv);
                     }
                 }

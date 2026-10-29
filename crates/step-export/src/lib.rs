@@ -490,7 +490,7 @@ fn write_bspline_curve(
     curve: &step_import::model::BSplineCurve,
 ) -> Result<u64, ExportError> {
     let ids = curve.points.iter().map(|&point| points.shared(entities, point)).collect::<Result<Vec<_>, _>>()?;
-    let list = format!("({})", ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(","));
+    let list = ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
     let mults = curve.mults.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
     let knots = curve.knots.iter().map(|v| number(*v)).collect::<Result<Vec<_>, _>>()?.join(",");
     let text = if let Some(weights) = &curve.weights {
@@ -540,12 +540,25 @@ fn write_pcurve_edge(
     for point in uv {
         uv_ids.push(point2(entities, *point)?);
     }
-    let polyline = entities.add(format!(
-        "POLYLINE('',({}))",
-        uv_ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",")
+    let count = uv.len();
+    let points = uv_ids.iter().map(|id| format!("#{id}")).collect::<Vec<_>>().join(",");
+    let mut knots: Vec<f64> = vec![0.0];
+    for index in 1..count.saturating_sub(1) {
+        knots.push(index as f64);
+    }
+    knots.push((count.saturating_sub(1)) as f64);
+    let mut multi = vec![2u32];
+    for _ in 1..count.saturating_sub(1) {
+        multi.push(1);
+    }
+    multi.push(2);
+    let knots_text = knots.iter().map(|v| number(*v)).collect::<Result<Vec<_>, _>>()?.join(",");
+    let multi_text = multi.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+    let pcurve_curve = entities.add(format!(
+        "B_SPLINE_CURVE_WITH_KNOTS('',1,({points}),.UNSPECIFIED.,.U.,.U.,({multi_text}),({knots_text}),.UNSPECIFIED.)"
     ));
     let representation = entities.add(format!(
-        "DEFINITIONAL_REPRESENTATION('',(#{polyline}),#{context_2d})"
+        "DEFINITIONAL_REPRESENTATION('',(#{pcurve_curve}),#{context_2d})"
     ));
     let pcurve = entities.add(format!("PCURVE('',#{surface_id},#{representation})"));
     let surface_curve = entities.add(format!(
