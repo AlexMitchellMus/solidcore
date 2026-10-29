@@ -1160,7 +1160,7 @@ enum OpIn {
         a: f64,
         b: f64,
     },
-    /// `IsOnFaceEdgeForm(&dMaxGap3d)` (Edge AssertValid test 13) after translating the
+    /// `IsOnFaceEdgeForm(&dMaxGap3d)` (`SmEdge::AssertValid` test 13) after translating the
     /// edge curve by `d` (`SmCurve::Transform`; no move for zero).
     EdgeForm {
         e: i64,
