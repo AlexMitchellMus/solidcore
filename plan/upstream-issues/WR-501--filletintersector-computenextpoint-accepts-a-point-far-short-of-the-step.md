@@ -1,4 +1,4 @@
-#### WR-500. `SmFilletIntersector::ComputeNextPoint` accepts a next point far short of its step, and the rail doubles back (wrong body: the strip the round removes)
+#### WR-501. `SmFilletIntersector::ComputeNextPoint` accepts a next point far short of its step, and the rail doubles back (wrong body: the strip the round removes)
 - **Severity:** Wrong result
 - **Area:** Blends
 - **Location:** `source/SMLib/src/SmFilletIntersector.cpp`, `SmFilletIntersector::ComputeNextPoint`; the point comes from `SmFilletSolver::StepSolve` (`source/SMLib/src/SmFilletSolver.cpp`, the NewtonRaphson solve with `SetPlaneAdjusts(TRUE)` retry, about `:3020`-`:3050`).

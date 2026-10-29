@@ -1311,7 +1311,7 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
             return Ok(out);
         }
 
-        // (not upstream, `fixes.fillet_trace_rejects_short_step`, WR-500) a point far short of the
+        // (not upstream, `fixes.fillet_trace_rejects_short_step`, WR-501) a point far short of the
         // step is another root of the equations, not the next point of this trace
         if k.fixes.fillet_trace_rejects_short_step
             && !step.clipped
