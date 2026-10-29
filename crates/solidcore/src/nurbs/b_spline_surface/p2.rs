@@ -525,6 +525,9 @@ impl BSplineSurface {
         let total_curves = arcs.len();
 
         // no work - not given exactly 3 curves
+        if total_curves == 4 && k.fixes.fillet_corner_sphere_from_four_arcs {
+            return Self::sphere_from_four_arcs(k, arcs, tol_3d);
+        }
         if total_curves != 3 {
             return Err(SolidError::sm_err(OP_SPHERE)); // Only works for 3 now
         }
@@ -693,6 +696,52 @@ impl BSplineSurface {
             orients,
             sphere,
         })
+    }
+
+    /// [`Self::create_sphere_from_arcs`] for four arcs of one centre and radius that close a
+    /// loop (`Kernel::fixes.fillet_corner_sphere_from_four_arcs`; not upstream): the whole
+    /// sphere, a half-meridian revolved a turn about an axis square to the way the four arcs
+    /// face, its seam on the far side, so the poles and the seam stay clear of the loop.
+    fn sphere_from_four_arcs(k: &Kernel, arcs: &[SmCurve], tol_3d: f64) -> Result<SphereFromArcs> {
+        let err = || SolidError::sm_err(OP_SPHERE);
+        let mut centre = Point3::ZERO;
+        let mut radius = 0.0;
+        let mut towards = Vec3::ZERO;
+        let mut ends: Vec<(Point3, Point3)> = Vec::new();
+        for (i, a) in arcs.iter().enumerate() {
+            let arc = curve_is_arc(k, a, 5, tol_3d)?.ok_or_else(err)?;
+            let c = arc.frame.origin();
+            if i == 0 {
+                (centre, radius) = (c, arc.radius);
+            } else if c.distance(centre) > tol_3d || (arc.radius - radius).abs() > tol_3d {
+                return Err(err());
+            }
+            let ivl = a.natural_interval();
+            let (s, e) = (a.evaluate_point(k, ivl.min())?, a.evaluate_point(k, ivl.max())?);
+            towards = towards + (s - centre) + (e - centre);
+            ends.push((s, e));
+        }
+        // The arcs meet end to end (in some order and direction) and close.
+        let mut open = vec![false; 4];
+        for (i, (s, e)) in ends.iter().enumerate() {
+            for p in [s, e] {
+                let others = ends.iter().enumerate().filter(|(j, (s2, e2))| *j != i && (p.distance(*s2) < tol_3d || p.distance(*e2) < tol_3d)).count();
+                if others != 1 {
+                    *open.get_mut(i).ok_or_else(err)? = true;
+                }
+            }
+        }
+        if open.iter().any(|&o| o) || !(radius > tol_3d) || !(towards.length() > tol_3d) {
+            return Err(err());
+        }
+        let m = towards.unitize()?;
+        // Any direction square to `m` is the axis; the seam runs the way away from the loop.
+        let helper = if m.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
+        let axis = m.cross(helper).unitize()?;
+        let frame = Axis2Placement::new(centre, -m, axis);
+        let meridian = BSplineCurve::create_circle_segment(3, &frame, radius, -90.0, 90.0, NurbCircleParam::Quadratic)?;
+        let sphere = Self::create_surf_of_revolution(k, &meridian, centre, axis, 360.0, false, None)?;
+        Ok(SphereFromArcs { ccw_arcs: (0..4).collect(), orients: vec![OrientType::Same; 4], sphere })
     }
 
     /// The surface of revolution of `gen_curve` about the axis through `origin` along
