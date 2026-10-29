@@ -2144,9 +2144,7 @@ impl OdeArea<'_> {
                     let &[a, b] = pair else {
                         continue;
                     };
-                    for v in &mut piece_y {
-                        *v = 0.0;
-                    }
+                    piece_y.fill(0.0);
                     // A failed inner integration is not a zero-area contribution.
                     runge_kutta_ode_integrate(
                         &eval,

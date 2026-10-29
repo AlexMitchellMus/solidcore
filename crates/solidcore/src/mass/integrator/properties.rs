@@ -356,7 +356,10 @@ pub fn boundary_properties(
             let &[a, b] = pair else {
                 continue;
             };
-            if k.fixes.precise_properties_split_at_surface_knots && !(b > a) {
+            // (`!(dB > dA)`: also an unordered pair)
+            if k.fixes.precise_properties_split_at_surface_knots
+                && b.partial_cmp(&a) != Some(std::cmp::Ordering::Greater)
+            {
                 continue; // a crossing at a knot
             }
             let mut status = Err(SolidError::sm_err(OP));
