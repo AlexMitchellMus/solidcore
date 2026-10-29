@@ -49,9 +49,16 @@ fn unported(upstream: &'static str, unit: &'static str) -> SolidError {
 
 /// `SmEdgeuse::HasDogLegNearPole()` of `eu`: `true` when the UV trim's control polygon
 /// turns to follow a singular surface boundary (Edgeuse test 20 fails on `true`).
-pub(super) fn has_dog_leg_near_pole(_k: &mut Kernel, _b: &mut Brep, _eu: EdgeuseId) -> Result<bool> {
+pub(super) fn has_dog_leg_near_pole(
+    _k: &mut Kernel,
+    _b: &mut Brep,
+    _eu: EdgeuseId,
+) -> Result<bool> {
     // UNPORTED(topology.edgeuse_p2): SmEdgeuse::HasDogLegNearPole
-    Err(unported("SmEdgeuse::HasDogLegNearPole", "topology.edgeuse_p2"))
+    Err(unported(
+        "SmEdgeuse::HasDogLegNearPole",
+        "topology.edgeuse_p2",
+    ))
 }
 
 /// `m_pUVTrimCurve->AssertNoPeriodicJump(bClosedU, bClosedV, sUVDomain)`: `true` when
@@ -79,7 +86,10 @@ pub(super) fn is_loopuse_side_in_surface(
     _lu: LoopuseId,
 ) -> Result<bool> {
     // UNPORTED(topology.loopuse): SmLoopuse::IsLoopuseSideInSurface
-    Err(unported("SmLoopuse::IsLoopuseSideInSurface", "topology.loopuse"))
+    Err(unported(
+        "SmLoopuse::IsLoopuseSideInSurface",
+        "topology.loopuse",
+    ))
 }
 
 /// `SmVertex::CheckPointers()` of `v`. Vertex test 2.
@@ -122,7 +132,10 @@ pub(super) fn surface_assert_valid(
     _key: ObjectKey,
 ) -> Result<bool> {
     // UNPORTED(surface.surface_assert_valid): SmSurface::AssertValid
-    Err(unported("SmSurface::AssertValid", "surface.surface_assert_valid"))
+    Err(unported(
+        "SmSurface::AssertValid",
+        "surface.surface_assert_valid",
+    ))
 }
 
 /// `SmOffsetCurve::AssertValid` of `curve` (an offset curve), reporting about `key`.
@@ -146,7 +159,10 @@ pub(super) fn projected_curve_assert_valid(
     _key: ObjectKey,
 ) -> Result<bool> {
     // UNPORTED(curve.projected_curve): SmProjectedCurve::AssertValid
-    Err(unported("SmProjectedCurve::AssertValid", "curve.projected_curve"))
+    Err(unported(
+        "SmProjectedCurve::AssertValid",
+        "curve.projected_curve",
+    ))
 }
 
 /// `SmHermiteCurve::AssertValid` of `curve` (a Hermite curve), reporting about `key`.
@@ -158,7 +174,10 @@ pub(super) fn hermite_curve_assert_valid(
     _key: ObjectKey,
 ) -> Result<bool> {
     // UNPORTED(curve.hermite_curve): SmHermiteCurve::AssertValid
-    Err(unported("SmHermiteCurve::AssertValid", "curve.hermite_curve"))
+    Err(unported(
+        "SmHermiteCurve::AssertValid",
+        "curve.hermite_curve",
+    ))
 }
 
 /// `SmCrvOnSurf::AssertValid` of `curve` (a curve on surface or a tangent field, which
@@ -183,7 +202,10 @@ pub(super) fn crv_in_volume_assert_valid(
     _key: ObjectKey,
 ) -> Result<bool> {
     // UNPORTED(curve.crv_in_volume): SmCrvInVolume::AssertValid
-    Err(unported("SmCrvInVolume::AssertValid", "curve.crv_in_volume"))
+    Err(unported(
+        "SmCrvInVolume::AssertValid",
+        "curve.crv_in_volume",
+    ))
 }
 
 // ---- level-2 tests (WP4) --------------------------------------------------------------
@@ -214,7 +236,11 @@ pub(super) fn assert_test_face38(_k: &mut Kernel, _b: &mut Brep, _f: FaceId) -> 
 /// `SmTol::GetXSectTol3d(this, this)` of every face surface (`IsOnFaceEdgeForm`).
 /// Edge test 13, evaluated only at `SM_LEVEL_2` and above; `max_gap` is the report
 /// value (upstream initialises it to `0.0`).
-pub(super) fn assert_test_edge13(_k: &mut Kernel, _b: &mut Brep, _e: EdgeId) -> Result<(bool, f64)> {
+pub(super) fn assert_test_edge13(
+    _k: &mut Kernel,
+    _b: &mut Brep,
+    _e: EdgeId,
+) -> Result<(bool, f64)> {
     // UNPORTED(topology.edge): sm_AssertTestEdge13
     Err(unported("sm_AssertTestEdge13", "topology.edge"))
 }
