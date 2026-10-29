@@ -265,12 +265,22 @@ pub struct UpstreamFixes {
     pub degenerate_proto_edge_in_one_vertex: bool,
     /// `MakeEdgeInFaceWithVU` grows each end vertex's tolerance to twice its gap to the new edge's end (only if larger), after `RefreshTolerance` keeps it as it was, so `AssertValid` does not refuse the edge (WR-469, #870; the SolidCraft fork's fix; `plan/upstream-issues/WR-469--make-edge-in-face-vertex-tolerance-gap.md`).
     pub new_edge_vertex_tolerance_covers_gap: bool,
+    /// `SmBrep::Transform` changes no tolerance under a scale of 1 (a rotation or reflection), and under a scale s sets each vertex, edge and face tolerance to the larger of its own times s and the new body tolerance, not every one to the body tolerance (WR-507, #1520; tangency-labs/smlib#49).
+    pub transform_scales_each_tolerance: bool,
+    /// `SmBrep::Transform` takes a scaled body's model size from the body's bounding box (vertices, edges and faces, not grown by tolerances), not from its vertices alone, so a body with no vertices (a lone torus) does not get a zero tolerance (WR-508, #1521; tangency-labs/smlib#50).
+    pub transform_model_size_from_body_box: bool,
     /// A torus rebuilt from its NURB measures its generating interval signed (WR-408, #1112).
     pub torus_signed_gen_curve_interval: bool,
+    /// The `SmTorus` constructor sets `m_bInsideOut` from its `bInsideOut` (upstream only orients the generating circle with it), and a torus made, rebuilt or read with this fix keeps the flag in its copies (upstream's copy constructor resets it), so the surface and its generator agree (`SmSurfOfRevolution` Test #11 `"InsideOut GenCurve"`) (WR-500, #1490).
+    pub torus_keeps_inside_out: bool,
     /// `SmTorus::IsNurbSurfaceTorus` measures the major radius from the torus origin (the minor circle's centre projected onto the common line), not from the first sweep circle's centre, which lies off the equator when the NURB's tube does not start there (WR-501, #1470; tangency-labs/smlib@6136a04).
     pub torus_major_radius_from_origin: bool,
+    /// `SmTorus::CreateIsoParametricCurve` takes a minor circle's direction from its midpoint when its start lies on the axis, not from the start point again, so a horn torus's minor iso circles get a direction and an analytic domain (WR-504, #1514; tangency-labs/smlib#40).
+    pub torus_iso_circle_axis_from_midpoint: bool,
     /// `SmTorus::IsNurbSurfaceTorus` and `SmSphere::IsNurbSurfaceSphere` keep the NURB they tested (rebuilding the analytic data from it, as `SetFromGwNurb` does), not the one made from the fitted circles (~1e-11 off), and the sphere test takes a half meridian within `180 + 360 * SM_EFF_ZERO` degrees, not `180 + SM_EFF_ZERO` (WR-493, #1433; tangency-labs/smlib@7ea6a96).
     pub found_torus_sphere_keep_tested_nurb: bool,
+    /// `SmBSplineSurface::HasInternalPole` tests the row through each interior knot (`knots - 1 - degree`), not one row further for each repeated copy of the knot, so a horn torus's corner rows on its axis are not taken for an internal pole (WR-505, #1515; tangency-labs/smlib#41).
+    pub internal_pole_row_through_knot: bool,
     /// A sheet sweep's open-profile wires are glued where the curves meet (WR-409, #1113).
     pub sheet_sweep_joins_profile_wires: bool,
     /// `FindPolygonGuess` keeps a suspicious control-net triangle guess as a candidate against the nearest control point's, and returns the nearer one on the surface, so a rational surface whose control points are farther apart than its neighbouring parts does not lose a good guess (WR-444, #1164).
