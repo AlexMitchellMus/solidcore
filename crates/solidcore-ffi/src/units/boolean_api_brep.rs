@@ -6,7 +6,7 @@
 //! `SmApiMergeBreps`, `SmApiBooleanWithOptions`, `SmApiBooleanLists`,
 //! `SmApiBooleanTrees`, `SmApiBooleanWithCurves`, `SmApiBoolean2d`,
 //! `SmApiNonManifoldBoolean`, `SmApiPiecewiseMerge`, `SmApiNonManifoldSweep`,
-//! `SmApiNonManifoldRotationalSweep`).
+//! `SmApiNonManifoldRotationalSweep`, `SmApiTessellateBoundaries`).
 //!
 //! A [`Call`] is encoded as `op args...`. An operand block ([`BrepSpec`]) is `kind`
 //! then its data: `1 O[3] length width height` (`SmApiCreateBox`), `2 C[3] radius`
@@ -38,6 +38,7 @@
 //! | `Piecewise`     | 14 | brep brep `create_new`                 | `has [is_first brep brep]`                      |
 //! | `Sweep`         | 15 | brep `D[3] dist stitch merge region` sel | brep (also on `SM_ERR_INVALID_INPUT`)         |
 //! | `RotationalSweep` | 16 | brep `P[3] A[3] angle stitch merge region` sel | brep (also on `SM_ERR_INVALID_INPUT`)  |
+//! | `TessellateBoundaries` | 17 | brep `angle_tol_deg` `nd`, `nd` edge indices | (also after `SM_ERR`) `ne` edge indices, `nc` counts, `np` points `x y z` |
 //!
 //! The two-B-rep record is `has [is_first kept brep [brep]]` (the second B-rep when
 //! upstream keeps it); a B-rep is `faces edges vertices regions manifold_solid`, then per
@@ -66,6 +67,11 @@
 //! selection `sel` is three arrays (faces, edges, vertices), each `count` (`-1` for a NULL
 //! array, at most [`MAX_SELECTION`]) then entries, each an index into the operand's
 //! `GetFaces`/`GetEdges`/`GetVertices` list or `-1` for a NULL entry.
+//! `TessellateBoundaries` first takes the curve away from the operand's edges at the given
+//! `GetEdges` indices (`SetCurve(NULL, TRUE, FALSE, FALSE)`, as upstream's test; at most
+//! [`MAX_DROPPED_CURVES`], each below 4096, the shim checks them against the edge list);
+//! its edges are written as `GetEdges` indices. Every angle tolerance is accepted
+//! (upstream rejects a non-finite or non-positive one).
 //!
 //! [`run`] accepts only what upstream handles without undefined behaviour: finite
 //! operand data with positive box and plane dimensions and a nonzero sphere radius (torus
@@ -99,6 +105,8 @@ pub const MAX_SKIN_POINTS: usize = 512;
 pub const MAX_SELECTION: usize = 16;
 /// `dRelativeAccuracy` of the [`Call::Measured`] volume (`SmApiBrepComputeVolume`).
 pub const VOLUME_ACCURACY: f64 = 1e-6;
+/// Most edges whose curve [`Call::TessellateBoundaries`] takes away.
+pub const MAX_DROPPED_CURVES: usize = 64;
 /// `dRelativeAccuracy` of the [`Call::Measured`] face areas (`SmApiFaceComputeArea`).
 pub const AREA_ACCURACY: f64 = 1e-4;
 
@@ -453,6 +461,16 @@ pub enum Call {
         region: RegionArg,
         /// The optional selections.
         selection: Selection,
+    },
+    /// `SmApiTessellateBoundaries` of `brep`, the edges at `drop_curves` (`GetEdges`
+    /// indices) first left without curve.
+    TessellateBoundaries {
+        /// The B-rep.
+        brep: BrepSpec,
+        /// `dAngleTolDeg`.
+        angle_tol_deg: f64,
+        /// `GetEdges` indices of the edges whose curve is taken away.
+        drop_curves: Vec<u64>,
     },
 }
 
@@ -832,6 +850,20 @@ fn encode(call: &Call) -> Result<Vec<f64>, FfiError> {
             o.push(*angle_deg);
             o.extend([flag(*stitch), flag(*merge), region.code()]);
             push_selection(&mut o, selection)?;
+        }
+        Call::TessellateBoundaries {
+            brep,
+            angle_tol_deg,
+            drop_curves,
+        } => {
+            if drop_curves.len() > MAX_DROPPED_CURVES || drop_curves.iter().any(|&d| d > 4095) {
+                return Err(bad("too many dropped curves or an index above 4095"));
+            }
+            o.push(17.0);
+            push_spec(&mut o, brep)?;
+            o.push(*angle_tol_deg);
+            o.push(drop_curves.len() as f64);
+            o.extend(drop_curves.iter().map(|&d| d as f64));
         }
     }
     Ok(o)
