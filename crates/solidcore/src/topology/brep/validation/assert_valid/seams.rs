@@ -214,9 +214,8 @@ pub(super) fn assert_test_face38(_k: &mut Kernel, _b: &mut Brep, _f: FaceId) -> 
 /// `SmTol::GetXSectTol3d(this, this)` of every face surface (`IsOnFaceEdgeForm`).
 /// Edge test 13, evaluated only at `SM_LEVEL_2` and above; `max_gap` is the report
 /// value (upstream initialises it to `0.0`).
-pub(super) fn assert_test_edge13(_k: &mut Kernel, _b: &mut Brep, _e: EdgeId) -> Result<(bool, f64)> {
-    // UNPORTED(topology.edge): sm_AssertTestEdge13
-    Err(unported("sm_AssertTestEdge13", "topology.edge"))
+pub(super) fn assert_test_edge13(k: &mut Kernel, b: &mut Brep, e: EdgeId) -> Result<(bool, f64)> {
+    crate::topology::edge::edge_form::assert_test_edge13(k, b, e)
 }
 
 /// `sm_AssertTestVertex1(this, &dMaxGap3d, &pMaxGapFace)`: `(passed, max_gap_3d)`, the
