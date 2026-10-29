@@ -155,6 +155,14 @@ pub(crate) enum BrepIn {
         inside_out: bool,
         oob: bool,
     },
+    /// Native sheet face on the cubic Hermite shape `S(u, v) = C(u) + v * (0, 0, scale)`
+    /// over the unit domain: its four edges are cubic Hermite curves of the affine UV
+    /// segments of that sheet, with the edge tolerance `edge_tol` (kind 15; `scale` is
+    /// the sheet's physical size).
+    HermiteSheetFace {
+        scale: f64,
+        edge_tol: f64,
+    },
     Network,
     Vertices {
         points: Vec<[f64; 3]>,
@@ -394,6 +402,9 @@ pub(crate) fn brep_block_of(
             v.extend(angles);
             v.extend(natural);
             v.extend([flag(*inside_out), flag(*oob)]);
+        }
+        BrepIn::HermiteSheetFace { scale, edge_tol } => {
+            v.extend([15.0, *scale, *edge_tol]);
         }
         BrepIn::Network => v.push(3.0),
         BrepIn::Vertices { points } => {
@@ -1444,7 +1455,7 @@ pub(crate) fn import_raw_with_types(ex: &[f64]) -> Result<(Brep, ImportTypes), H
 fn slot<T>(r: Result<T, SolidError>, f: impl FnOnce(T) -> i64) -> Result<i64, SolidError> {
     match r {
         Ok(v) => Ok(f(v)),
-        Err(SolidError::InvalidInput { .. }) => Ok(NULL_DEREF),
+        Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => Ok(NULL_DEREF),
         Err(e) => Err(e),
     }
 }
@@ -1669,7 +1680,7 @@ fn eu_state(k: &Kernel, b: &Brep, eu: Option<EdgeuseId>, out: &mut Vec<f64>) -> 
 fn status_of(e: &SolidError) -> f64 {
     match e {
         SolidError::Upstream { code, .. } => f64::from(*code),
-        SolidError::InvalidInput { .. } => NULL_DEREF as f64,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => NULL_DEREF as f64,
         _ => -9.0,
     }
 }
@@ -1829,7 +1840,7 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
             let e = eid(*eu);
             let mate = match eu1::mate(b, e) {
                 Ok(m) => m,
-                Err(SolidError::InvalidInput { .. }) => {
+                Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => {
                     return Ok(Output::new().values("state", vec![NULL_DEREF as f64]))
                 }
                 Err(x) => return Err(x.into()),
@@ -1861,7 +1872,7 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
             };
             match r {
                 Ok(()) => {}
-                Err(SolidError::InvalidInput { .. }) => {
+                Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => {
                     return Ok(Output::new().values("state", vec![NULL_DEREF as f64]))
                 }
                 Err(x) => return Err(x.into()),
