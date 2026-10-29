@@ -7,6 +7,8 @@
 //! Each operand face and edge gets its own attribute id (one id per origin, as
 //! SolidCraft tags operands), so a result object's origins are its attribute ids.
 
+#![allow(clippy::expect_used, clippy::indexing_slicing)] // test helpers
+
 use solidcore::boolean::api_brep::{boolean_difference, boolean_intersection, boolean_union};
 use solidcore::geom::attribute::{Attribute, Behavior};
 use solidcore::mass::integrator::properties::{edge_length, face_area};
@@ -18,12 +20,17 @@ use solidcore::{EntityRef, Kernel};
 /// The first application attribute id SolidCraft uses.
 const BASE_ID: u64 = 10007;
 
+/// An origin `(operand, kind, index)`.
+type Origin = (u64, u64, u64);
+/// Per face: (area in 1e-6 units, origins).
+type FaceSummary = Vec<(i64, Vec<Origin>)>;
+
 /// Origin `(operand, kind, index)` encoded in the attribute id: kind 0 face, 1 edge.
 fn origin_id(operand: u64, kind: u64, index: u64) -> u64 {
     BASE_ID + operand * 1000 + kind * 500 + index
 }
 
-fn decode(id: u64) -> (u64, u64, u64) {
+fn decode(id: u64) -> Origin {
     let raw = id - BASE_ID;
     (raw / 1000, raw % 1000 / 500, raw % 500)
 }
@@ -43,7 +50,7 @@ fn tag(b: &mut Brep, operand: u64, behavior: Behavior) {
     }
 }
 
-fn origins(b: &Brep, e: EntityRef) -> Vec<(u64, u64, u64)> {
+fn origins(b: &Brep, e: EntityRef) -> Vec<Origin> {
     let mut out: Vec<_> = b
         .entity_attributes(e)
         .into_iter()
@@ -66,7 +73,7 @@ fn boxes(k: &mut Kernel, behavior: Behavior) -> (Brep, Brep) {
 }
 
 /// Per face: (area rounded to 1e-6, origins), sorted.
-fn face_summary(k: &Kernel, r: &mut Brep) -> Vec<(i64, Vec<(u64, u64, u64)>)> {
+fn face_summary(k: &Kernel, r: &mut Brep) -> FaceSummary {
     let faces = r.face_list().to_vec();
     let mut out: Vec<_> = faces
         .into_iter()
@@ -98,7 +105,7 @@ fn edge_origin_counts(r: &Brep) -> (usize, usize, usize) {
     (none, one, more)
 }
 
-fn check_faces(summary: &[(i64, Vec<(u64, u64, u64)>)], expected: &[(f64, u64, usize)]) {
+fn check_faces(summary: &[(i64, Vec<Origin>)], expected: &[(f64, u64, usize)]) {
     // expected: (area, operand, how many faces)
     let mut seen = Vec::new();
     for (area, o) in summary {

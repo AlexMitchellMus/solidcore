@@ -536,26 +536,34 @@ void tag_operand(SmBrep* b, ULONG operand, SmAttributeBehaviorType behavior)
     }
 }
 
-// One object's row: `measure n` then per attribute (GetAttributes order) `id behavior value
-// users` (value: an SmLongAttribute's GetValue, else 0; users: GetUsers' size).
+// One object's row: `measure n` then per attribute `id behavior value users` (value: an
+// SmLongAttribute's GetValue, else 0; users: GetUsers' size), the attributes in ascending
+// order: which of two merged coplanar faces survives (and so whose attributes come first
+// in its list) depends on the C++ process's earlier heap use, the set does not.
 std::vector<double> attribute_row(const SmAObject* obj, double measure)
 {
-    std::vector<double> row;
-    row.push_back(measure);
     SmTArray<SmAttribute*> attrs;
     obj->GetAttributes(attrs);
-    row.push_back((double)attrs.GetSize());
+    std::vector<std::vector<double>> entries;
     for (ULONG i = 0; i < attrs.GetSize(); i++)
     {
         SmAttribute* a = attrs[i];
         SmLongAttribute* l = dynamic_cast<SmLongAttribute*>(a);
         SmTArray<SmAObject*> users;
         a->GetUsers(users);
-        row.push_back((double)a->GetAttributeID());
-        row.push_back((double)a->GetBehavior());
-        row.push_back(l != NULL ? (double)l->GetValue() : 0.0);
-        row.push_back((double)users.GetSize());
+        std::vector<double> e;
+        e.push_back((double)a->GetAttributeID());
+        e.push_back((double)a->GetBehavior());
+        e.push_back(l != NULL ? (double)l->GetValue() : 0.0);
+        e.push_back((double)users.GetSize());
+        entries.push_back(e);
     }
+    std::sort(entries.begin(), entries.end());
+    std::vector<double> row;
+    row.push_back(measure);
+    row.push_back((double)entries.size());
+    for (size_t i = 0; i < entries.size(); i++)
+        row.insert(row.end(), entries[i].begin(), entries[i].end());
     return row;
 }
 

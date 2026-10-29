@@ -52,7 +52,7 @@
 //! id, behaviour `behavior` (`SmAttributeBehaviorType`, 0 to 4); then `SmApiBoolean`. On
 //! success the two-B-rep record is followed by `faces rows... edges rows...` of the result
 //! and, when upstream keeps it, of the second B-rep, then the number of those values
-//! ([`split_measures`]). A row is `measure n` then per attribute (`GetAttributes` order)
+//! ([`split_measures`]). A row is `measure n` then per attribute (in ascending order)
 //! `id behavior value users` (value: the long value, else 0; users: `GetUsers`' size); the
 //! measure is the face's `SmApiFaceComputeArea` at [`AREA_ACCURACY`] or the edge's
 //! `SmApiEdgeComputeLength` at [`LENGTH_ACCURACY`] (minus the status on failure); rows are

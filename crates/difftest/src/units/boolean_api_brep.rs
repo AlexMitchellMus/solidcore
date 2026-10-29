@@ -726,18 +726,30 @@ fn tag_operand(b: &mut Brep, operand: u64, behavior: Behavior) -> Result<(), Sto
     Ok(())
 }
 
-/// The shim's `attribute_row`: `measure n` then per attribute `id behavior value users`.
+/// The shim's `attribute_row`: `measure n` then per attribute `id behavior value users`,
+/// the attributes in ascending order (the set is compared, not the list order).
 fn attribute_row(b: &Brep, entity: EntityRef, measure: f64) -> Vec<f64> {
-    let attributes = b.entity_attributes(entity);
-    let mut row = vec![measure, attributes.len() as f64];
-    for (_, a) in attributes {
-        row.extend([
-            a.attribute_id() as f64,
-            f64::from(a.behavior() as u8),
-            a.long_value().map_or(0.0, |v| v as f64),
-            a.users().len() as f64,
-        ]);
-    }
+    let mut entries: Vec<[f64; 4]> = b
+        .entity_attributes(entity)
+        .into_iter()
+        .map(|(_, a)| {
+            [
+                a.attribute_id() as f64,
+                f64::from(a.behavior() as u8),
+                a.long_value().map_or(0.0, |v| v as f64),
+                a.users().len() as f64,
+            ]
+        })
+        .collect();
+    entries.sort_by(|x, y| {
+        x.iter()
+            .zip(y)
+            .map(|(p, q)| p.total_cmp(q))
+            .find(|o| o.is_ne())
+            .unwrap_or(core::cmp::Ordering::Equal)
+    });
+    let mut row = vec![measure, entries.len() as f64];
+    row.extend(entries.into_iter().flatten());
     row
 }
 
