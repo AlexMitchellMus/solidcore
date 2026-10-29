@@ -101,28 +101,7 @@ fn issue_1473_box_with_sealed_void_fork_statuses() {
     check(&mut k);
 }
 
-#[test]
-fn issue_1473_put_enclosing_shells_first_restores_the_head() {
-    use solidcore::topology::shell::put_enclosing_shells_first;
-    let mut k = Kernel::default();
-    let mut b = void_body(&mut k);
-    let solid = p1::regions(&b, None)
-        .unwrap()
-        .into_iter()
-        .find(|&r| b.region(r).unwrap().shells.len() == 2)
-        .unwrap();
-    // already in order: nothing changes
-    assert_eq!(put_enclosing_shells_first(&mut k, &mut b).unwrap(), 0);
-    let head = b.region(solid).unwrap().shells[0];
-    assert_eq!(shell_extent(&b, head), 20.0);
-    // the data's order: cavity wall first
-    b.region_mut(solid).unwrap().shells.reverse();
-    assert_eq!(shell_extent(&b, b.region(solid).unwrap().shells[0]), 15.0);
-    assert_eq!(put_enclosing_shells_first(&mut k, &mut b).unwrap(), 1);
-    assert_eq!(b.region(solid).unwrap().shells[0], head);
-}
-
-/// WR-496: an outer face-use shell whose closure traversal fails (its face-use list is
+/// WR-497: an outer face-use shell whose closure traversal fails (its face-use list is
 /// empty, so there is no first face use). Upstream ignores the status and reads the
 /// shell as not closed (FALSE); with the opt-in fix the failure is UNSURE.
 fn failed_closure(k: &mut Kernel) -> i32 {

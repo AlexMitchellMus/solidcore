@@ -34,7 +34,6 @@
 //! | [`shell_remove_faceuse`], [`shell_post_insert_faceuse`] | `SmOwningTopology::Remove` / `PostInsert` of one face use (CO-PORTED, `topology.brep_p3`) |
 //! | [`shell_list_size`] | `SmShell::GetSize` (`m_lListSize`; CO-PORTED, `topology.brep_p3`) |
 //! | [`is_inner_shell_of`], [`SM_TRUE`], [`SM_FALSE`], [`SM_UNSURE`] | `SmShell::IsInnerShellOf` (its `SmBoolean`) |
-//! | [`put_enclosing_shells_first`] | none (the fork capi's `PutEnclosingShellsFirst` rule, #1473) |
 //!
 //! Deviations: circular lists are typed vectors in head-first order, as in the
 //! shared Brep arena model. `GetWireEdges`, `GetMatedShells` and `RayFire` claim and
@@ -1915,77 +1914,6 @@ pub fn is_inner_shell_of(
 
     // arrive here when no candidate ray produced a simple set of intersections
     Ok(SM_UNSURE)
-}
-
-/// Puts the enclosing shell of every bounded region of `b` with more than one shell at
-/// the head of the region's shell list, the order `SmBrep::AssertValid` test 12 and
-/// the region queries expect, for a B-rep built from data that listed its shells in
-/// another order. The candidates are the region's closed face-use shells, in
-/// decreasing volume of their face bounding boxes (stable); the first for which every
-/// other shell of the region [`is_inner_shell_of`] it ([`SM_TRUE`]) becomes the head,
-/// the others keeping their order. A region where no candidate encloses the others is
-/// left as it is. Returns the number of regions whose head changed.
-///
-/// No SMLib counterpart: the rule of the fork's capi import (tangency-labs/smlib
-/// 41e7dca, `PutEnclosingShellsFirst`) as #1473 describes it; SMLib itself never
-/// reorders a region from containment.
-///
-/// # Errors
-///
-/// Those of the face bounding boxes and of [`is_inner_shell_of`].
-pub fn put_enclosing_shells_first(k: &mut Kernel, b: &mut Brep) -> Result<usize> {
-    let mut changed = 0;
-    let infinite = b.infinite_region();
-    for r in crate::topology::brep::p1::regions(b, None)? {
-        if Some(r) == infinite {
-            continue;
-        }
-        let shells = b.region(r)?.shells.clone();
-        if shells.len() < 2 {
-            continue;
-        }
-
-        // closed face-use shells by bounding-box volume, largest first (stable)
-        let mut candidates: Vec<(f64, ShellId)> = Vec::new();
-        for &s in &shells {
-            let shell = b.shell(s)?;
-            if !shell.is_faceuse_shell() || !shell.is_closed(b, s)? {
-                continue;
-            }
-            let mut bbox = crate::geom::extent3d::Extent3d::new();
-            for fu in shell.get_faceuses()? {
-                let f = b.faceuse(fu)?.face.ok_or_else(|| {
-                    SolidError::null_pointer("topology::shell::put_enclosing_shells_first")
-                })?;
-                let fb = crate::query::face::p1::calculate_bounding_box(k, &*b, f, false)?;
-                bbox = bbox.union(&fb);
-            }
-            let size = bbox.size();
-            candidates.push((size.x * size.y * size.z, s));
-        }
-        candidates.sort_by(|a, c| c.0.total_cmp(&a.0));
-
-        // the first that encloses every other shell becomes the list head
-        for &(_, cand) in &candidates {
-            let mut encloses = true;
-            for &other in &shells {
-                if other != cand && is_inner_shell_of(k, b, other, Some(cand))? != SM_TRUE {
-                    encloses = false;
-                    break;
-                }
-            }
-            if encloses {
-                if shells.first() != Some(&cand) {
-                    let mut order = vec![cand];
-                    order.extend(shells.iter().copied().filter(|&x| x != cand));
-                    b.region_mut(r)?.shells = order;
-                    changed += 1;
-                }
-                break;
-            }
-        }
-    }
-    Ok(changed)
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-#### WR-496. `SmShell::IsInnerShellOf` decides from statuses it ignores
+#### WR-497. `SmShell::IsInnerShellOf` decides from statuses it ignores
 - **Severity:** Wrong result
 - **Area:** Topology (shells, containment)
 - **Location:** `source/SMLib/src/SmShell.cpp`, `SmShell::IsInnerShellOf` (`:827-1161`): `ClosureTraversal` of the outer shell, `SmBrep::CalculateBoundingBox`, `SmFaceuse::GetPointsInFace`, `SmCurve::EvaluatePoint` of a wire edge, `SmTopologySolver::BrepCurveSolve`, `SmCurveClassification::InsertTopologyIntersections`, and the crossing face's `EvaluatePoint` / `EvaluateNormal`.
