@@ -655,8 +655,10 @@ impl OffsetExecutive {
             let base = offset
                 .extended_base_surface()
                 .unwrap_or_else(|| offset.base_surface());
-            // make sure base surface is an SmBSplineSurface
-            let SurfaceKind::BSpline(nurb) = base.kind() else {
+            // make sure base surface is an SmBSplineSurface (`SM_CAST_PTR`, which every
+            // subclass passes: plane, extrusion, revolution, cone, sphere, torus); its
+            // B-spline part with the NURB `GetOrCreateGwNurbPointer` makes when missing
+            let Some(nurb) = crate::topology::brep::p3::with_nurb(kernel, base)? else {
                 return Err(SolidError::sm_err(OP));
             };
             // use NLIB function to build offset surface approximation
