@@ -67,7 +67,9 @@
 //!   where a `SER` call returns its status (a truthy result without cylinder) and
 //!   `Some` where upstream returns `TRUE` with a cylinder; its NURB is a copy of the
 //!   tested one, as upstream. A tested surface without NURB is `SM_ERR_NULL_POINTER`
-//!   (upstream copies a null NURB).
+//!   (upstream copies a null NURB). With the opt-in
+//!   `Kernel::fixes.nurb_cylinder_inside_out_frame` (WR-496, #1463) an inside-out
+//!   NURB gets `IsNurbSurfaceCone`'s frame (top-knot circle, reversed Z).
 //! - **Recursion.** None of these functions recurses.
 //! - **Debug code.** The `SM_DEBUG_CODE` checks and drawing are omitted.
 
@@ -248,6 +250,63 @@ fn twisted(top: &IsoArc, bot: &IsoArc, ang_tol: f64) -> Result<bool> {
 }
 
 impl Cone {
+    /// Not upstream (SolidCraft's draft of a cylindrical wall): this cylinder turned into the
+    /// cone whose radius, the cylinder's at the height `neutral_height` (from the frame's
+    /// origin along its axis), changes by `slope` per unit of height. The NURB's control
+    /// points move radially, each row by the radius ratio at its height (a rational circle
+    /// scaled about its axis stays exact, and the rows run straight up the axis), so the
+    /// cone keeps the cylinder's frame, trimmed domain and parameterization: the UV trim
+    /// curves of its face stay valid on it. The analytic data is then rebuilt from the NURB
+    /// ([`Self::rebuild_step_from_nurb_parameters`]).
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` unless this is a cylinder with a NURB whose radius stays positive; those of
+    /// the control point edits and of the rebuild.
+    pub fn lean_cylinder(&self, k: &Kernel, slope: f64, neutral_height: f64) -> Result<Cone> {
+        let err = || SolidError::sm_err("surface::cone::p2::Cone::lean_cylinder");
+        let canonical = self.canonical();
+        if !self.is_cylinder()
+            || canonical.radius.partial_cmp(&EFF_ZERO) != Some(core::cmp::Ordering::Greater)
+        {
+            return Err(err());
+        }
+        let origin = canonical.origin.origin();
+        let axis = canonical.origin.x_axis().cross(canonical.origin.y_axis());
+        let axis = axis / axis.length();
+        let mut cone = self.clone();
+        let (nu, nv) = (
+            cone.rev.base.number_control_points(SurfParamType::U),
+            cone.rev.base.number_control_points(SurfParamType::V),
+        );
+        for i in 0..nu {
+            for j in 0..nv {
+                let (p, w) = cone.rev.base.control_point(
+                    crate::nurbs::b_spline_curve::ControlPointForm::EuclideanRational,
+                    i,
+                    j,
+                )?;
+                let d = p - origin;
+                let height = d.dot(axis);
+                let radius = canonical.radius + slope * (height - neutral_height);
+                if radius.partial_cmp(&EFF_ZERO) != Some(core::cmp::Ordering::Greater) {
+                    return Err(err());
+                }
+                let moved =
+                    origin + axis * height + (d - axis * height) * (radius / canonical.radius);
+                cone.rev.base.set_control_point(
+                    crate::nurbs::b_spline_curve::ControlPointForm::EuclideanRational,
+                    i,
+                    j,
+                    moved,
+                    w,
+                )?;
+            }
+        }
+        cone.rebuild_step_from_nurb_parameters(k)?;
+        Ok(cone)
+    }
+
     /// The inherited NURB (`SmBSplineSurface` base object), mutably: an edit of the
     /// NURB (as through upstream's `GetGwNurbPointer`) leaves the analytic data as it
     /// was until [`Self::rebuild_step_from_nurb_parameters`].
@@ -755,7 +814,11 @@ impl Cone {
     /// corner|)` for distances and radii (upstream default scale `1`). The new bounded
     /// cylinder ([`Cone::is_cylinder`]) keeps a copy of the tested NURB as its own, its
     /// polar converter rebuilt from it and its generator reparameterised to the
-    /// linear direction's NURB interval.
+    /// linear direction's NURB interval. Upstream keeps an inside-out NURB's frame
+    /// (origin the bottom-knot circle, Z along the linear direction), which reverses
+    /// the cylinder's axis; with `k.fixes.nurb_cylinder_inside_out_frame` (WR-496,
+    /// #1463) the frame is the one [`Self::is_nurb_surface_cone`] gives it: origin the
+    /// top-knot circle, Z against the linear direction.
     ///
     /// # Errors
     ///
@@ -851,6 +914,17 @@ impl Cone {
 
         let inside_out = z_axis.dot(bot.frame.z_axis()) < 0.0;
 
+        // Not upstream (WR-496, #1463, opt-in): an inside-out NURB's STEP frame points
+        // against the NURB's linear direction from its top-knot circle, as
+        // IsNurbSurfaceCone builds it; upstream ("Do some correction here") keeps the
+        // bottom-knot circle and the NURB's direction, reversing the cylinder's Z
+        let flip = inside_out && k.fixes.nurb_cylinder_inside_out_frame;
+        let (origin, z_axis) = if flip {
+            (center_top, -z_axis)
+        } else {
+            (center_bot, z_axis)
+        };
+
         let y_axis = z_axis.cross(x_axis);
         // Try to eliminate some numerical inaccurracies (the top radius is not used
         // further)
@@ -860,7 +934,7 @@ impl Cone {
         }
 
         let mut cylinder = Self::new_cylinder_bounded(
-            center_bot,
+            origin,
             x_axis,
             y_axis,
             bot.radius,
@@ -1915,5 +1989,52 @@ mod tests {
         assert!(Cone::is_nurb_surface_cylinder(&k, cone.rev().base(), 1.0)
             .unwrap()
             .is_none());
+    }
+
+    /// `lean_cylinder`: a cylinder of radius 5 (frame at (1, 2, 3), heights 0 to 10) leaning at
+    /// 0.1 per unit of height, radius 5 at height 4. Same parameters point for point, the radius
+    /// the straight law of the height, the cone's own data (base radius, semi-angle) rebuilt.
+    #[test]
+    fn lean_cylinder_keeps_the_parameters_and_changes_the_radius() {
+        let k = kernel();
+        let frame = Axis2Placement::new(Point3::new(1.0, 2.0, 3.0), Vec3::X, Vec3::Y);
+        let mut cylinder = Cone::create_canonical_cylinder(&k, &frame, 5.0).unwrap();
+        let mut domain = Extent2d::default();
+        domain.set_min_max_coords(0.0, 0.0, 360.0, 10.0).unwrap();
+        cylinder.adjust_step_uv_domain(&k, &domain).unwrap();
+        let slope = 0.1;
+        let cone = cylinder.lean_cylinder(&k, slope, 4.0).unwrap();
+        assert_eq!(
+            cone.rev().base().natural_uv_domain(),
+            cylinder.rev().base().natural_uv_domain()
+        );
+        assert!((cone.canonical().radius - (5.0 - 0.4)).abs() < 1e-9);
+        assert!((cone.canonical().semi_angle_deg - slope.atan().to_degrees()).abs() < 1e-9);
+        let nurb = cylinder.rev().base().natural_uv_domain();
+        for i in 0..=6 {
+            for j in 0..=3 {
+                let uv = Point2::new(
+                    nurb.min().x + (nurb.max().x - nurb.min().x) * f64::from(i) / 6.0,
+                    nurb.min().y + (nurb.max().y - nurb.min().y) * f64::from(j) / 3.0,
+                );
+                let (old, new) = (
+                    cylinder.rev().base().evaluate_point(uv).unwrap(),
+                    cone.rev().base().evaluate_point(uv).unwrap(),
+                );
+                let (d_old, d_new) = (
+                    old - Point3::new(1.0, 2.0, old.z),
+                    new - Point3::new(1.0, 2.0, new.z),
+                );
+                let height = old.z - 3.0;
+                assert!((new.z - old.z).abs() < 1e-9, "{uv:?}");
+                assert!(
+                    (d_new.length() - (5.0 + slope * (height - 4.0))).abs() < 1e-9,
+                    "{uv:?}"
+                );
+                assert!(d_old.cross(d_new).length() < 1e-9 * 25.0, "{uv:?}");
+            }
+        }
+        // a radius that would go through the axis is refused
+        assert!(cylinder.lean_cylinder(&k, 2.0, 4.0).is_err());
     }
 }
