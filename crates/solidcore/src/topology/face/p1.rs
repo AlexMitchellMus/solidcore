@@ -771,8 +771,7 @@ pub fn create_oriented_trim_boundary(
                     // get trim curve's start UV point
                     let mut pnt = uv_curve.evaluate_point(k, ivl.min())?;
                     if wrap {
-                        shift = shift
-                            + seam_wrap(k, b, f, last_pnt, pnt, shift, periods)?;
+                        shift = shift + seam_wrap(k, b, f, last_pnt, pnt, shift, periods)?;
                         pnt += shift;
                     }
 
@@ -827,8 +826,7 @@ pub fn create_oriented_trim_boundary(
                     let ivl = bsc.reverse_parameterization(k, &ivl)?;
                     let mut pnt = bsc.evaluate_point(k, ivl.min())?;
                     if wrap {
-                        shift = shift
-                            + seam_wrap(k, b, f, last_pnt, pnt, shift, periods)?;
+                        shift = shift + seam_wrap(k, b, f, last_pnt, pnt, shift, periods)?;
                         pnt += shift;
                     }
                     let diff = pnt - last_pnt;

@@ -160,8 +160,11 @@ fn measure_body(
     )
 }
 
+/// A named body maker with its exact area and volume.
+type Body = (&'static str, fn(&mut Kernel) -> Brep, f64, f64);
+
 /// Every body of #1437's matrix, with its exact area and volume.
-fn bodies() -> [(&'static str, fn(&mut Kernel) -> Brep, f64, f64); 5] {
+fn bodies() -> [Body; 5] {
     const R: f64 = 7.0;
     [
         // one face whose loop has a gap line at each pole
@@ -212,13 +215,30 @@ fn bodies() -> [(&'static str, fn(&mut Kernel) -> Brep, f64, f64); 5] {
 #[test]
 fn i1437_pole_gaps_are_not_seam_crossings() {
     for (name, make, area, volume) in bodies() {
-        let (off, on) = (measure_body(make, 1e-6, false), measure_body(make, 1e-6, true));
+        let (off, on) = (
+            measure_body(make, 1e-6, false),
+            measure_body(make, 1e-6, true),
+        );
         let (a_off, v_off) = (off.0.unwrap(), off.1.unwrap());
         let (a_on, v_on) = (on.0.unwrap(), on.1.unwrap());
-        assert_eq!(a_off.to_bits(), a_on.to_bits(), "{name}: area {a_off} vs {a_on}");
-        assert_eq!(v_off.to_bits(), v_on.to_bits(), "{name}: volume {v_off} vs {v_on}");
-        assert!((a_on - area).abs() < 1e-5 * area, "{name}: area {a_on} vs {area}");
-        assert!((v_on - volume).abs() < 1e-5 * volume, "{name}: volume {v_on} vs {volume}");
+        assert_eq!(
+            a_off.to_bits(),
+            a_on.to_bits(),
+            "{name}: area {a_off} vs {a_on}"
+        );
+        assert_eq!(
+            v_off.to_bits(),
+            v_on.to_bits(),
+            "{name}: volume {v_off} vs {v_on}"
+        );
+        assert!(
+            (a_on - area).abs() < 1e-5 * area,
+            "{name}: area {a_on} vs {area}"
+        );
+        assert!(
+            (v_on - volume).abs() < 1e-5 * volume,
+            "{name}: volume {v_on} vs {volume}"
+        );
     }
 }
 
@@ -247,10 +267,18 @@ fn i1437_sphere_properties_with_the_fix() {
     .unwrap();
     let (area, volume) = (4.0 * PI * R * R, 4.0 / 3.0 * PI * R * R * R);
     assert!((p.area - area).abs() < 1e-7 * area, "area {}", p.area);
-    assert!((p.volume - volume).abs() < 1e-7 * volume, "volume {}", p.volume);
+    assert!(
+        (p.volume - volume).abs() < 1e-7 * volume,
+        "volume {}",
+        p.volume
+    );
     // about the centre, the second volume moments (x², y², z²) are each V r² / 5
     let second = volume * R * R / 5.0;
     for c in [p.moments[5].x, p.moments[5].y, p.moments[5].z] {
-        assert!((c - second).abs() < 1e-6 * second, "moments {:?}", p.moments);
+        assert!(
+            (c - second).abs() < 1e-6 * second,
+            "moments {:?}",
+            p.moments
+        );
     }
 }
