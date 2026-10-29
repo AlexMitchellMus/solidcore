@@ -212,6 +212,11 @@ pub struct OffsetExecutive {
     /// convex round thinner than the wall), mated across instead of offset
     /// (`m_sCollapsedFaces`; only with `Kernel::fixes.offset_collapsed_rounds_mated`).
     pub(super) collapsed_faces: Vec<FaceId>,
+    /// The faces of a local operation and the surfaces replacing theirs, in step (the
+    /// part of `SmLocalOperationGeometryCreation` the executive reads: `m_vFaces`,
+    /// `m_vSurfaces`).
+    pub(super) local_faces: Vec<FaceId>,
+    pub(super) local_surfaces: Vec<Surface>,
 }
 
 impl OffsetExecutive {
@@ -258,6 +263,8 @@ impl OffsetExecutive {
             blend_to_faces: Relation::default(),
             extended_surfaces: BTreeMap::new(),
             collapsed_faces: Vec::new(),
+            local_faces: Vec::new(),
+            local_surfaces: Vec::new(),
         }
     }
 
@@ -340,6 +347,13 @@ impl OffsetExecutive {
     pub fn set_shell_faces(&mut self, faces: &[FaceId]) {
         self.shell_faces.clear();
         self.shell_faces.extend_from_slice(faces);
+    }
+
+    /// The geometry of a local operation (`SmLocalOperationGeometryCreation`'s face and
+    /// surface lists): `surfaces[i]` replaces the surface of `faces[i]`.
+    pub fn set_local_surfaces(&mut self, faces: &[FaceId], surfaces: Vec<Surface>) {
+        self.local_faces = faces.to_vec();
+        self.local_surfaces = surfaces;
     }
 
     /// Sets `m_eOffsetOperation`.
@@ -2318,18 +2332,19 @@ impl OffsetExecutive {
         let domain = ignored(original_face.uv_domain.intersect(&offset_face.uv_domain))?
             .unwrap_or_else(Extent2d::new);
         let mid_uv = domain.evaluate(0.5, 0.5);
+        // (`EvaluateNormal(sMidUV, TRUE, TRUE, ..)`: from the left)
         let normal = ignored(required(original_face.surface.as_ref())?.evaluate_normal(
             kernel.kernel(),
             mid_uv,
-            Side::Right,
-            Side::Right,
+            Side::Left,
+            Side::Left,
         ))?
         .unwrap_or(Vec3::UNDEF);
         let offset_normal = ignored(required(offset_face.surface.as_ref())?.evaluate_normal(
             kernel.kernel(),
             mid_uv,
-            Side::Right,
-            Side::Right,
+            Side::Left,
+            Side::Left,
         ))?
         .unwrap_or(Vec3::UNDEF);
         let same_normals = normal.dot(offset_normal) > 0.0;
