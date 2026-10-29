@@ -1,4 +1,4 @@
-#### WR-500. `CreateSphereFromArcs` only takes three arcs, so a corner of four equal rounds gets an approximating blend 0.2 mm low
+#### WR-501. `CreateSphereFromArcs` only takes three arcs, so a corner of four equal rounds gets an approximating blend 0.2 mm low
 - **Severity:** Wrong result (a shape error, no failure)
 - **Area:** Blends
 - **Location:** `source/SMLib/src/SmBSplineSurface.cpp`, `SmBSplineSurface::CreateSphereFromArcs` (`// Only works for 3 now`), reached from `SmFilletCorner::MakeAnalyticCornerSurface`.
