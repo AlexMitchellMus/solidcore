@@ -201,6 +201,7 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
 
     let mut faces = Vec::new();
     let mut face_indices = Vec::new();
+    let mut face_by_id = std::collections::BTreeMap::new();
     let mut pcurves = std::collections::BTreeMap::new();
     let mut pcurve_kernel = solidcore::kernel::Kernel::default();
     for (face_pos, id) in brep.face_list().iter().enumerate() {
@@ -261,6 +262,24 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
                                 curves.push(other);
                             }
                         }
+                        // SolidCore stores analytic surface UV in degrees; STEP stores
+                        // angular surface parameters in radians.
+                        let angular = matches!(
+                            face.surface.as_ref().map(|surface| surface.kind()),
+                            Some(
+                                solidcore::surface::surface::p2::SurfaceKind::Cone(_)
+                                    | solidcore::surface::surface::p2::SurfaceKind::Sphere(_)
+                                    | solidcore::surface::surface::p2::SurfaceKind::Torus(_)
+                            )
+                        );
+                        if angular {
+                            for curve in &mut curves {
+                                for point in curve {
+                                    point[0] = point[0].to_radians();
+                                    point[1] = point[1].to_radians();
+                                }
+                            }
+                        }
                         pcurves.insert((id.index() as u64 + 1, loop_index, use_index), curves);
                     }
                 }
@@ -272,6 +291,7 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
         }
         let same_sense = brep.faceuse(faceuse).map_err(|e| err(e.to_string()))?.orientation == solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType::Same;
         face_indices.push(faces.len());
+        face_by_id.insert(*id, faces.len());
         faces.push(Face { step_id: id.index() as u64 + 1, surface: surface(surf)?, same_sense, loops: bounds });
     }
     if faces.is_empty() {
@@ -279,18 +299,54 @@ pub fn brep_to_model(brep: &Brep) -> Result<Model, ExportModelError> {
     }
     let mut kernel = solidcore::kernel::Kernel::default();
     let sheet = is_sheet(&mut kernel, brep).map_err(|e| err(e.to_string()))?;
-    let body = Body {
-        step_id: 1,
-        name: None,
-        kind: if sheet { BodyKind::ShellModel } else { BodyKind::ManifoldSolid },
-        unit_mm: 1.0,
-        uncertainty_mm: None,
-        shells: vec![Shell { step_id: 1, closed: !sheet, orientation: true, faces: face_indices }],
-        faces,
-        edges,
-        vertices,
-    };
-    Ok(Model { bodies: vec![body], pcurves, ..Model::default() })
+    let mut shell_records = Vec::new();
+    let mut seen_shell_faces: Vec<Vec<usize>> = Vec::new();
+    for (shell_position, shell_id) in brep.shells().ids().enumerate() {
+        let mut shell_faces = Vec::new();
+        for faceuse in brep.shell(shell_id).map_err(|e| err(e.to_string()))?.get_faceuses().map_err(|e| err(e.to_string()))? {
+            let face_id = brep.faceuse(faceuse).map_err(|e| err(e.to_string()))?.face;
+            if let Some(face_id) = face_id {
+                if let Some(index) = face_by_id.get(&face_id) {
+                    shell_faces.push(*index);
+                }
+            }
+        }
+        if shell_faces.is_empty() {
+            continue;
+        }
+        let mut canonical = shell_faces.clone();
+        canonical.sort_unstable();
+        if seen_shell_faces.contains(&canonical) {
+            continue;
+        }
+        seen_shell_faces.push(canonical);
+        shell_records.push(Shell {
+            step_id: shell_position as u64 + 1,
+            closed: !sheet,
+            orientation: true,
+            faces: shell_faces,
+        });
+    }
+    if shell_records.is_empty() {
+        // No region/shell: fall back to every live face in one body.
+        shell_records.push(Shell { step_id: 1, closed: !sheet, orientation: true, faces: face_indices });
+    }
+    let bodies = shell_records
+        .into_iter()
+        .enumerate()
+        .map(|(index, shell)| Body {
+            step_id: index as u64 + 1,
+            name: None,
+            kind: if sheet { BodyKind::ShellModel } else { BodyKind::ManifoldSolid },
+            unit_mm: 1.0,
+            uncertainty_mm: None,
+            shells: vec![shell],
+            faces: faces.clone(),
+            edges: edges.clone(),
+            vertices: vertices.clone(),
+        })
+        .collect();
+    Ok(Model { bodies, pcurves, ..Model::default() })
 }
 
 #[cfg(test)]
@@ -322,5 +378,13 @@ mod tests {
             "cylinder seam edge should carry two pcurves: {:?}",
             model.pcurves
         );
+        for curves in model.pcurves.values() {
+            for curve in curves {
+                assert!(
+                    curve.iter().any(|point| point[0].abs() <= std::f64::consts::TAU + 0.5),
+                    "cylinder pcurve u must be radians: {curve:?}"
+                );
+            }
+        }
     }
 }

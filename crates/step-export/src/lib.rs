@@ -380,11 +380,15 @@ fn write_surface(
         }
         Surface::Cone { frame, radius, semi_angle_deg } => {
             let p = placement(entities, points, frame)?;
-            Ok(entities.add(format!(
-                "CONICAL_SURFACE('',#{p},{},{})",
-                number(*radius)?,
-                number(*semi_angle_deg)?
-            )))
+            if semi_angle_deg.abs() < 1.0e-12 {
+                Ok(entities.add(format!("CYLINDRICAL_SURFACE('',#{p},{})", number(*radius)?)))
+            } else {
+                Ok(entities.add(format!(
+                    "CONICAL_SURFACE('',#{p},{},{})",
+                    number(*radius)?,
+                    number(semi_angle_deg.to_radians())?
+                )))
+            }
         }
         Surface::Sphere { frame, radius } => {
             let p = placement(entities, points, frame)?;
@@ -600,7 +604,7 @@ fn shell(entities: &mut Entities, body: &Body, pcurves: &std::collections::BTree
         })
         .collect::<Result<Vec<_>, ExportError>>()?;
     let context_2d = entities.add(
-        "(GEOMETRIC_REPRESENTATION_CONTEXT(2) PARAMETRIC_REPRESENTATION_CONTEXT() REPRESENTATION_CONTEXT('2D SPACE',''))".to_string(),
+        "PARAMETRIC_REPRESENTATION_CONTEXT('','2')".to_string(),
     );
     // Emit every surface first so edge pcurves can reference their basis surfaces.
     let mut face_surfaces = Vec::with_capacity(body.faces.len());
@@ -1883,6 +1887,19 @@ mod tests {
             let text = write(&model).expect("curve write");
             assert!(text.contains("CURVE(") || text.contains("CIRCLE(") || text.contains("ELLIPSE("), "{text}");
         }
+    }
+
+    #[test]
+    fn writes_zero_angle_cones_as_cylinders() {
+        let mut model = triangle();
+        model.bodies[0].faces[0].surface = Surface::Cone {
+            frame: Frame { origin: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0], z: [0.0, 0.0, 1.0] },
+            radius: 2.0,
+            semi_angle_deg: 0.0,
+        };
+        let text = write(&model).expect("cylinder write");
+        assert!(text.contains("CYLINDRICAL_SURFACE('',"), "{text}");
+        assert!(!text.contains("CONICAL_SURFACE('',"), "{text}");
     }
 
     #[test]
