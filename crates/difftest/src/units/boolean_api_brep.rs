@@ -20,6 +20,11 @@
 //! post-process flag chosen; fixtures only) also compares `measures`: the result's volume
 //! (`SmApiBrepComputeVolume`) and its face areas (`SmApiFaceComputeArea`) in ascending
 //! order, so a result with the right topology but a wrongly trimmed face shows.
+//! An `attributed` call (fixtures only, issue #1462) tags every operand face and edge with
+//! its own long attribute before `SmApiBoolean`, each side on its own operands (the C++
+//! shim with `SmLongAttribute`s, the Rust side with `Brep::add_attribute`), and also
+//! compares `attributes`: per result face (edge) its area (length) and the attributes it
+//! carries, sorted by attributes, so attribute propagation through the merge shows.
 //!
 //! Compared: the input validation (`SM_BO_EXTRACT_SEPARATE` for the two-B-rep entry
 //! points, short lists and operations other than union / intersection / difference /
@@ -34,10 +39,12 @@ use solidcore::boolean::api_brep as api;
 use solidcore::boolean::merge::MergeOptions;
 use solidcore::curve::curve::Curve as SmCurve;
 use solidcore::geom::a_object::BooleanOperation;
-use solidcore::geom::attribute::{AttributeStore, ObjectKey};
+use solidcore::geom::attribute::{Attribute, AttributeStore, Behavior, ObjectKey};
 use solidcore::geom::vector3d::Point3;
 use solidcore::kernel::Kernel;
-use solidcore::mass::integrator::properties::{brep_volume, face_area, PropertyAttributes};
+use solidcore::mass::integrator::properties::{
+    brep_volume, edge_length, face_area, PropertyAttributes,
+};
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::crv_basic::Curve as NurbCurve;
 use solidcore::nurbs::math::{CPoint, NOW};
@@ -50,7 +57,7 @@ use solidcore::topology::proto_topology::p1::api_transform::{
 };
 use solidcore::topology::shell::shell_region;
 use solidcore::topology::{Brep, FaceuseId, RegionId};
-use solidcore::SolidError;
+use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::boolean_api_brep::{self as ffi, BrepSpec, Call, Flags};
 
 use crate::case::CaseContext;
@@ -86,6 +93,8 @@ enum BrepIn {
     Plane { origin: P3, size: [f64; 2] },
     /// `SmApiCreateTorus` (`SmBrep*&` overload; axis +Z).
     Torus { center: P3, major: f64, minor: f64 },
+    /// `SmApiCreateCylinder` (`SmBrep*&` overload; axis +Z, `origin` the base center).
+    Cylinder { origin: P3, radius: f64, height: f64 },
     /// `brep` moved by `steps` in order (`SmApiRotate` / `SmApiTranslate`).
     Moved {
         steps: Vec<MoveIn>,
@@ -220,6 +229,16 @@ enum Inputs {
         #[serde(default = "yes")]
         post_process: bool,
     },
+    /// Both operands' faces and edges tagged with their own long attribute (behaviour
+    /// `behavior`, an `SmAttributeBehaviorType` value), then `SmApiBoolean`; the record
+    /// adds the attributes the returned B-reps' faces and edges carry.
+    Attributed {
+        a: BrepIn,
+        b: BrepIn,
+        operation: i32,
+        #[serde(default)]
+        behavior: u8,
+    },
 }
 
 fn spec(b: &BrepIn) -> BrepSpec {
@@ -235,6 +254,15 @@ fn spec(b: &BrepIn) -> BrepSpec {
             center,
             major,
             minor,
+        },
+        &BrepIn::Cylinder {
+            origin,
+            radius,
+            height,
+        } => BrepSpec::Cylinder {
+            origin,
+            radius,
+            height,
         },
         BrepIn::Moved { steps, brep } => BrepSpec::Moved {
             steps: steps
@@ -352,6 +380,17 @@ fn to_call(i: &Inputs) -> Call {
             operation: *operation,
             post_process: *post_process,
         },
+        Inputs::Attributed {
+            a,
+            b,
+            operation,
+            behavior,
+        } => Call::Attributed {
+            a: spec(a),
+            b: spec(b),
+            operation: *operation,
+            behavior: *behavior,
+        },
     }
 }
 
@@ -383,23 +422,25 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
     }
     match ffi::run(&to_call(i)) {
         Ok(o) => match i {
-            Inputs::Measured { .. } => measured_output(&o),
+            Inputs::Measured { .. } => measured_output(&o, "measures"),
+            Inputs::Attributed { .. } => measured_output(&o, "attributes"),
             _ => to_output(&o),
         },
         Err(e) => Err(harness(format!("cpp: {e}"))),
     }
 }
 
-/// A `measured` record: the integer record, then on success (`status` 0 and a result)
-/// the measures the shim appends ([`ffi::split_measures`]).
-fn measured_output(o: &[f64]) -> Result<Output, HarnessError> {
+/// A `measured` (`attributed`) record: the integer record, then on success (`status` 0
+/// and a result) the measures (attribute rows) the shim appends under `key`
+/// ([`ffi::split_measures`]).
+fn measured_output(o: &[f64], key: &str) -> Result<Output, HarnessError> {
     let succeeded = o.first() == Some(&0.0) && o.get(1) == Some(&1.0);
     if !succeeded {
         return to_output(o);
     }
     let (head, measures) =
         ffi::split_measures(o).ok_or_else(|| harness("cpp: measured record too short"))?;
-    Ok(to_output(head)?.values("measures", measures.to_vec()))
+    Ok(to_output(head)?.values(key, measures.to_vec()))
 }
 
 /// Whether the Boolean reaches UB-242 (`plan/upstream-issues/`): an imprint in
@@ -484,6 +525,11 @@ fn build_at(k: &mut Kernel, b: &BrepIn, depth: usize) -> Result<Brep, Stop> {
             primitives::create_box(k, p3(origin), size[0], size[1], size[2])
         }
         &BrepIn::Sphere { center, radius } => primitives::create_sphere(k, p3(center), radius),
+        &BrepIn::Cylinder {
+            origin,
+            radius,
+            height,
+        } => primitives::create_cylinder(k, p3(origin), radius, height),
         &BrepIn::Plane { origin, size } => {
             primitives::create_plane(k, p3(origin), size[0], size[1])
         }
@@ -655,6 +701,81 @@ fn measures(k: &Kernel, b: &mut Brep) -> Result<Vec<f64>, Stop> {
     Ok(o)
 }
 
+/// The shim's `tag_operand`: every face (`GetFaces` order) and edge (`GetEdges` order) of
+/// operand `operand` gets its own long attribute, id = value =
+/// `ATTRIBUTE_BASE + 1000 operand + 500 kind + index`, behaviour `behavior`.
+fn tag_operand(b: &mut Brep, operand: u64, behavior: Behavior) -> Result<(), Stop> {
+    let faces = brep_p1::faces(b, None).map_err(|e| stop("GetFaces", &e))?;
+    let edges = brep_p1::edges(b, None).map_err(|e| stop("GetEdges", &e))?;
+    let tagged = faces
+        .into_iter()
+        .enumerate()
+        .map(|(i, f)| (EntityRef::Face(f), 0, i))
+        .chain(
+            edges
+                .into_iter()
+                .enumerate()
+                .map(|(i, e)| (EntityRef::Edge(e), 1, i)),
+        );
+    for (entity, kind, index) in tagged {
+        let id = ffi::ATTRIBUTE_BASE + 1000 * operand + 500 * kind + index as u64;
+        let value = i64::try_from(id).map_err(|_| harness("attribute id overflow"))?;
+        b.add_attribute(entity, Attribute::long(id, value, behavior))
+            .map_err(|e| stop("AddAttribute", &e))?;
+    }
+    Ok(())
+}
+
+/// The shim's `attribute_row`: `measure n` then per attribute `id behavior value users`.
+fn attribute_row(b: &Brep, entity: EntityRef, measure: f64) -> Vec<f64> {
+    let attributes = b.entity_attributes(entity);
+    let mut row = vec![measure, attributes.len() as f64];
+    for (_, a) in attributes {
+        row.extend([
+            a.attribute_id() as f64,
+            f64::from(a.behavior() as u8),
+            a.long_value().map_or(0.0, |v| v as f64),
+            a.users().len() as f64,
+        ]);
+    }
+    row
+}
+
+/// The shim's `put_attributes`: the sorted face rows (area) then edge rows (length).
+fn put_attributes(k: &Kernel, o: &mut Vec<f64>, b: &mut Brep) -> Result<(), Stop> {
+    let fail = |e: &SolidError| -> Result<f64, Stop> {
+        match Output::unported(e) {
+            Some(d) => Err(Stop::Deferred(Box::new(d))),
+            None => Ok(-(status(e) as f64)),
+        }
+    };
+    let faces = brep_p1::faces(b, None).map_err(|e| stop("GetFaces", &e))?;
+    let mut rows = Vec::new();
+    for f in faces {
+        let area = match face_area(k, b, f, ffi::AREA_ACCURACY) {
+            Ok(a) => a,
+            Err(e) => fail(&e)?,
+        };
+        rows.push(attribute_row(b, EntityRef::Face(f), area));
+    }
+    ffi::sort_rows(&mut rows);
+    o.push(rows.len() as f64);
+    o.extend(rows.into_iter().flatten());
+    let edges = brep_p1::edges(b, None).map_err(|e| stop("GetEdges", &e))?;
+    let mut rows = Vec::new();
+    for e in edges {
+        let length = match edge_length(k, b, e, ffi::LENGTH_ACCURACY) {
+            Ok(l) => l,
+            Err(err) => fail(&err)?,
+        };
+        rows.push(attribute_row(b, EntityRef::Edge(e), length));
+    }
+    ffi::sort_rows(&mut rows);
+    o.push(rows.len() as f64);
+    o.extend(rows.into_iter().flatten());
+    Ok(())
+}
+
 /// Whether upstream keeps the second operand of a successful two-B-rep boolean
 /// (`source/SM_API/inc/SmApiBrep.h`; the shim's `keeps_other`).
 fn keeps_other(operation: i32, keep_option: bool) -> bool {
@@ -799,6 +920,33 @@ fn rust_call_with(k: &mut Kernel, i: &Inputs, seen: &dyn Fn(&SolidError)) -> Res
                     let rec = two_record(&out, keeps_other(*operation, false))?;
                     let m = measures(k, &mut out.result)?;
                     Ok(rec.values("measures", m))
+                }
+                Err(e) => Ok(err_output(&e)),
+            }
+        }
+        Inputs::Attributed {
+            a,
+            b,
+            operation,
+            behavior,
+        } => {
+            let behavior = Behavior::from_code(i32::from(*behavior))
+                .map_err(|e| Stop::Harness(harness(format!("behavior: {e}"))))?;
+            let (mut a, mut b) = (build(k, a)?, build(k, b)?);
+            tag_operand(&mut a, 0, behavior)?;
+            tag_operand(&mut b, 1, behavior)?;
+            let kept = keeps_other(*operation, false);
+            match api::boolean(k, a, b, op(*operation)?) {
+                Ok(mut out) => {
+                    let rec = two_record(&out, kept)?;
+                    let mut rows = Vec::new();
+                    put_attributes(k, &mut rows, &mut out.result)?;
+                    if kept {
+                        if let Some(other) = out.other.as_mut() {
+                            put_attributes(k, &mut rows, other)?;
+                        }
+                    }
+                    Ok(rec.values("attributes", rows))
                 }
                 Err(e) => Ok(err_output(&e)),
             }
