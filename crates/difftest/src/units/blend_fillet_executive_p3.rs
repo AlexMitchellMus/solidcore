@@ -22,6 +22,8 @@ use solidcore::{Result as SolidResult, SolidError};
 use solidcore_ffi::units::blend_fillet_executive_p3 as ffi;
 use std::collections::BTreeMap;
 
+#[path = "blend_fillet_executive_p3/attributed.rs"]
+mod attributed;
 #[path = "blend_fillet_executive_p3/end_to_end.rs"]
 mod end_to_end;
 #[path = "blend_fillet_executive_p3/surface_bodies.rs"]
@@ -42,6 +44,21 @@ struct Inputs {
     surface_surface: Option<end_to_end::SurfaceSurface>,
     #[serde(default)]
     surface_surface_bodies: Option<surface_bodies::SurfaceSurfaceBodies>,
+    /// Issue #1462: a public fillet API on a body whose faces and edges carry caller
+    /// attributes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attributed: Option<attributed::AttributedFillet>,
+}
+
+impl Inputs {
+    /// Whether any form but `attributed` is present.
+    fn has_other_form(&self) -> bool {
+        self.surface_surface_bodies.is_some()
+            || self.surface_surface.is_some()
+            || self.real_solid.is_some()
+            || self.upstream_case.is_some()
+            || !self.record.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -924,6 +941,12 @@ impl UnitDiff for Runner {
     }
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         let input = case.parse::<Inputs>()?;
+        if let Some(attributed) = &input.attributed {
+            if input.has_other_form() {
+                return Err(HarnessError::new("mixed fixture forms"));
+            }
+            return attributed::cpp(attributed);
+        }
         if let Some(pair) = &input.surface_surface_bodies {
             if input.surface_surface.is_some()
                 || input.real_solid.is_some()
@@ -965,6 +988,12 @@ impl UnitDiff for Runner {
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         let input = case.parse::<Inputs>()?;
+        if let Some(attributed) = &input.attributed {
+            if input.has_other_form() {
+                return Err(HarnessError::new("mixed fixture forms"));
+            }
+            return attributed::rust(attributed);
+        }
         if let Some(pair) = &input.surface_surface_bodies {
             if input.surface_surface.is_some()
                 || input.real_solid.is_some()
