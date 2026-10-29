@@ -313,9 +313,7 @@ fn clamped(rng: &mut Rng, n: usize, p: usize) -> Vec<f64> {
         // repeated interior knots (possibly above the degree)
         let at = rng.below(interior as u64 - 1) as usize;
         let v = mid[at];
-        // (at most the degree: above it the C++ evaluates a calloc'd iso curve, see
-        // the FFI's `iso_extraction`)
-        let reps = 1 + rng.below((interior - at).min(p) as u64) as usize;
+        let reps = 1 + rng.below((interior - at) as u64) as usize;
         for m in mid.iter_mut().skip(at).take(reps) {
             *m = v;
         }
@@ -346,9 +344,9 @@ fn gen_bspline(rng: &mut Rng, b: &mut Vec<f64>) {
     let mut ku = clamped(rng, nu, p);
     let mut kv = clamped(rng, nv, q);
     if mode == 1 {
-        // an interior knot repeated p times (a C0 crease; above the degree the case is
-        // rejected), sometimes p + 1 times
-        let reps = if rng.chance(0.2) { p + 1 } else { p };
+        // an interior knot repeated p times (a C0 crease) or p + 1 times (above the
+        // degree: B-spline test 1, and iso curves extracted there are all zero)
+        let reps = if rng.chance(0.5) { p + 1 } else { p };
         for kk in ku.iter_mut().skip(p + 1).take(reps) {
             *kk = 0.5;
         }
@@ -524,8 +522,11 @@ fn gen_case(rng: &mut Rng) -> Inputs {
         }
         4 => {
             let (a0, a1) = angles(rng);
-            let (v0, v1) = match rng.below(4) {
+            let (v0, v1) = match rng.below(6) {
                 0 => (-90.0, 90.0),
+                // past a pole (sphere test 4 or 5)
+                4 => (rng.uniform(-150.0, -91.0), rng.uniform(-80.0, 80.0)),
+                5 => (rng.uniform(-80.0, 80.0), rng.uniform(91.0, 150.0)),
                 1 => (-90.0, rng.uniform(-80.0, 89.0)),
                 2 => (rng.uniform(-89.0, 80.0), 90.0),
                 _ => {
