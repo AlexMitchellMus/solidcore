@@ -1470,7 +1470,29 @@ mod tests {
                 n => n,
             };
             assert_eq!(analytic, expected, "{name}");
-            // the same loop: roles, orientations, tolerances and the normal
+            let (n_new, n_old) = (new.normal.unwrap(), old.normal.unwrap());
+            if matches!(name, "cone" | "drill point") {
+                // #1463: a line falling along the axis sweeps its cone from the low
+                // end, never inside out (fork 9853e54), laid out as the reversed
+                // line's B-spline: the loop runs the other way round, its normal
+                // the analytic surface's, against the B-spline's
+                if let SurfaceKind::Cone(c) = surface.kind() {
+                    assert!(!c.inside_out(), "{name}");
+                }
+                assert!(
+                    (n_new + n_old).length() < 1e-12,
+                    "{name}: {n_new:?} {n_old:?}"
+                );
+                assert_eq!(new.trim_curves.len(), old.trim_curves.len(), "{name}");
+                assert_eq!(new.face_tol, old.face_tol, "{name}");
+                continue;
+            }
+            // the same loop: roles, orientations, tolerances and the normal (the
+            // analytic surface's, to rounding)
+            assert!(
+                (n_new - n_old).length() < 1e-12,
+                "{name}: {n_new:?} {n_old:?}"
+            );
             assert_eq!(new.trim_curves.len(), old.trim_curves.len(), "{name}");
             assert_eq!(new.uv_trim_curves.len(), old.uv_trim_curves.len(), "{name}");
             assert_eq!(new.orients, old.orients, "{name}");
@@ -1489,7 +1511,6 @@ mod tests {
                 ),
                 "{name}"
             );
-            assert_eq!(new.normal, old.normal, "{name}");
             assert_eq!(new.face_tol, old.face_tol, "{name}");
             // each 3D trim has the B-spline trim's ends and lies on the new surface
             for (i, (c, d)) in new.trim_curves.iter().zip(&old.trim_curves).enumerate() {
