@@ -65,6 +65,7 @@ use crate::geom::extent2d::Extent2d;
 use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
+use crate::math::UNDEF_DOUBLE;
 use crate::nurbs::b_spline_curve::{ControlPointForm, KnotType};
 use crate::nurbs::b_spline_surface::{
     BSplineSurface, BSplineSurfaceForm, CanonicalSurfaceData, SurfParamType,
@@ -505,6 +506,11 @@ impl Surface {
             non_zero_tangents: false,
         };
         let size = uv_domain.size();
+        // `SmVector3d sMat[2][2]` starts at SM_UNDEF_DOUBLE (its members' default
+        // initializers); an evaluation that writes only the upper half leaves the twist
+        // `sMat[1][1]` at that value for every corner
+        let writes_twist = evaluation_writes_twist(self)?;
+        let undef = Vec3::new(UNDEF_DOUBLE, UNDEF_DOUBLE, UNDEF_DOUBLE);
         let corner = |uv: Point2| -> Result<[[Vec3; 2]; 2]> {
             let m = self.evaluate(k, uv, 1, 1, flags)?;
             let at = |i: usize, j: usize| -> Result<Vec3> {
@@ -513,7 +519,8 @@ impl Surface {
                     .copied()
                     .ok_or_else(|| SolidError::sm_err(OP))
             };
-            Ok([[at(0, 0)?, at(0, 1)?], [at(1, 0)?, at(1, 1)?]])
+            let twist = if writes_twist { at(1, 1)? } else { undef };
+            Ok([[at(0, 0)?, at(0, 1)?], [at(1, 0)?, twist]])
         };
         let mut cb = CubicBezierSurface::default();
         let p = &mut cb.points;
@@ -633,6 +640,49 @@ impl Surface {
             "root surface chain deeper than MAX_GEOMETRY_NESTING",
         ))
     }
+}
+
+/// Whether `Evaluate(uv, 1, 1, .., bOnlyUpperHalf = FALSE, ..)` of `s` writes the
+/// twist `D[1][1]`. A curve bounded surface passes the call to its basis surface and a
+/// STEP surface to its base's `EvaluateSTEP`; there a curve bounded surface passes it
+/// along again, the cone, sphere, torus and surface of revolution overrides write the
+/// upper half only (`D[1][1]` needs `min(u, v) >= 2`), the surface of extrusion
+/// override zeroes the whole array first, and every other kind evaluates in full
+/// (`EvaluateSTEP`'s default is `Evaluate`).
+///
+/// # Errors
+///
+/// `InvalidInput` for a chain deeper than [`MAX_GEOMETRY_NESTING`] or a STEP surface
+/// without base surface.
+fn evaluation_writes_twist(s: &Surface) -> Result<bool> {
+    const OP: &str = OP_BEZIER;
+    let mut cur = s;
+    let mut step = false;
+    for _ in 0..=MAX_GEOMETRY_NESTING {
+        cur = match cur.kind() {
+            SurfaceKind::CurveBounded(c) => c.basis(),
+            // (a STEP surface's own `EvaluateSTEP` is the default, `Evaluate`: its base's
+            // `EvaluateSTEP` again)
+            SurfaceKind::Step(st) => {
+                step = true;
+                st.surface()
+                    .ok_or_else(|| SolidError::invalid_input(OP, "STEP surface without base"))?
+            }
+            SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
+            | SurfaceKind::SurfOfRevolution(_)
+                if step =>
+            {
+                return Ok(false);
+            }
+            _ => return Ok(true),
+        };
+    }
+    Err(SolidError::invalid_input(
+        OP,
+        "surface chain deeper than MAX_GEOMETRY_NESTING",
+    ))
 }
 
 impl BSplineSurface {
