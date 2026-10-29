@@ -294,7 +294,10 @@ pub(crate) fn export(b: &StitchBrep) -> Result<Vec<f64>, HarnessError> {
 ///
 /// A harness error for a source the shim would not accept either or a dangling
 /// reference in the renumbering.
-pub(crate) fn own_brep(k: &mut Kernel, b: &StitchBrep) -> Result<Result<Brep, Output>, HarnessError> {
+pub(crate) fn own_brep(
+    k: &mut Kernel,
+    b: &StitchBrep,
+) -> Result<Result<Brep, Output>, HarnessError> {
     use crate::own_builder::{build_any, build_status, finish, in_new_brep, Built, Conventions};
     let conv = &Conventions::EDGEUSE_GRAPH;
     let built = match b {
