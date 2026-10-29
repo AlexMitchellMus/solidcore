@@ -717,7 +717,10 @@ impl BSplineSurface {
                 return Err(err());
             }
             let ivl = a.natural_interval();
-            let (s, e) = (a.evaluate_point(k, ivl.min())?, a.evaluate_point(k, ivl.max())?);
+            let (s, e) = (
+                a.evaluate_point(k, ivl.min())?,
+                a.evaluate_point(k, ivl.max())?,
+            );
             towards = towards + (s - centre) + (e - centre);
             ends.push((s, e));
         }
@@ -725,7 +728,13 @@ impl BSplineSurface {
         let mut open = vec![false; 4];
         for (i, (s, e)) in ends.iter().enumerate() {
             for p in [s, e] {
-                let others = ends.iter().enumerate().filter(|(j, (s2, e2))| *j != i && (p.distance(*s2) < tol_3d || p.distance(*e2) < tol_3d)).count();
+                let others = ends
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, (s2, e2))| {
+                        *j != i && (p.distance(*s2) < tol_3d || p.distance(*e2) < tol_3d)
+                    })
+                    .count();
                 if others != 1 {
                     *open.get_mut(i).ok_or_else(err)? = true;
                 }
@@ -739,9 +748,21 @@ impl BSplineSurface {
         let helper = if m.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
         let axis = m.cross(helper).unitize()?;
         let frame = Axis2Placement::new(centre, -m, axis);
-        let meridian = BSplineCurve::create_circle_segment(3, &frame, radius, -90.0, 90.0, NurbCircleParam::Quadratic)?;
-        let sphere = Self::create_surf_of_revolution(k, &meridian, centre, axis, 360.0, false, None)?;
-        Ok(SphereFromArcs { ccw_arcs: (0..4).collect(), orients: vec![OrientType::Same; 4], sphere })
+        let meridian = BSplineCurve::create_circle_segment(
+            3,
+            &frame,
+            radius,
+            -90.0,
+            90.0,
+            NurbCircleParam::Quadratic,
+        )?;
+        let sphere =
+            Self::create_surf_of_revolution(k, &meridian, centre, axis, 360.0, false, None)?;
+        Ok(SphereFromArcs {
+            ccw_arcs: (0..4).collect(),
+            orients: vec![OrientType::Same; 4],
+            sphere,
+        })
     }
 
     /// The surface of revolution of `gen_curve` about the axis through `origin` along
@@ -1666,14 +1687,23 @@ mod tests {
         let (r, theta) = (2.0_f64, 40.0_f64.to_radians());
         let u = |i: usize| {
             let phi = std::f64::consts::FRAC_PI_2 * i as f64;
-            [theta.sin() * phi.cos(), theta.sin() * phi.sin(), theta.cos()]
+            [
+                theta.sin() * phi.cos(),
+                theta.sin() * phi.sin(),
+                theta.cos(),
+            ]
         };
         (0..4)
             .map(|i| {
                 let (a, b) = (u(i), u((i + 1) % 4));
                 let cos = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
                 let c = [0, 1, 2].map(|j| r * (a[j] + b[j]) / (1.0 + cos));
-                arc3([0, 1, 2].map(|j| r * a[j]), c, (cos.acos() / 2.0).cos(), [0, 1, 2].map(|j| r * b[j]))
+                arc3(
+                    [0, 1, 2].map(|j| r * a[j]),
+                    c,
+                    (cos.acos() / 2.0).cos(),
+                    [0, 1, 2].map(|j| r * b[j]),
+                )
             })
             .collect()
     }
@@ -1686,13 +1716,18 @@ mod tests {
         let arcs = four_arcs();
         assert!(BSplineSurface::create_sphere_from_arcs(&k, &arcs, 1e-6).is_err());
         k.fixes.fillet_corner_sphere_from_four_arcs = true;
-        let sphere = BSplineSurface::create_sphere_from_arcs(&k, &arcs, 1e-6).unwrap().sphere;
+        let sphere = BSplineSurface::create_sphere_from_arcs(&k, &arcs, 1e-6)
+            .unwrap()
+            .sphere;
         let surface = crate::surface::surface::Surface::from(sphere);
         let domain = surface.natural_uv_domain_with_nurb(&k).unwrap();
         let (lo, hi) = (domain.min(), domain.max());
         for i in 0..=6 {
             for j in 0..=6 {
-                let uv = Point2::new(lo.x + (hi.x - lo.x) * f64::from(i) / 6.0, lo.y + (hi.y - lo.y) * f64::from(j) / 6.0);
+                let uv = Point2::new(
+                    lo.x + (hi.x - lo.x) * f64::from(i) / 6.0,
+                    lo.y + (hi.y - lo.y) * f64::from(j) / 6.0,
+                );
                 let d = surface.evaluate_point(&k, uv).unwrap().length();
                 assert!((d - 2.0).abs() < 1e-9, "{uv:?}: {d}");
             }

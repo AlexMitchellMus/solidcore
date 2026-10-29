@@ -25,11 +25,15 @@ fn rounded_pyramid(k: &mut Kernel) -> (f64, bool) {
     let edges = b.edge_list().to_vec();
     {
         let mut session = FilletSession::new(k, &mut b).unwrap();
-        session.prepare_constant_radius_edges(k, &edges, 2.0, 1, 1, 1.0).unwrap();
+        session
+            .prepare_constant_radius_edges(k, &edges, 2.0, 1, 1, 1.0)
+            .unwrap();
         session.do_fillet(k).unwrap();
     }
     stitch_and_orient(k, &mut b, &StitchAndOrientOptions::default()).unwrap();
-    let top = calculate_bounding_box(k, &mut b, BoundingBoxOptions::default()).unwrap().max_at(2);
+    let top = calculate_bounding_box(k, &mut b, BoundingBoxOptions::default())
+        .unwrap()
+        .max_at(2);
     (top, is_manifold_solid(&b).unwrap())
 }
 
@@ -43,5 +47,8 @@ fn four_equal_rounds_at_an_apex_meet_in_a_sphere_only_with_the_fix() {
     let mut k = Kernel::default();
     k.fixes.fillet_corner_sphere_from_four_arcs = true;
     let (top, manifold) = rounded_pyramid(&mut k);
-    assert!(manifold && (top - sphere_top).abs() < 1e-3, "{top} {sphere_top}");
+    assert!(
+        manifold && (top - sphere_top).abs() < 1e-3,
+        "{top} {sphere_top}"
+    );
 }
