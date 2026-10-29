@@ -41,7 +41,7 @@ fn check(k: &mut Kernel, b: &mut Brep) -> BrepCheck {
 
 /// Pending: every non-empty body reaches `sm_AssertTestVertex1` (WP4, every level), and
 /// level 2 reaches `sm_AssertTestFace32/33/38` and `sm_AssertTestEdge13` (WP4). The
-/// WP2 helpers (#1472) and `SmSurface::AssertValid` (WP3a, #1460) are wired.
+/// WP2 helpers (#1472) and `SmSurface::AssertValid` (package 3a, #1460) are wired.
 #[test]
 #[ignore = "pending #1419 WP4 seams (#1478): sm_AssertTestVertex1, sm_AssertTestFace32/33/38, sm_AssertTestEdge13"]
 fn valid_bodies_report_no_failures_at_level_2() {
