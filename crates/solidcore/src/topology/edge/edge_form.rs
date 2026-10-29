@@ -1,5 +1,5 @@
 //! The edge "on face edge form" check: the edge curve within the cross-section
-//! tolerance of every face it bounds (`SmEdge` AssertValid test 13).
+//! tolerance of every face it bounds (`SmEdge::AssertValid` test 13).
 //!
 //! Upstream: `source/SMLib/src/SmEdge.cpp`, `source/SMLib/inc/SmEdge.h`.
 //!
@@ -72,7 +72,7 @@ pub fn is_on_face_edge_form(k: &Kernel, b: &mut Brep, e: EdgeId) -> Result<(bool
 }
 
 /// `sm_AssertTestEdge13(pEdge, &dMaxGap3d)`: `(ok, max_gap_3d)` of
-/// [`is_on_face_edge_form`] (Edge AssertValid test 13, level 2).
+/// [`is_on_face_edge_form`] (`SmEdge::AssertValid` test 13, level 2).
 ///
 /// # Errors
 ///
