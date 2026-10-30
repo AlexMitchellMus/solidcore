@@ -284,21 +284,27 @@ void p7_glue(SmBrep* b, Graph& g, Rd& rd, std::vector<double>& o)
     p7_put_tolerances(o, b);
 }
 
-// `n use_merge`, B-rep block: the first `n` faces (in traversal order) copied into a new
-// B-rep. Output `status nfaces counts_of_destination`.
+// `n use_merge repeat`, B-rep block: the first `n` faces (in traversal order) copied
+// `repeat` times into one new B-rep. Output `status... nfaces counts_of_destination`
+// (one status per copy, the new faces of all copies).
 void p7_copy(SmBrep* b, Graph& g, Rd& rd, std::vector<double>& o)
 {
     int64_t n = rd.idx();
     SmBoolean merge = rd.bflag();
+    int64_t repeat = rd.idx();
     SmTArray<SmFace*> faces;
     for (int64_t i = 0; i < n && i < (int64_t)g.faces.size(); i++)
         faces.Add(g.faces[(size_t)i]);
     Built dest;
     dest.brep = new (the_context()) SmBrep();
     SmTArray<SmFace*> nfs;
-    SmStatus s = b->CopyFaces(faces, dest.brep, &nfs, merge);
-    o.push_back(st(s));
-    o.push_back((double)nfs.GetSize());
+    double made = 0;
+    for (int64_t r = 0; r < repeat; r++) {
+        // (CopyFaces resets the new-face list first)
+        o.push_back(st(b->CopyFaces(faces, dest.brep, &nfs, merge)));
+        made += (double)nfs.GetSize();
+    }
+    o.push_back(made);
     p7_put_counts(o, dest.brep);
 }
 
@@ -319,10 +325,28 @@ struct SelfCurves
             delete u2[i];
     }
 };
+// Restore the original knots after the ordinary constructor's knot fix-up.
+SmBSplineCurve* p7_read_self_curve(Rd& rd, const SmContext& ctx)
+{
+    bool raw = rd.flag();
+    int64_t start = rd.at;
+    int64_t n = (int64_t)rd.in[start + 1];
+    int64_t m = (int64_t)rd.in[start + 3];
+    SmBSplineCurve* curve = read_curve(rd, ctx);
+    if (raw)
+    {
+        gw_CURVE* nurb = curve->GetGwNurbPointer();
+        const double* knots = rd.in + start + 4 + 4 * (n + 1);
+        for (int64_t i = 0; i <= m; ++i)
+            nurb->knt->U[i] = knots[i];
+    }
+    return curve;
+}
 
-// `face tol`, then (read before the B-rep block) `ncurves (curve3d curveuv1 curveuv2)*`:
-// MergeSelfIntersectionCurves on the face's surface. Output `status nedges counts` (`-2`
-// for a face without surface).
+
+// `face tol`, then `ncurves (raw curve3d raw curveuv1 raw curveuv2)*`, before
+// the B-rep block. Output `status nedges counts edges*`; each edge includes its
+// curve and UV trim samples (`-2` for a face without surface).
 void p7_merge_self(SmBrep* b, Graph& g, Rd& rd, const SelfCurves& cs, std::vector<double>& o)
 {
     int64_t fi = rd.idx();
@@ -338,12 +362,75 @@ void p7_merge_self(SmBrep* b, Graph& g, Rd& rd, const SelfCurves& cs, std::vecto
     o.push_back(st(b->MergeSelfIntersectionCurves(*s, tol, cs.c3, cs.u1, cs.u2, es)));
     o.push_back((double)es.GetSize());
     p7_put_counts(o, b);
+    for (ULONG i = 0; i < es.GetSize(); ++i)
+    {
+        SmEdge* e = es[i];
+        SmExtent1d interval = e->GetInterval();
+        o.push_back(interval.GetMin());
+        o.push_back(interval.GetMax());
+        for (SmVertex* vertex : {e->GetStartVertex(), e->GetEndVertex()})
+        {
+            o.push_back(vertex ? 1.0 : 0.0);
+            if (vertex)
+            {
+                SmPoint3d point = vertex->GetPoint();
+                o.push_back(point.x);
+                o.push_back(point.y);
+                o.push_back(point.z);
+            }
+        }
+        SmCurve* curve = e->GetCurve();
+        o.push_back(curve ? (double)curve->GetType() : -1.0);
+        if (curve)
+        {
+            SmExtent1d natural = curve->GetNaturalInterval();
+            o.push_back(natural.GetMin());
+            o.push_back(natural.GetMax());
+            for (double fraction : {0.0, 0.25, 0.5, 0.75, 1.0})
+            {
+                SmPoint3d point;
+                SmStatus status = curve->EvaluatePoint(interval.Evaluate(fraction), point);
+                o.push_back(st(status));
+                if (status == SM_SUCCESS)
+                {
+                    o.push_back(point.x);
+                    o.push_back(point.y);
+                    o.push_back(point.z);
+                }
+            }
+        }
+        std::vector<SmTopology*> uses = list_of(e->GetList());
+        o.push_back((double)uses.size());
+        for (SmTopology* topology : uses)
+        {
+            SmEdgeuse* use = (SmEdgeuse*)topology;
+            SmBSplineCurve* trim = use->GetUVTrimCurve();
+            o.push_back(trim ? (double)trim->GetType() : -1.0);
+            if (trim)
+            {
+                SmExtent1d natural = trim->GetNaturalInterval();
+                o.push_back(natural.GetMin());
+                o.push_back(natural.GetMax());
+                for (double fraction : {0.0, 0.25, 0.5, 0.75, 1.0})
+                {
+                    SmPoint3d point;
+                    SmStatus status = trim->EvaluatePoint(natural.Evaluate(fraction), point);
+                    o.push_back(st(status));
+                    if (status == SM_SUCCESS)
+                    {
+                        o.push_back(point.x);
+                        o.push_back(point.y);
+                    }
+                }
+            }
+        }
+    }
 }
 
 void p7_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
 {
     // the op's arguments come first, then the B-rep block
-    int64_t n_args = op == OP_GLUE ? 5 : 2;
+    int64_t n_args = op == OP_GLUE ? 5 : op == OP_COPY ? 3 : 2;
     std::vector<double> args;
     for (int64_t i = 0; i < n_args; i++)
         args.push_back(rd.num());
@@ -355,9 +442,9 @@ void p7_brep_op(int32_t op, Rd& rd, const char* path, std::vector<double>& o)
         int64_t nc = rd.idx();
         for (int64_t i = 0; i < nc; i++)
         {
-            cs.c3.Add(read_curve(rd, ctx));
-            cs.u1.Add(read_curve(rd, ctx));
-            cs.u2.Add(read_curve(rd, ctx));
+            cs.c3.Add(p7_read_self_curve(rd, ctx));
+            cs.u1.Add(p7_read_self_curve(rd, ctx));
+            cs.u2.Add(p7_read_self_curve(rd, ctx));
         }
     }
     SmStatus status = SM_SUCCESS;
