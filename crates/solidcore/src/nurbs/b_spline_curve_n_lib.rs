@@ -2291,8 +2291,8 @@ impl BSplineCurve {
                 )?;
             // `fixes.bspline_trim_keeps_rational_end_spans` (WR-575): a rational curve's
             // short end span stays, as removing it moves the conic off its shape
-            let keeps_rational = k.fixes.bspline_trim_keeps_rational_end_spans
-                && cur1.cpts().iter().any(|p| p.w != NOW);
+            let keeps_rational =
+                k.fixes.bspline_trim_keeps_rational_end_spans && cur1.is_rational();
             if (!k.fixes.bspline_trim_preserves_uv_spans || self.dim == 3)
                 && !keeps_rational
                 && ((head < zone_tol_1d_min && knots.len() > 2)
@@ -2523,15 +2523,16 @@ mod tests {
     }
 
     // The rational half circle of radius `r` about the origin in z = 0 (two quarters,
-    // the middle knot at 0.5), a model curve.
+    // the middle knot at 0.5), a model curve: every control point carries its weight, as
+    // a rational NURB's do (`N_IsCrvRat` reads the first; `NOW` marks no weight).
     fn half_circle(r: f64) -> BSplineCurve {
         let w = core::f64::consts::FRAC_1_SQRT_2;
         let points = [
-            CPoint::new(r, 0.0, 0.0, NOW),
+            CPoint::new(r, 0.0, 0.0, 1.0),
             CPoint::new(r * w, r * w, 0.0, w),
-            CPoint::new(0.0, r, 0.0, NOW),
+            CPoint::new(0.0, r, 0.0, 1.0),
             CPoint::new(-r * w, r * w, 0.0, w),
-            CPoint::new(-r, 0.0, 0.0, NOW),
+            CPoint::new(-r, 0.0, 0.0, 1.0),
         ];
         let mut nurb = allocate_nurb_curve(4, 2, 7).unwrap();
         nurb.cpts_mut().copy_from_slice(&points);
