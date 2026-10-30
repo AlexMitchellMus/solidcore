@@ -2506,7 +2506,8 @@ mod tests {
         .unwrap();
         let shell = made.shell.unwrap();
         assert_eq!(b.region(region).unwrap().shells, vec![shell]);
-        assert_eq!(b.shell(old_shell).unwrap(), &Shell::default());
+        // `delete pShell`: the emptied vertex shell's record left its arena
+        assert!(b.shell(old_shell).is_err());
         let uses = &b.vertex(v).unwrap().vertexuses;
         assert_eq!(uses.len(), 2);
         let face = b.face(made.face).unwrap();
