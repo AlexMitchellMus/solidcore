@@ -1,6 +1,6 @@
 {
  "issue": "https://github.com/tangency-labs/solidcraft/issues/8472",
- "pr": "https://github.com/tangency-labs/solidcore/pull/0",
+ "pr": "https://github.com/tangency-labs/solidcore/pull/1854",
  "test": "none: the issue is open and has no fixing PR (SolidCraft's kernel work is paused, #3992), so `pr` points at the PR that adds this fixture, as the loader requires a /pull/ URL; the issue reproduces it (a Combine, Operation = Join) and its triage comment; the numbers here are analytic",
  "summary": "Joining two crossing cylinders fails on SolidCraft's kernel with 'boolean Union: kernel internal error: boolean: tolerance must be no less than 1e-6' (reproduced on 0.25.1 at main 18fe82ab and on 0.26.0): cylinder A (base (27.5, 5, 17.5), axis +X, radius 3.75, height 5) and cylinder B (base (27.5, 2.5, 2.5), axis +Z, radius 6.25, height 17.5). Join in both orders and Cut A - B fail; Cut B - A and Intersect work. It fails only at A's radius 3.75: there A's side reaches y = 8.75, the largest y of B's side, and the two touch where A's start cap (x = 27.5) crosses B's axis. The volumes are exact for true cylinders (the issue's 2185.83 comes from the kernel's faceted result): A and B are closed form, the intersection is an integral evaluated by Gauss-Legendre quadrature and cross-checked on a grid. The tolerance is 0.01 mm^3, as in the other boolean cases.",
  "cases": [
