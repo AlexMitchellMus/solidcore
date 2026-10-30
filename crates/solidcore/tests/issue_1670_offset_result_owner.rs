@@ -3,7 +3,7 @@
 //! its edges' curves owned under the caller's result identities (`result_key_of`) or,
 //! after the self-intersection merge, the merge bodies' identities, while the result
 //! was labelled `NamingScheme::Notify` (or `Unknown`) without those keys recorded, so
-//! `check_brep` failed SmBrep test #61 on every edge. The geometry is right; upstream's
+//! `check_brep` failed `SmBrep` test #61 on every edge. The geometry is right; upstream's
 //! owner is the edge itself and its check passes.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, dead_code)]
 
@@ -140,7 +140,7 @@ impl SweepIdentities for MergeBodies {
     }
 }
 
-/// The notification stores of one offset call on `source` (SM_API's context keeps them for the
+/// The notification stores of one offset call on `source` (`SM_API`'s context keeps them for the
 /// process; each call here has its own).
 struct Notifications {
     records: NotifyRecords,
@@ -231,7 +231,7 @@ fn offset_brep_full(
     api_offset_brep_full(k, Some(b), options, &mut n.context())
 }
 
-/// `SmApiBrepCopy` of `b` named in domain `n` (a NamingScheme::Caller body with its keys
+/// `SmApiBrepCopy` of `b` named in domain `n` (a `NamingScheme::Caller` body with its keys
 /// recorded, solidcore#1585), as SolidCraft copies a body before an operation.
 fn copy_of(k: &mut Kernel, b: &Brep, n: u64) -> Brep {
     let target = move |e| named(e, n.saturating_mul(100_000_000));

@@ -2,7 +2,7 @@
 //! open profile built the profile's wire edge under the kernel's identities of the
 //! B-rep (`topology_ref`, a plain edit) while every other entity of the sweep was named
 //! by the primitive's notification scheme, so the start edge's curve was owned by
-//! another identity and `check_brep` failed SmBrep test #61 on it. Upstream's owner is
+//! another identity and `check_brep` failed `SmBrep` test #61 on it. Upstream's owner is
 //! the edge itself (`SmApiCreateRotationalSweep` checks valid).
 #![allow(clippy::unwrap_used)]
 
