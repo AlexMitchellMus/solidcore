@@ -4885,6 +4885,9 @@ mod attribute_seed_tests {
         assert_eq!(target.attribute_store(), &target_before);
         assert_eq!(second.attribute_store(), &second_before);
         assert_eq!(target.entity_attributes(EntityRef::Face(face)).len(), 1);
-        assert_eq!(second.entity_attributes(EntityRef::Face(second_face)).len(), 1);
+        assert_eq!(
+            second.entity_attributes(EntityRef::Face(second_face)).len(),
+            1
+        );
     }
 }
