@@ -168,18 +168,20 @@ fn assert_half_rims(k: &Kernel, sheet: &Brep) {
         rim.iter().all(|&(_, closed)| !closed),
         "rim halves are open"
     );
-    let half_length = PI * 75.0_f64.sqrt();
+    let diameter = 2.0 * 75.0_f64.sqrt();
     for (e, _) in rim {
         let edge = sheet.edge(e).unwrap();
-        let length = edge
-            .curve
-            .as_ref()
-            .unwrap()
-            .length(k, &edge.interval, 1e-10)
-            .unwrap();
+        let curve = edge.curve.as_ref().unwrap();
+        let (a, b) = ends(k, sheet, e);
         assert!(
-            (length - half_length).abs() <= 1e-8,
-            "rim edge length {length}, expected half circle {half_length}"
+            (a.distance(b) - diameter).abs() <= 1e-9,
+            "rim endpoints must be antipodal: {a:?}, {b:?}"
+        );
+        // Together with the sampled circle and antipodal ends, excluding extra turns
+        // establishes a half circle without a detached curve's owning-tolerance query.
+        assert!(
+            edge.interval.length() <= curve.natural_interval().length(),
+            "rim interval must not span extra turns"
         );
     }
 }
