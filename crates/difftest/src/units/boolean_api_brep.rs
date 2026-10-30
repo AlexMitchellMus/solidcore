@@ -41,6 +41,12 @@
 //! a second B-rep (`SmApiCreateBox(origin, 1, 1, 1)` on both sides), which upstream
 //! rejects (`SmApiBrep.cpp:1822`, `:1881`).
 //!
+//! An `attributed` call (fixtures only, issue #1462) tags every operand face and edge with
+//! its own long attribute before `SmApiBoolean`, each side on its own operands (the C++
+//! shim with `SmLongAttribute`s, the Rust side with `Brep::add_attribute`), and also
+//! compares `attributes`: per result face (edge) its area (length) and the attributes it
+//! carries, sorted by attributes, so attribute propagation through the merge shows.
+//!
 //! Compared: the input validation (`SM_BO_EXTRACT_SEPARATE` for the two-B-rep entry
 //! points, short lists and operations other than union / intersection / difference /
 //! merge for `SmApiMergeBreps`, which must leave the list untouched) and the merges
@@ -48,6 +54,14 @@
 //! callee. Every run has at least [`MIN_GENERATED`] generated cases, plus
 //! [`MIN_GENERATED_MORE`] cases of the entry points added later (`more0000`, ...: their
 //! own stream, so each `gen` case stays the one the baseline has).
+//!
+//! A `tessellate_boundaries` call (`SmApiTessellateBoundaries`) tessellates one operand's
+//! edges, some of them first left without curve (`drop_curves`, `GetEdges` indices):
+//! `status` (also `SM_ERR` with partial output), `record` (the edges as `GetEdges`
+//! indices, then the vertex counts, each list after its length) and `points` (`x y z` per
+//! point). Besides the fixtures, [`MIN_GENERATED_TESSELLATE`] such calls are generated on
+//! their own stream (`tess0000`, ...): every operand kind at small, moderate and large
+//! scales, angle tolerances from `0.5` to `90` degrees and invalid ones.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -56,10 +70,12 @@ use solidcore::boolean::api_brep as api;
 use solidcore::boolean::merge::MergeOptions;
 use solidcore::curve::curve::Curve as SmCurve;
 use solidcore::geom::a_object::BooleanOperation;
-use solidcore::geom::attribute::{AttributeStore, ObjectKey};
+use solidcore::geom::attribute::{Attribute, AttributeStore, Behavior, ObjectKey};
 use solidcore::geom::vector3d::{Point3, Vec3};
 use solidcore::kernel::Kernel;
-use solidcore::mass::integrator::properties::{brep_volume, face_area, PropertyAttributes};
+use solidcore::mass::integrator::properties::{
+    brep_volume, edge_length, face_area, PropertyAttributes,
+};
 use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::nurbs::crv_basic::Curve as NurbCurve;
 use solidcore::nurbs::math::{CPoint, NOW};
@@ -68,6 +84,8 @@ use solidcore::sweep::api_brep::{
     non_manifold_rotational_sweep, non_manifold_sweep, RegionBrep, SweepSelection,
 };
 use solidcore::sweep::api_surfaces::create_skin_primitive;
+use solidcore::error::SM_ERR;
+use solidcore::topology::brep::p1::BoundaryTessellation;
 use solidcore::topology::brep::{p1 as brep_p1, p2 as brep_p2};
 use solidcore::topology::edgeuse::p1 as edgeuse_p1;
 use solidcore::topology::proto_topology::p1::api_transform::{
@@ -75,7 +93,7 @@ use solidcore::topology::proto_topology::p1::api_transform::{
 };
 use solidcore::topology::shell::shell_region;
 use solidcore::topology::{Brep, EdgeId, FaceId, FaceuseId, RegionId, VertexId};
-use solidcore::SolidError;
+use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::boolean_api_brep::{
     self as ffi, BrepSpec, Call, Flags, RegionArg, Selection,
 };
@@ -89,6 +107,9 @@ pub const MIN_GENERATED: usize = 240;
 /// Generated cases of the later entry points (with curves, 2D, non-manifold, piecewise
 /// and the sweeps) per run, whatever `--seeds` says.
 pub const MIN_GENERATED_MORE: usize = 160;
+
+/// Generated `tessellate_boundaries` calls per run (their own stream).
+pub const MIN_GENERATED_TESSELLATE: usize = 160;
 
 /// `SM_ERR_INVALID_INPUT`.
 const SM_ERR_INVALID_INPUT: i64 = 1007;
@@ -116,6 +137,8 @@ enum BrepIn {
     Plane { origin: P3, size: [f64; 2] },
     /// `SmApiCreateTorus` (`SmBrep*&` overload; axis +Z).
     Torus { center: P3, major: f64, minor: f64 },
+    /// `SmApiCreateCylinder` (`SmBrep*&` overload; axis +Z, `origin` the base center).
+    Cylinder { origin: P3, radius: f64, height: f64 },
     /// `brep` moved by `steps` in order (`SmApiRotate` / `SmApiTranslate`).
     Moved {
         steps: Vec<MoveIn>,
@@ -342,6 +365,24 @@ enum Inputs {
         #[serde(default)]
         selection: SelectionIn,
     },
+    /// Both operands' faces and edges tagged with their own long attribute (behaviour
+    /// `behavior`, an `SmAttributeBehaviorType` value), then `SmApiBoolean`; the record
+    /// adds the attributes the returned B-reps' faces and edges carry.
+    Attributed {
+        a: BrepIn,
+        b: BrepIn,
+        operation: i32,
+        #[serde(default)]
+        behavior: u8,
+    },
+    /// `SmApiTessellateBoundaries` of `brep`, the edges at `drop_curves` (`GetEdges`
+    /// indices) first left without curve.
+    TessellateBoundaries {
+        brep: BrepIn,
+        angle_tol_deg: f64,
+        #[serde(default)]
+        drop_curves: Vec<u64>,
+    },
 }
 
 fn spec(b: &BrepIn) -> BrepSpec {
@@ -357,6 +398,15 @@ fn spec(b: &BrepIn) -> BrepSpec {
             center,
             major,
             minor,
+        },
+        &BrepIn::Cylinder {
+            origin,
+            radius,
+            height,
+        } => BrepSpec::Cylinder {
+            origin,
+            radius,
+            height,
         },
         BrepIn::Moved { steps, brep } => BrepSpec::Moved {
             steps: steps
@@ -539,6 +589,26 @@ fn to_call(i: &Inputs) -> Call {
             region: region.ffi(),
             selection: selection(sel),
         },
+        Inputs::Attributed {
+            a,
+            b,
+            operation,
+            behavior,
+        } => Call::Attributed {
+            a: spec(a),
+            b: spec(b),
+            operation: *operation,
+            behavior: *behavior,
+        },
+        Inputs::TessellateBoundaries {
+            brep,
+            angle_tol_deg,
+            drop_curves,
+        } => Call::TessellateBoundaries {
+            brep: spec(brep),
+            angle_tol_deg: *angle_tol_deg,
+            drop_curves: drop_curves.clone(),
+        },
     }
 }
 
@@ -570,29 +640,32 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
     }
     match ffi::run(&to_call(i)) {
         Ok(o) => match i {
-            Inputs::Measured { .. } => measured_output(&o),
+            Inputs::Measured { .. } => measured_output(&o, "measures"),
+            Inputs::Attributed { .. } => measured_output(&o, "attributes"),
             Inputs::Boolean2d { .. } => {
                 areas_output(&o, o.first() == Some(&0.0) && o.get(1) == Some(&1.0))
             }
             Inputs::Sweep { .. } | Inputs::RotationalSweep { .. } => {
                 areas_output(&o, o.first() == Some(&0.0))
             }
+            Inputs::TessellateBoundaries { .. } => tessellate_output(&o),
             _ => to_output(&o),
         },
         Err(e) => Err(harness(format!("cpp: {e}"))),
     }
 }
 
-/// A `measured` record: the integer record, then on success (`status` 0 and a result)
-/// the measures the shim appends ([`ffi::split_measures`]).
-fn measured_output(o: &[f64]) -> Result<Output, HarnessError> {
+/// A `measured` (`attributed`) record: the integer record, then on success (`status` 0
+/// and a result) the measures (attribute rows) the shim appends under `key`
+/// ([`ffi::split_measures`]).
+fn measured_output(o: &[f64], key: &str) -> Result<Output, HarnessError> {
     let succeeded = o.first() == Some(&0.0) && o.get(1) == Some(&1.0);
     if !succeeded {
         return to_output(o);
     }
     let (head, measures) =
         ffi::split_measures(o).ok_or_else(|| harness("cpp: measured record too short"))?;
-    Ok(to_output(head)?.values("measures", measures.to_vec()))
+    Ok(to_output(head)?.values(key, measures.to_vec()))
 }
 
 /// A record that ends, when `has_areas`, with the shim's `put_areas` tail (split off as
@@ -604,6 +677,44 @@ fn areas_output(o: &[f64], has_areas: bool) -> Result<Output, HarnessError> {
     let (head, areas) =
         ffi::split_measures(o).ok_or_else(|| harness("cpp: areas record too short"))?;
     Ok(to_output(head)?.values("areas", areas.to_vec()))
+}
+
+/// A `tessellate_boundaries` record: `status ne edges.. nc counts.. np xyz..` (a failed
+/// torus operand: `status 2`).
+fn tessellate_output(o: &[f64]) -> Result<Output, HarnessError> {
+    if o.len() == 2 && o.get(1) == Some(&2.0) {
+        return to_output(o);
+    }
+    let short = || harness("cpp: tessellate record too short");
+    let (&status, rest) = o.split_first().ok_or_else(short)?;
+    let int = |x: f64| {
+        if x.fract() == 0.0 && x.abs() < 1e15 {
+            Ok(x as i64)
+        } else {
+            Err(harness(format!("non-integer record entry {x}")))
+        }
+    };
+    let mut ints = Vec::new();
+    let mut at = 0usize;
+    // the edge and count lists, each after its length
+    for _ in 0..2 {
+        let n = int(*rest.get(at).ok_or_else(short)?)?;
+        let len = usize::try_from(n).map_err(|_| short())?;
+        let list = rest.get(at..at + 1 + len).ok_or_else(short)?;
+        for &x in list {
+            ints.push(int(x)?);
+        }
+        at += 1 + len;
+    }
+    let np = usize::try_from(int(*rest.get(at).ok_or_else(short)?)?).map_err(|_| short())?;
+    let points = rest
+        .get(at + 1..at + 1 + 3 * np)
+        .ok_or_else(short)?
+        .to_vec();
+    Ok(Output::new()
+        .int("status", int(status)?)
+        .ints("record", ints)
+        .values("points", points))
 }
 
 /// Whether the Boolean reaches UB-242 (`plan/upstream-issues/`): an imprint in
@@ -688,6 +799,11 @@ fn build_at(k: &mut Kernel, b: &BrepIn, depth: usize) -> Result<Brep, Stop> {
             primitives::create_box(k, p3(origin), size[0], size[1], size[2])
         }
         &BrepIn::Sphere { center, radius } => primitives::create_sphere(k, p3(center), radius),
+        &BrepIn::Cylinder {
+            origin,
+            radius,
+            height,
+        } => primitives::create_cylinder(k, p3(origin), radius, height),
         &BrepIn::Plane { origin, size } => {
             primitives::create_plane(k, p3(origin), size[0], size[1])
         }
@@ -858,6 +974,93 @@ fn measures(k: &Kernel, b: &mut Brep) -> Result<Vec<f64>, Stop> {
     areas.sort_by(f64::total_cmp);
     o.extend(areas);
     Ok(o)
+}
+
+/// The shim's `tag_operand`: every face (`GetFaces` order) and edge (`GetEdges` order) of
+/// operand `operand` gets its own long attribute, id = value =
+/// `ATTRIBUTE_BASE + 1000 operand + 500 kind + index`, behaviour `behavior`.
+fn tag_operand(b: &mut Brep, operand: u64, behavior: Behavior) -> Result<(), Stop> {
+    let faces = brep_p1::faces(b, None).map_err(|e| stop("GetFaces", &e))?;
+    let edges = brep_p1::edges(b, None).map_err(|e| stop("GetEdges", &e))?;
+    let tagged = faces
+        .into_iter()
+        .enumerate()
+        .map(|(i, f)| (EntityRef::Face(f), 0, i))
+        .chain(
+            edges
+                .into_iter()
+                .enumerate()
+                .map(|(i, e)| (EntityRef::Edge(e), 1, i)),
+        );
+    for (entity, kind, index) in tagged {
+        let id = ffi::ATTRIBUTE_BASE + 1000 * operand + 500 * kind + index as u64;
+        let value = i64::try_from(id).map_err(|_| harness("attribute id overflow"))?;
+        b.add_attribute(entity, Attribute::long(id, value, behavior))
+            .map_err(|e| stop("AddAttribute", &e))?;
+    }
+    Ok(())
+}
+
+/// The shim's `attribute_row`: `measure n` then per attribute `id behavior value users`,
+/// the attributes in ascending order (the set is compared, not the list order).
+fn attribute_row(b: &Brep, entity: EntityRef, measure: f64) -> Vec<f64> {
+    let mut entries: Vec<[f64; 4]> = b
+        .entity_attributes(entity)
+        .into_iter()
+        .map(|(_, a)| {
+            [
+                a.attribute_id() as f64,
+                f64::from(a.behavior() as u8),
+                a.long_value().map_or(0.0, |v| v as f64),
+                a.users().len() as f64,
+            ]
+        })
+        .collect();
+    entries.sort_by(|x, y| {
+        x.iter()
+            .zip(y)
+            .map(|(p, q)| p.total_cmp(q))
+            .find(|o| o.is_ne())
+            .unwrap_or(core::cmp::Ordering::Equal)
+    });
+    let mut row = vec![measure, entries.len() as f64];
+    row.extend(entries.into_iter().flatten());
+    row
+}
+
+/// The shim's `put_attributes`: the sorted face rows (area) then edge rows (length).
+fn put_attributes(k: &Kernel, o: &mut Vec<f64>, b: &mut Brep) -> Result<(), Stop> {
+    let fail = |e: &SolidError| -> Result<f64, Stop> {
+        match Output::unported(e) {
+            Some(d) => Err(Stop::Deferred(Box::new(d))),
+            None => Ok(-(status(e) as f64)),
+        }
+    };
+    let faces = brep_p1::faces(b, None).map_err(|e| stop("GetFaces", &e))?;
+    let mut rows = Vec::new();
+    for f in faces {
+        let area = match face_area(k, b, f, ffi::AREA_ACCURACY) {
+            Ok(a) => a,
+            Err(e) => fail(&e)?,
+        };
+        rows.push(attribute_row(b, EntityRef::Face(f), area));
+    }
+    ffi::sort_rows(&mut rows);
+    o.push(rows.len() as f64);
+    o.extend(rows.into_iter().flatten());
+    let edges = brep_p1::edges(b, None).map_err(|e| stop("GetEdges", &e))?;
+    let mut rows = Vec::new();
+    for e in edges {
+        let length = match edge_length(k, b, e, ffi::LENGTH_ACCURACY) {
+            Ok(l) => l,
+            Err(err) => fail(&err)?,
+        };
+        rows.push(attribute_row(b, EntityRef::Edge(e), length));
+    }
+    ffi::sort_rows(&mut rows);
+    o.push(rows.len() as f64);
+    o.extend(rows.into_iter().flatten());
+    Ok(())
 }
 
 /// The shim's `put_areas`: `faces` and the face areas in ascending order (a failed face
@@ -1155,6 +1358,33 @@ fn rust_call_with(k: &mut Kernel, i: &Inputs, seen: &dyn Fn(&SolidError)) -> Res
                 Err(e) => Ok(err_output(&e)),
             }
         }
+        Inputs::Attributed {
+            a,
+            b,
+            operation,
+            behavior,
+        } => {
+            let behavior = Behavior::from_code(i32::from(*behavior))
+                .map_err(|e| Stop::Harness(harness(format!("behavior: {e}"))))?;
+            let (mut a, mut b) = (build(k, a)?, build(k, b)?);
+            tag_operand(&mut a, 0, behavior)?;
+            tag_operand(&mut b, 1, behavior)?;
+            let kept = keeps_other(*operation, false);
+            match api::boolean(k, a, b, op(*operation)?) {
+                Ok(mut out) => {
+                    let rec = two_record(&out, kept)?;
+                    let mut rows = Vec::new();
+                    put_attributes(k, &mut rows, &mut out.result)?;
+                    if kept {
+                        if let Some(other) = out.other.as_mut() {
+                            put_attributes(k, &mut rows, other)?;
+                        }
+                    }
+                    Ok(rec.values("attributes", rows))
+                }
+                Err(e) => Ok(err_output(&e)),
+            }
+        }
         Inputs::NonManifold { a, b, operation } => {
             let (a, b) = (build(k, a)?, build(k, b)?);
             two(
@@ -1247,6 +1477,41 @@ fn rust_call_with(k: &mut Kernel, i: &Inputs, seen: &dyn Fn(&SolidError)) -> Res
                 selection,
             );
             sweep_record(k, r, &mut b, seen)
+        }
+        Inputs::TessellateBoundaries {
+            brep,
+            angle_tol_deg,
+            drop_curves,
+        } => {
+            let mut b = build(k, brep)?;
+            let all = brep_p1::edges(&b, None).map_err(|e| stop("GetEdges", &e))?;
+            for &d in drop_curves {
+                let e = usize::try_from(d)
+                    .ok()
+                    .and_then(|d| all.get(d).copied())
+                    .ok_or_else(|| Stop::Harness(harness("dropped edge index out of range")))?;
+                // SetCurve(NULL, TRUE, FALSE, FALSE)
+                b.edge_mut(e).map_err(|e| stop("SetCurve", &e))?.curve = None;
+            }
+            let (status, t) = match api::tessellate_boundaries(k, &b, *angle_tol_deg) {
+                Ok(t) => (if t.complete { 0 } else { i64::from(SM_ERR) }, t),
+                Err(e) if matches!(e, SolidError::InvalidInput { .. }) => {
+                    seen(&e);
+                    (status(&e), BoundaryTessellation::default())
+                }
+                Err(e) => return Ok(err_output(&e)),
+            };
+            let mut o = vec![count(t.edges.len())?];
+            for e in &t.edges {
+                let at = all.iter().position(|x| x == e).map_or(Ok(-1), count)?;
+                o.push(at);
+            }
+            o.push(count(t.vertex_counts.len())?);
+            for &n in &t.vertex_counts {
+                o.push(count(n)?);
+            }
+            let points: Vec<f64> = t.points.iter().flat_map(|p| [p.x, p.y, p.z]).collect();
+            Ok(record(status, o).values("points", points))
         }
         Inputs::Trees { breps: list, tree } => {
             let mut v: Vec<Option<Brep>> = build_all(k, list)?.into_iter().map(Some).collect();
@@ -1611,6 +1876,62 @@ fn gen_more(rng: &mut Rng) -> Inputs {
     }
 }
 
+/// One generated `tessellate_boundaries` call: any operand kind the generator makes, at
+/// any scale, sometimes with edges left without curve, with a tolerance from `0.5` to
+/// `90` degrees or an invalid one.
+fn gen_tessellate(rng: &mut Rng) -> Inputs {
+    let s = gen_scale(rng);
+    let c = rng.point3(-2.0 * s, 2.0 * s);
+    let brep = match rng.below(5) {
+        0 | 1 => gen_brep(rng, s, c),
+        2 => BrepIn::Plane {
+            origin: c,
+            size: [s * rng.uniform(0.3, 1.5), s * rng.uniform(0.3, 1.5)],
+        },
+        3 => {
+            let major = s * rng.uniform(0.5, 1.5);
+            BrepIn::Torus {
+                center: c,
+                major,
+                minor: major * rng.uniform(0.1, 0.8),
+            }
+        }
+        _ => BrepIn::Boolean {
+            operation: 1,
+            a: Box::new(gen_brep(rng, s, c)),
+            b: Box::new(gen_brep(rng, s, c)),
+        },
+    };
+    let angle_tol_deg = match rng.below(12) {
+        0 => *rng.choose(&[0.0, -5.0, -1.0e-9]).unwrap_or(&0.0),
+        1 => 90.0,
+        _ => rng.uniform(0.5, 30.0),
+    };
+    let drop_curves: Vec<u64> = if rng.chance(0.2) {
+        (0..=rng.below(3)).map(|_| rng.below(4)).collect()
+    } else {
+        Vec::new()
+    };
+    // only edges the operand has: a torus or a sphere has fewer than four, and an index
+    // past `GetEdges` is a harness error on both sides, not an API answer (the draws
+    // above are kept, so the rest of the stream is unchanged)
+    let drop_curves = if drop_curves.is_empty() {
+        drop_curves
+    } else {
+        let mut k = Kernel::default();
+        let num_edges = build(&mut k, &brep)
+            .ok()
+            .and_then(|b| brep_p1::edges(&b, None).ok())
+            .map_or(0, |edges| edges.len() as u64);
+        drop_curves.into_iter().filter(|&d| d < num_edges).collect()
+    };
+    Inputs::TessellateBoundaries {
+        brep,
+        angle_tol_deg,
+        drop_curves,
+    }
+}
+
 impl UnitDiff for Runner {
     fn id(&self) -> &'static str {
         "boolean.api_brep"
@@ -1637,6 +1958,17 @@ impl UnitDiff for Runner {
         }) {
             c.unit = self.id().to_string();
             c.name = c.name.replacen("gen", "more", 1);
+            v.push(c);
+        }
+        let tess_ctx = CaseContext {
+            seeds: ctx.seeds.max(MIN_GENERATED_TESSELLATE),
+            ..ctx.clone()
+        };
+        for mut c in tess_ctx.generated_cases("boolean.api_brep:tessellate", |rng| {
+            serde_json::to_value(gen_tessellate(rng)).ok()
+        }) {
+            c.unit = self.id().to_string();
+            c.name = c.name.replacen("gen", "tess", 1);
             v.push(c);
         }
         Ok(v)
