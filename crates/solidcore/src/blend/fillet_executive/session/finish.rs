@@ -575,7 +575,7 @@ impl FilletSession<'_> {
         // (tangency-labs/solidcore#423). Also after an error.
         let naming = self.objects.target.naming();
         let serial = self.objects.target_serial;
-        let session_owner = |e| crate::topology::brep::p3::topology_ref(serial, e);
+        let session_owner = |e| p3::topology_ref(serial, e);
         let restored =
             super::piecewise::normalize_session_owners(self.objects.target, session_owner, |e| {
                 super::piecewise::naming_owner(naming, e).unwrap_or_else(|| session_owner(e))
