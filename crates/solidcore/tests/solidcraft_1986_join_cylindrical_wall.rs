@@ -90,6 +90,21 @@ fn midpoint(k: &Kernel, b: &Brep, e: EdgeId) -> Point3 {
         .unwrap()[0]
 }
 
+/// The top outer arc edge at (`R_OUT`, 0, `TOP`): the one the issue's 3 mm chamfer runs along.
+fn top_outer_edge(k: &Kernel, b: &Brep) -> EdgeId {
+    p1::edges(b, None)
+        .unwrap()
+        .into_iter()
+        .find(|&e| midpoint(k, b, e).distance(Point3::new(R_OUT, 0.0, TOP)) < 1e-6)
+        .expect("the top outer arc edge")
+}
+
+/// The issue's 3 mm chamfer on the top outer arc edge.
+fn chamfer_top_outer(k: &mut Kernel, b: &mut Brep) {
+    let edge = top_outer_edge(k, b);
+    fillet_edges(k, b, &[edge], SIZE, 0, 1, 1.0).expect("the 3 mm chamfer");
+}
+
 #[test]
 fn a_joined_annular_sector_keeps_one_wall_per_cylinder() {
     let mut k = Kernel::default();
@@ -126,22 +141,41 @@ fn a_joined_annular_sector_keeps_one_wall_per_cylinder() {
     assert_eq!(one_face, 0, "no slit inside a merged face");
 
     // The issue's 3 mm chamfer on the top outer arc edge at (10, 0, 20) succeeds.
-    let edge = p1::edges(&joined, None)
-        .unwrap()
-        .into_iter()
-        .find(|&e| midpoint(&k, &joined, e).distance(Point3::new(R_OUT, 0.0, TOP)) < 1e-6)
-        .expect("the top outer arc edge");
+    // Its wedge is exactly 27*pi: a 3 mm leg on each face, revolved through 120 degrees.
     let before = volume(&k, &mut joined);
-    fillet_edges(&mut k, &mut joined, &[edge], SIZE, 0, 1, 1.0).expect("the 3 mm chamfer");
+    chamfer_top_outer(&mut k, &mut joined);
     let after = volume(&k, &mut joined);
-    // The wedge taken: a triangle of legs SIZE swept round a 120 degree arc:
-    // 2 * HALF * (SIZE^3 / 3 + (R_OUT - SIZE) * SIZE^2 / 2).
-    let wedge = 2.0
-        * HALF_DEG.to_radians()
-        * (SIZE * SIZE * SIZE / 3.0 + (R_OUT - SIZE) * SIZE * SIZE / 2.0);
+    let want_after = 1685.0 * std::f64::consts::PI / 3.0;
     assert!(
-        (before - after - wedge).abs() <= 1e-3 * wedge,
-        "chamfer removed {} mm3, want {wedge} mm3",
+        (after - want_after).abs() <= 0.01,
+        "chamfered join volume {after}, want {want_after}"
+    );
+    assert!(
+        (before - after - 27.0 * std::f64::consts::PI).abs() <= 0.01,
+        "chamfer removed {} mm3, want 27*pi",
         before - after
+    );
+}
+
+/// The control that isolates the join: the outer sector alone takes the same 3 mm chamfer
+/// on the same edge, because there is no z = 18 level slicing its wall. Without this, a
+/// refused chamfer in the joined case could be read as "3 mm is too big for the edge"
+/// rather than "the join split the wall".
+#[test]
+fn the_same_chamfer_fits_the_outer_sector_alone() {
+    let mut k = Kernel::default();
+    let mut outer = sector(&mut k, R_MID, R_OUT, TOP);
+    let before = volume(&k, &mut outer);
+    let want_before = 1280.0 * std::f64::consts::PI / 3.0;
+    assert!(
+        (before - want_before).abs() <= 1e-6 * want_before,
+        "the outer sector holds {before} mm3, want {want_before} mm3"
+    );
+    chamfer_top_outer(&mut k, &mut outer);
+    let after = volume(&k, &mut outer);
+    let want_after = 1199.0 * std::f64::consts::PI / 3.0;
+    assert!(
+        (after - want_after).abs() <= 0.01,
+        "the alone sector after chamfer holds {after} mm3, want {want_after} mm3"
     );
 }
