@@ -1434,6 +1434,7 @@ fn enable_fix(k: &mut Kernel, name: &str) -> Result<(), String> {
         }
         "revolve_nested_shells_as_cavities" => &mut k.fixes.revolve_nested_shells_as_cavities,
         "sphere_small_circle_not_touching" => &mut k.fixes.sphere_small_circle_not_touching,
+        "tight_box_interval_knots_only" => &mut k.fixes.tight_box_interval_knots_only,
         _ => return Err(format!("unknown `fixes` entry `{name}`")),
     };
     *field = true;
