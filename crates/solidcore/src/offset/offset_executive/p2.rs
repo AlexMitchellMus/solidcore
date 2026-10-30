@@ -711,6 +711,40 @@ impl OffsetExecutive {
                 }
             }
 
+            // Not upstream (WR-531), opt-in `Kernel::fixes.offset_point_vertex_caps` (the
+            // fork's tangency-labs/smlib@d5dadaa): a vertex where one face closes on itself to
+            // a point (a cone's apex, the tip of a drilled hole: the seam is its only edge) has
+            // no edges whose offsets could meet there, and its face's offset ends short of the
+            // point, on the circle the point's normals sweep out. The point's offset is the
+            // sphere about it through that circle, as the unextended offset builds it
+            // (BuildOffsetOfVertex: a strut vertex with one arc to blend), a face of its whole
+            // surface the merge joins to the offset face along the circle.
+            if kernel.fixes.offset_point_vertex_caps {
+                for vertex in bp1::vertices(original, None)? {
+                    if crate::topology::vertex::edges(original, vertex, None)?.len() != 1 {
+                        continue;
+                    }
+                    let cap = self.build_offset_of_vertex(kernel, original, Some(vertex))?;
+                    let Some(surface) = cap.surface else {
+                        continue;
+                    };
+                    let mut stores = NotificationStores {
+                        records: &mut *notifications.records,
+                        attributes: &mut *notifications.attributes,
+                        key_of: notifications.result_key_of,
+                    };
+                    let new_face = self.make_cap_face(
+                        kernel,
+                        surface,
+                        Vec::new(),
+                        Vec::new(),
+                        &[],
+                        &mut NotifyState::from_kernel_stores(&mut stores),
+                    )?;
+                    self.relate_vertex_face(vertex, new_face);
+                }
+            }
+
             // Not upstream (WR-341, tangency-labs/solidcore#977), opt-in
             // `Kernel::fixes.offset_excess_faces_after_merge`: the excess faces are found after
             // the merge only, where each merged face lies wholly on the offset or wholly in
