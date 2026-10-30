@@ -45,12 +45,16 @@ fn toothed_plate(k: &mut Kernel, teeth: u32) -> Brep {
     create_linear_sweep(k, &curves, Vec3::new(0.0, 0.0, 1.0), 2.0, true).unwrap()
 }
 
-/// A 60-tooth plate (245 faces) checks clean at level 2.
+/// A 60-tooth plate (246 faces: a side per profile line and two caps) checks clean at
+/// level 2.
 #[test]
 fn toothed_plate_checks_clean_at_level_2() {
     let mut k = Kernel::default();
     let mut b = toothed_plate(&mut k, 60);
-    assert_eq!(b.faces().len(), 4 * 60 + 6);
+    // the face list, not the face arena: each cap is cut from a face over its whole
+    // plane (`CreateFacesWithCurves`), which is then deleted, unlisted but kept in the
+    // arena (`destroy_face`), so the arena holds two more records
+    assert_eq!(b.face_list().len(), 4 * 60 + 6);
     let c = check_brep(&mut k, &mut b, CheckLevel::Level2).unwrap();
     assert_eq!(c.failure_count(), 0, "{:?}", c.lines());
     assert!(c.is_valid());
