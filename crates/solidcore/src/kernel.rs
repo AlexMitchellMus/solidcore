@@ -169,6 +169,8 @@ pub struct UpstreamFixes {
     pub fillet_torus_span_from_start_section: bool,
     /// `CalcTorusFilletGeom` revolves a linear section into a cone (WR-421, #420).
     pub fillet_chamfer_cone_on_arc: bool,
+    /// With `fillet_chamfer_cone_on_arc`, `CalcTorusFilletGeom` stores a linear section's revolution as the `SmCone` it is: the revolution's NURBS form is copied (`SmBSplineSurface::Copy`) and passed through `CopyAndAddAnalytics`, and when that gives a cone it is the fillet surface and the rails are made on it (as a straight edge's round is stored as its cylinder); anything else stays the surface of revolution. Without it a chamfer round a hole's rim is a surface of revolution, which reads back as a rational B-spline, not the cone it is (WR-572, #1503; the fork's tangency-labs/smlib@b5743ec).
+    pub fillet_chamfer_cone_stored_as_cone: bool,
     /// `CreateCornerBlend`'s four-sided (not bilinear) corner patch is made tangent to the surfaces along its sides: a bicubic Coons patch meets its cross-boundary derivatives only where their twists agree at the corners, and where two rounds of different curvature meet `sm_CreateCoonsSrf`'s mean twist left both rounds at an angle along whole sides (15.6 degrees off a bar's round at r 2, rig fillets/1207). A copy is refined to 8 up to 64 spans each way and the control points next to each side are moved into that side's tangent planes until every side is within `SM_CONTINUITY_ANGLE` (WR-547; the fork's tangency-labs/smlib@cae8618).
     pub corner_blend_coons_patch_tangent_to_sides: bool,
     /// A torus blend whose section centre is on the arc's axis turns rail points into the edge ends' half-planes (WR-422, #417).
@@ -272,6 +274,8 @@ pub struct UpstreamFixes {
     pub offset_collapsed_rounds_mated: bool,
     /// `FaceuseOffset` fails on a face whose offset surface is missing without collapsing (`SmSurface::OffsetCollapses`: a cone, cylinder, sphere or torus offset onto its spine), where upstream reads any missing surface as a collapsed round (WR-464, #1072).
     pub offset_missing_surface_fails: bool,
+    /// `ApproximateSurface` raises the starter's inner knots to full multiplicity (exact knot insertion) before each round of cubic Bezier patches, which needs every inner knot of full multiplicity; and a patch that runs past the control points is `SM_ERR`. Upstream uses a starter copied from a root B-spline with simple inner knots (the offset of a fitted bicubic patch) as it is, its patches run past its control points, and it returns success with no surface, so exporting an offset B-spline sheet as B-splines fails (1001) (WR-573, #1501; the fork's tangency-labs/smlib@eae96cb).
+    pub approximate_surface_bezier_starter: bool,
     /// A surface of revolution whose generatrix is one circular arc (a fillet's round along a circular edge, a torus in all but its type) collapses when an offset runs towards the arc's centre by its radius or more: `Surface::offset_collapses` says so, as a torus's does, and `create_offset_surface` builds no surface, where upstream says it never collapses and builds the generatrix's offset past the arc's centre as the arc turned inside out, so an inward shell thicker than the round fails with 1001 or leaves a wrong volume (WR-567; the fork's tangency-labs/smlib@8b2090f, smlib#64; SolidCraft `shell_of_a_disc_rounded_smaller_than_the_wall`, solidcraft#319). The faces either side are mated across it with `offset_collapsed_rounds_mated`.
     pub revolution_round_offset_collapses: bool,
     /// At an Nx1 corner whose end rib cannot be built because a rail missed a side edge ending within the fillet's width, the rib is deleted and the global merge cuts the round off (WR-303, #841).
@@ -284,6 +288,8 @@ pub struct UpstreamFixes {
     /// (dimension 3), preserving exact UV trims in surface parameter units
     /// (WR-441, #1114). Off by default for pinned SMLib compatibility.
     pub bspline_trim_preserves_uv_spans: bool,
+    /// `BSplineCurve::trim` keeps a short end span of a rational curve (its control points carry weights, `N_IsCrvRat`: a conic's NURB) instead of removing it with `N_CrvRemoveDegenSegs`, which stretches the remaining spans over its length and so moves a conic off its circle or ellipse (a trimmed half circle of radius 16 by about 1e-6, enough for its edge and vertex gaps to pass the tolerance); non-rational curves are cleaned as upstream (WR-575, #1529). Off by default for pinned SMLib compatibility.
+    pub bspline_trim_keeps_rational_end_spans: bool,
     /// `SmCone::IntersectWithCone` tests the line of two parallel cylinders against both face domains at its middle, not its bottom end (WR-259, #711).
     pub cone_parallel_line_midpoint: bool,
     /// `SmCone::IntersectWithCone` clips parallel-cylinder lines to both requested face domains, including overlaps away from the full line's middle (WR-259, #711). Independent of `cone_parallel_line_midpoint`; off by default for pinned SMLib compatibility.
