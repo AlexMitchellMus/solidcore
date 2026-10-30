@@ -31,7 +31,7 @@
 //! | `has_same_parameterization` (private) | `SmBSplineSurface::HasSameParameterization` (curve)   |
 //! | [`grid_has_non_monotonic_points`]     | `SmPointGrid(...)`, `SmPointGrid::SetUpMonotonic`, `HasNonMonotonicPoints` |
 //! | [`LEVEL_GIVEN`]                       | `SM_LEVEL_GIVEN`                                      |
-//! | `wrapped` (private module)            | `SmOffsetSurface`, `SmSrfInVolume`, `SmVolume` (and derived) `::AssertValid` |
+//! | `wrapped` (private module)            | `SmOffsetSurface::AssertValid`, `SmSrfInVolume::AssertValid` |
 //!
 //! Deviations:
 //! - **Levels.** `level` is the `SmAssertTestLevel` value (`SM_LEVEL_0` .. `SM_LEVEL_2`,
@@ -76,8 +76,8 @@
 //! - **Unported overrides.** `SmCurveBoundedSurface` has its own `AssertValid`, not
 //!   ported here; it returns [`SolidError::Unported`]. `SmSTEPSurface` has none and
 //!   runs the base check.
-//! - **Wrapping surfaces.** `SmOffsetSurface`, `SmSrfInVolume` and the volume checks
-//!   the latter nests into are in the `wrapped` submodule (its own deviations).
+//! - **Wrapping surfaces.** `SmOffsetSurface` and `SmSrfInVolume` are in the `wrapped`
+//!   submodule (its own deviations); the latter calls `Volume::assert_valid`.
 //! - **Recursion.** Only a surface in a volume recurses (into its base surface), after
 //!   checking its owned geometry nests at most `MAX_GEOMETRY_NESTING` (32) deep.
 
