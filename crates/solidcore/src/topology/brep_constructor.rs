@@ -53,11 +53,11 @@
 //!   [`edge::destroy`] with a records-only environment and no context. Geometry owners
 //!   are the B-rep's notification identities ([`crate::topology::NamingScheme::Notify`],
 //!   as [`p3::new_brep`] sets).
-//! - **`EndShell(TRUE)`** first calls `SmBrep::ValidatePointers`, whose status upstream
-//!   ignores but whose `sm_CheckEdgeuseGeometry` makes the missing UV trim curves of the
-//!   faces that have some (through `SmEdgeuse::NormalizedEvaluate`). It is not ported
-//!   (unit `topology.brep_validate_pointers`), so a stitched `EndShell` returns
-//!   [`SolidError::Unported`]; the stitching after it is ported.
+//! - **`EndShell(TRUE)`** first calls `SmBrep::ValidatePointers`
+//!   ([`crate::topology::brep::validation::validate_pointers`], unit
+//!   `topology.brep_validation`), whose status upstream ignores but whose
+//!   `sm_CheckEdgeuseGeometry` makes the missing UV trim curves of the faces that have
+//!   some (through `SmEdgeuse::NormalizedEvaluate`).
 //! - **`SetFaceSurface`** with a surface a face already owns makes upstream copy it as a
 //!   bare `SmSurface` (`new SmSurface(*pSurface)` slices the object); the port returns
 //!   [`SolidError::InvalidInput`] instead.
@@ -529,7 +529,7 @@ impl BrepConstructor {
 
         if stitch_shell {
             let b = open(&mut self.brep, "EndShell: no B-rep")?;
-            validate_pointers(b)?;
+            validate_pointers(k, b)?;
             let mut shell_edges: Vec<EdgeId> = Vec::new();
             let mut shell_vertices: Vec<VertexId> = Vec::new();
             for fu in b.shell(outer)?.get_faceuses()? {
@@ -1206,16 +1206,21 @@ impl BrepConstructor {
     }
 }
 
-/// `m_pBrep->ValidatePointers()`: its status is ignored, but its
+/// `m_pBrep->ValidatePointers()` with its defaults (no report list, `SM_LEVEL_0`, no
+/// test requests, `SM_NO_WALK`): its status is ignored, but its
 /// `sm_CheckEdgeuseGeometry` makes the missing UV trim curves of the faces that have
-/// some, so it is not skipped.
-fn validate_pointers(b: &mut Brep) -> Result<()> {
-    let _ = b;
-    // UNPORTED(topology.brep_validate_pointers): SmBrep::ValidatePointers
-    Err(SolidError::Unported {
-        upstream: "SmBrep::ValidatePointers",
-        unit: "topology.brep_validate_pointers",
-    })
+/// some, so it is not skipped. The constructor's B-rep names geometry owners by its
+/// notification identities ([`p3::new_brep`]), the keys of the owner checks.
+fn validate_pointers(k: &Kernel, b: &mut Brep) -> Result<()> {
+    ignored(crate::topology::brep::validation::validate_pointers(
+        k,
+        b,
+        None,
+        0,
+        false,
+        &notify_ref,
+    ))?;
+    Ok(())
 }
 
 /// The radial sector of a non-manifold join: a temporary edge with a copy of `e`'s
