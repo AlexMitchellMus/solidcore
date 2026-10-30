@@ -177,8 +177,6 @@ pub struct UpstreamFixes {
     pub corner_blend_coons_patch_tangent_to_sides: bool,
     /// A torus blend whose section centre is on the arc's axis turns rail points into the edge ends' half-planes (WR-422, #417).
     pub fillet_torus_center_on_axis: bool,
-    /// `CalcTorusFilletGeom` moves a section's rail point that lies within the solver's tolerance (`GetThisApproxTol3d`) of the edge arc's axis onto the axis: it turns about the axis in a circle smaller than the tolerance, so the rail collapses to the axis's point and the surface of revolution is exactly singular there, where upstream left the point off the axis by the model's residues (1.2e-11 after a sketch's 1e-10) and the surface nearly singular, which `smlib_brep_check` refused (`SmSurface` #5, Bad Surf Pole Approximation; a round along an earlier round's end arc of the ball's own radius) (WR-592; the fork's tangency-labs/smlib@994f129).
-    pub fillet_torus_rail_on_axis: bool,
     /// `SmFilletExecutive::CreateFilletBrep` stitches the fillet body keeping a fillet's own edge where an edge of corner-patch faces only meets an edge of other fillet faces only (`SmFilletPatchStitchCallback`): an N-sided corner patch is bounded by its surfaces' isoparametric curves, the approximations it was fitted to, and the default choice between the two near-equal distances left one half of a set-back section the exact arc and the other the polynomial approximation, off the round (WR-546, #1377; the fork's tangency-labs/smlib@1072d1b).
     pub fillet_patch_keeps_fillet_edges: bool,
     /// A knife edge (a cusp: faces tangent along the edge that fold back on each other,
@@ -458,6 +456,15 @@ pub struct UpstreamFixes {
     pub boolean_new_face_closure_both_sides: bool,
     /// `SmStitch::StitchIntoSolid`, when its stitch leaves no lamina edge and more than one region, makes the B-rep a nested solid model (`FindAndSetInfiniteRegion(NULL, SM_VS_NESTEDSOLID)`, with editing disabled): material inside the outer shell, a void inside a shell within it, and so on, each region's outer shell first. Upstream's stitch only finds the infinite region (`SM_VS_INFINITEREGION_SWAP`), so the region inside a closed shell nested in another stays solid and the shells stay where the gluing put them: a holed profile swept round a closed path measures as if it had no hole, and twisted a half turn fails the check (Test #12, an inner shell not inside its region's outer shell) (WR-569; the fork's tangency-labs/smlib@351c57c).
     pub stitch_solid_nests_cavities: bool,
+    /// `SmEllipse::AdjustSTEPInterval` converts a new interval end outside the current arc
+    /// itself: past a full-turn arc it is taken whole turns back into the arc and its NURBS
+    /// parameter moved by the circle's NURBS length per turn (the other way for an
+    /// inside-out curve); past a partial arc the arc's NURBS interval continues in
+    /// proportion to the angle. Upstream's polar converter clamps such an angle to the arc's
+    /// ends, so a full circle moved to `[360, 540]` (a torus face whose tube range starts a
+    /// turn on) collapses to one NURBS parameter and the surface built on it gets NaN knots
+    /// and fails with `SM_ERR` (WR-211, #428; the fork's tangency-labs/smlib@5c0b5ed).
+    pub ellipse_adjust_step_interval_keeps_turns: bool,
 }
 
 /// Options for [`Kernel::new`].
