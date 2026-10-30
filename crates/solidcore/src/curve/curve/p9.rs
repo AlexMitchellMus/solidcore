@@ -69,7 +69,7 @@
 //!   `IsKindOf(SmLine_TYPE)` test, the control polygon coming from the B-spline
 //!   part.
 //! - **Opt-in fix.** `CalculateTightBoundingBox` adds only the knots strictly inside
-//!   the interval with `Kernel::fixes.tight_box_interval_knots_only` (WR-474, #1054);
+//!   the interval with `Kernel::fixes.curve_tight_box_interval_knots` (WR-474, #1054);
 //!   off by default, as upstream.
 //! - `SM_ASSERT`s and the `SM_DEBUG_CODE` blocks are not ported. `GlobalCurveSolve`
 //!   recurses once at most (the signed angle minimiser asks for projected
@@ -1527,7 +1527,7 @@ impl Curve {
     /// from its end points, (for B-splines) its tangent discontinuous knots and last
     /// knot, and the points where its tangent is perpendicular to x, y and z. The
     /// line override is [`crate::curve::line::Line::calculate_tight_bounding_box`].
-    /// With [`crate::kernel::UpstreamFixes::tight_box_interval_knots_only`] only the
+    /// With [`crate::kernel::UpstreamFixes::curve_tight_box_interval_knots`] only the
     /// tangent discontinuous knots strictly inside `interval` are added (WR-474, #1054).
     ///
     /// # Errors
@@ -1563,7 +1563,7 @@ impl Curve {
                 let low = continuities
                     .get(i)
                     .is_some_and(|&c| ord(c) <= ord(ContinuityType::C1));
-                let add = if k.fixes.tight_box_interval_knots_only {
+                let add = if k.fixes.curve_tight_box_interval_knots {
                     // WR-474 (#1054): only the tangent discontinuous knots strictly inside
                     // the interval; its ends are in the box already, and a knot outside it
                     // is a point the curve never reaches over `interval`.

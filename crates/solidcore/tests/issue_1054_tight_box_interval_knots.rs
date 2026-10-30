@@ -2,7 +2,7 @@
 //! tangent-discontinuous knots, and always its last knot, whatever the queried interval is,
 //! so the tight box of an edge on part of a NURBS curve reaches points the edge never does.
 //!
-//! The fix is opt-in, `Kernel::fixes.tight_box_interval_knots_only`: with it on, only the
+//! The fix is opt-in, `Kernel::fixes.curve_tight_box_interval_knots`: with it on, only the
 //! knots strictly inside the interval are added; with it off (the default) the box keeps the
 //! pinned upstream result. The first test is `PapaEcho13`'s from #1561, run both ways.
 
@@ -36,7 +36,7 @@ fn arc(x_axis: [f64; 3], y_axis: [f64; 3], start_deg: f64, end_deg: f64) -> Curv
 
 fn kernel(fixed: bool) -> Kernel {
     let mut k = Kernel::default();
-    k.fixes.tight_box_interval_knots_only = fixed;
+    k.fixes.curve_tight_box_interval_knots = fixed;
     k
 }
 
