@@ -89,9 +89,11 @@ use crate::geom::a_object;
 use crate::geom::assert_array::labels::{
     AXIS2_PLACEMENT_TYPE, B_SPLINE_SURFACE_TYPE, CONE_TYPE, CRV_ON_SURF_TYPE, CYLINDER_TYPE,
     FACE_TYPE, OFFSET_SURFACE_TYPE, PLANE_TYPE, SPHERE_TYPE, SRF_IN_VOLUME_TYPE, SURFACE_TYPE,
-    SURF_OF_EXTRUSION_TYPE, SURF_OF_REVOLUTION_TYPE, TORUS_TYPE,
+    SURF_OF_EXTRUSION_TYPE, SURF_OF_REVOLUTION_TYPE, TORUS_TYPE, TORUS_WITH_SPINDLE_APEX,
 };
-use crate::geom::assert_array::{AssertArray, AssertReport, ObjectKey, ReportSpec};
+use crate::geom::assert_array::{
+    assert_label_list, AssertArray, AssertReport, AssertReportLabel, ObjectKey, ReportSpec,
+};
 use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent3d::Extent3d;
@@ -167,6 +169,36 @@ impl Reporter<'_> {
         tol: f64,
         val: f64,
     ) -> Result<bool> {
+        let labels = assert_label_list(class, 0);
+        self.report_from(
+            labels,
+            class,
+            owner_type,
+            owner_string,
+            test,
+            test_level,
+            passed,
+            tol,
+            val,
+        )
+    }
+
+    /// [`Reporter::report_as`] with check `test` labelled from `labels` (not upstream:
+    /// an opt-in check reporting from its class's extended table,
+    /// [`AssertReport::with_labels`]).
+    #[allow(clippy::too_many_arguments)]
+    fn report_from(
+        &mut self,
+        labels: &'static [AssertReportLabel],
+        class: i64,
+        owner_type: i64,
+        owner_string: &'static str,
+        test: u64,
+        test_level: u8,
+        passed: bool,
+        tol: f64,
+        val: f64,
+    ) -> Result<bool> {
         if self.level < test_level || passed {
             if let Some(l) = self.list.as_deref_mut() {
                 l.set_last_add(false);
@@ -174,7 +206,7 @@ impl Reporter<'_> {
             return Ok(true);
         }
         if let Some(l) = self.list.as_deref_mut() {
-            let r = AssertReport::new(ReportSpec {
+            let spec = ReportSpec {
                 reporter: Some(self.key),
                 test_index: test,
                 test_class: class,
@@ -188,8 +220,8 @@ impl Reporter<'_> {
                 value: val,
                 list_index: 0,
                 message: None,
-            })?;
-            l.add_unique_delete_duplicate(r);
+            };
+            l.add_unique_delete_duplicate(AssertReport::with_labels(spec, labels)?);
         }
         Ok(false)
     }
@@ -2062,8 +2094,14 @@ fn torus_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>) -> Result<b
             let apex_ivl_v = anal.v_interval();
             for apex in [apex_deg, -apex_deg] {
                 let c = apex_ivl_v.contains_periodic_value(apex, 360.0, EFF_ZERO_DEG);
-                rtn &= r.report(
+                // (test 5 is the fork's: labelled from the extended table, so the
+                // class's `SM_GetAssertLabelList` table stays upstream's)
+                let class_string = r.class_string;
+                rtn &= r.report_from(
+                    TORUS_WITH_SPINDLE_APEX,
                     CLASS,
+                    CLASS,
+                    class_string,
                     5,
                     0,
                     !c.contained
@@ -2402,6 +2440,8 @@ mod tests {
         assert!(fixed.contains(&(TORUS_TYPE, 5)), "{fixed:?}");
         let (_, outer_fixed) = failed_tests(&k, &outer);
         assert!(!outer_fixed.contains(&(TORUS_TYPE, 5)), "{outer_fixed:?}");
+        // the class's table stays upstream's five checks (SM_GetAssertLabelList)
+        assert_eq!(assert_label_list(TORUS_TYPE, 0).len(), 5);
     }
 
     /// tangency-labs/solidcore#1515 (WR-505): a horn torus (major radius = minor radius)
