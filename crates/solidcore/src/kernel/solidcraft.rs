@@ -169,6 +169,7 @@ solidcraft_preset! {
         box_face_failures_propagate, // WR-596; smlib 0df62c8, 35008b1, 449c81c
         offset_closes_loop_gaps, // WR-578; smlib 7ff0a94, 34318f4
         linear_sweep_arc_is_cylinder, // WR-565; smlib 12918e9
+        face_tight_box_searches_trim, // WR-588; smlib 9d44c1b
     ],
     reported: [
         fillet_refuse_rails_leaving_faces, // WR-302, #1024
