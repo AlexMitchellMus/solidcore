@@ -28,6 +28,7 @@ pub struct Runner;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[allow(clippy::struct_excessive_bools)] // independent ReadFromFile and identify options
 struct Inputs {
     /// An upstream test file, relative to `upstream/TestFiles/pt_TestFiles`.
     file: String,
