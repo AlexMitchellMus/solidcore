@@ -23,9 +23,10 @@ use solidcore::{Brep, Kernel};
 
 /// The face surface's u knots, or of the offset's base.
 fn u_knots(s: &Surface) -> Vec<f64> {
+    // (empty for another kind, which no raw-knot vector contains)
     match s.kind() {
         SurfaceKind::BSpline(b) => b.gw_nurb().unwrap().u_knots().to_vec(),
-        _ => panic!("not a B-spline"),
+        _ => Vec::new(),
     }
 }
 
