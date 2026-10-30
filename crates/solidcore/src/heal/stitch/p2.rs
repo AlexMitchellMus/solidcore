@@ -21,6 +21,9 @@
 //!   `StitchVertexPairs` is [`Stitch::stitch_vertex_list`] (Rust has no overloads; the
 //!   two-list one is [`Stitch::stitch_vertex_pairs`]); its "added to, not reset"
 //!   deleted-vertex and deleted-edge lists are returned fresh.
+//! - Opt-in `Kernel::fixes.stitch_solid_is_nested_cavities_void` (WR-565, the fork's
+//!   tangency-labs/smlib@351c57c): `StitchIntoSolid` sets a solid's regions as a nested
+//!   solid model, so a nested closed shell bounds a void.
 //! - `SmTemporaryChangeValue` on the B-rep's editing flag and the context's
 //!   doing-Boolean flag is a save/restore around the body that also runs on errors.
 //! - Bounds on input-driven loops (upstream has none): `DoStitching`'s per-vertex edge
@@ -1392,6 +1395,16 @@ pub(crate) fn stitch_into_solid_with(
     }
 
     if num_lamina == 0 && bp1::regions(b, None)?.len() > 1 {
+        if k.fixes.stitch_solid_is_nested_cavities_void {
+            // Opt-in (WR-565, tangency-labs/smlib@351c57c): the stitching found the
+            // infinite region but left the regions inside nested closed shells solid,
+            // each shell where the glue put it; set them as a nested solid model.
+            let old = b.editing_enabled();
+            b.set_editing_enabled(false);
+            let r = find_and_set_infinite_region(k, b, None, SetRegionVoidType::NestedSolid, None);
+            b.set_editing_enabled(old);
+            r?;
+        }
         out.produces_a_solid = true;
     }
     Ok(out)
