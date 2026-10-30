@@ -154,6 +154,20 @@ fn crv_on_surf() {
         check(c.into()),
         (false, vec![(types::CRV_ON_SURF_TYPE, 2, true)])
     );
+
+    // the UV-line constructor owns its line and (flag 2) the surface but never links
+    // them to the curve (SetAll with flag 0): tests 3 and 4
+    let c = CrvOnSurf::from_uv_line(
+        &k,
+        Point2::new(0.1, 0.2),
+        Point2::new(0.9, 0.7),
+        unit_plane(),
+        None,
+        2,
+    )
+    .unwrap();
+    let t = types::CRV_ON_SURF_TYPE;
+    assert_eq!(check(c.into()), (false, vec![(t, 3, true), (t, 4, true)]));
 }
 
 #[test]

@@ -18,14 +18,14 @@
 //!   `SM_LEVEL_0`, so it always runs; the level selects whether `SmCurve::AssertValid`
 //!   runs (not at `SM_LEVEL_GIVEN`) and is passed to the contained checks.
 //! - **Owners.** The port holds contained curves, surfaces and volumes by value and
-//!   does not model their owner links back to the compound curve. Upstream sets them
-//!   (`SetOwner(this)`) exactly when the compound curve owns the part, so "the part's
-//!   owner is this" is read from the ownership flag: `m_bOwnsCurve == TRUE` (offset),
-//!   owner flag 1..3 / 2..3 (curve on surface: UV curve / surface), owner bits 1 / 2
-//!   (curve in volume). The contained check sees that owner (this object's type and
-//!   key) on an evaluation copy of the part, or the part's own owner when it is not
-//!   owned. The copy also receives any NURB the contained check builds (upstream
-//!   caches it on the part).
+//!   does not keep their owner pointers back to the compound curve; each compound
+//!   curve records instead whether upstream would have linked them (`SetOwner(this)`:
+//!   [`OffsetCurve::base_linked`](crate::curve::offset_curve::OffsetCurve::base_linked),
+//!   [`CrvOnSurf::owner_links`], [`CrvInVolume::owner_links`](crate::curve::crv_in_volume::CrvInVolume::owner_links)),
+//!   which is what "the part's owner is this" reads. The contained check sees that
+//!   owner (this object's type and key) on an evaluation copy of the part, or the
+//!   part's own owner when it is not linked. The copy also receives any NURB the
+//!   contained check builds (upstream caches it on the part).
 //! - **Contexts.** One kernel: the context tests always pass (they still run, in
 //!   native order).
 //! - **Identities.** A contained object reports under `key ^ (n << 48)`, `n` its
@@ -227,7 +227,7 @@ pub(super) fn offset_curve(
     if x.base_curve().is_none() {
         return Err(invalid("offset curve without a base curve"));
     }
-    rtn &= boolean(list, key, C, s, 1, x.owns_curve() == 1)?;
+    rtn &= boolean(list, key, C, s, 1, x.base_linked())?;
 
     // all done
     Ok(rtn)
@@ -381,22 +381,19 @@ pub(super) fn crv_on_surf(
         key: crate::geom::attribute::ObjectKey(key.0),
     });
     let flag = x.owner_flag();
+    let (uv_linked, surface_linked) = x.owner_links();
     let mut list = list;
     let mut rtn = true;
 
     // test contained curve
     let uv = x.uv_curve();
-    let uv_owner = if matches!(flag, 1..=3) {
-        this
-    } else {
-        uv.owner()
-    };
+    let uv_owner = if uv_linked { this } else { uv.owner() };
     let ok = contained_curve(k, uv, uv_owner, list.as_deref_mut(), level, walk)?;
     rtn &= boolean(list.as_deref_mut(), key, C, s, 0, ok)?;
 
     // test contained surface
     let surface = x.surface();
-    let surface_owner = if matches!(flag, 2 | 3) {
+    let surface_owner = if surface_linked {
         this
     } else {
         surface.owner()
@@ -472,12 +469,14 @@ pub(super) fn crv_in_volume(
     let flag = x.owner_flag();
     let owns_curve = flag & 1 != 0;
     let owns_volume = flag & 2 != 0;
+    let curve_linked = x.owner_links() & 1 != 0;
+    let volume_linked = x.owner_links() & 2 != 0;
     let mut list = list;
 
     /*  0 */
     // test BaseCurve curve
     let curve = x.curve();
-    let curve_owner = if owns_curve { this } else { curve.owner() };
+    let curve_owner = if curve_linked { this } else { curve.owner() };
     let ok = contained_curve(k, curve, curve_owner, list.as_deref_mut(), level, walk)?;
     let mut rtn = boolean(list.as_deref_mut(), key, C, s, 0, ok)?;
 
@@ -511,7 +510,14 @@ pub(super) fn crv_in_volume(
 
     /*  4 */
     // Bad BaseVolume Owner
-    rtn &= boolean(list.as_deref_mut(), key, C, s, 4, owns_volume)?;
+    rtn &= boolean(
+        list.as_deref_mut(),
+        key,
+        C,
+        s,
+        4,
+        owns_volume && volume_linked,
+    )?;
 
     /*  5 */
     // Bad BaseCurve context
