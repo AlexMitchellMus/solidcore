@@ -23,7 +23,7 @@ use solidcore::Result as SolidResult;
 use solidcore_ffi::units::topology_brep_cutting::{self as ffi, NARGS};
 use solidcore_ffi::FfiError;
 
-use super::boolean_merge_p1::graph;
+use super::boolean_merge_p1::{graph, Canon};
 use super::topology_brep_mirror::{geometry, herr, normalize_face_shells, status};
 use super::topology_vertexuse::import_raw;
 use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
@@ -163,6 +163,7 @@ impl UnitDiff for Runner {
         let (mut b, _) = import_raw(raw.get(n + 1..).ok_or_else(|| herr("short graph"))?)?;
         strip_unrecorded(&mut b).map_err(herr)?;
         normalize_face_shells(&mut b).map_err(herr)?;
+        drop_unreached_shell_faces(&mut b).map_err(herr)?;
         Ok(graph(&b, record))
     }
 
@@ -185,6 +186,7 @@ impl UnitDiff for Runner {
             Ok(record) => {
                 strip_unrecorded(&mut b).map_err(herr)?;
                 normalize_face_shells(&mut b).map_err(herr)?;
+                drop_unreached_shell_faces(&mut b).map_err(herr)?;
                 Ok(graph(&b, record))
             }
             Err(e) => Output::unported(&e).ok_or_else(|| herr(e)),
@@ -245,8 +247,9 @@ impl UnitDiff for Runner {
 }
 
 /// Drops what the comparison does not record: the edge uses' UV trim curves (lazily made
-/// caches) and the faces' `loops` lists (Rust-only logical records the native export walk
-/// never has, so the import leaves them empty), as `topology.brep_local_operation` does.
+/// caches), and the faces' `loops` and the loops' `edges` lists (Rust-only logical
+/// records the native export walk never has, so the import leaves them empty), as
+/// `topology.brep_local_operation` does for the faces.
 fn strip_unrecorded(b: &mut Brep) -> SolidResult<()> {
     let uses: Vec<_> = b.edgeuses().ids().collect();
     for id in uses {
@@ -255,6 +258,22 @@ fn strip_unrecorded(b: &mut Brep) -> SolidResult<()> {
     let faces: Vec<_> = b.faces().ids().collect();
     for id in faces {
         b.face_mut(id)?.loops.clear();
+    }
+    let loops: Vec<_> = b.loops().ids().collect();
+    for id in loops {
+        b.loop_mut(id)?.edges.clear();
+    }
+    Ok(())
+}
+
+/// Keeps only reached faces on the shells' face lists: `normalize_face_shells` lists every
+/// face record, and the faces the cut deleted stay in the Rust arena, unlinked (the arena
+/// model's documented deviation; the native export walk reaches no deleted face).
+fn drop_unreached_shell_faces(b: &mut Brep) -> SolidResult<()> {
+    let reached = Canon::reachable(b).faces.items;
+    let shells: Vec<_> = b.shells().ids().collect();
+    for id in shells {
+        b.shell_mut(id)?.faces.retain(|f| reached.contains(f));
     }
     Ok(())
 }
