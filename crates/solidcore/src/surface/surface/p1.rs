@@ -404,6 +404,11 @@ impl StepSurface {
         }
     }
 
+    /// The base surface, mutable, for [`Surface::detach_nurb_cells`].
+    pub(crate) fn nested_surfaces_mut(&mut self) -> Vec<&mut Surface> {
+        self.surface.as_deref_mut().into_iter().collect()
+    }
+
     /// `GetTypeString()`.
     pub const TYPE_STRING: &'static str = "SmSTEPSurface_TYPE";
     /// `GetClassString()`.
@@ -2011,6 +2016,32 @@ impl Surface {
         want: [bool; 3],
         expand_pos_boxes_by_zone_tol_3d: bool,
     ) -> Result<SurfaceBoxes> {
+        self.calculate_bounding_box_with_guesses(
+            k,
+            uv_domain,
+            want,
+            expand_pos_boxes_by_zone_tol_3d,
+            None,
+            None,
+        )
+    }
+
+    /// [`Surface::calculate_bounding_box`] with upstream's optional basis guesses
+    /// (`pOptPseudoBasisGuess`, `pOptPolarBasisGuess`): the B-spline override uses them,
+    /// an offset surface passes them to its base surface, the base body ignores them.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::calculate_bounding_box`].
+    pub fn calculate_bounding_box_with_guesses(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        want: [bool; 3],
+        expand_pos_boxes_by_zone_tol_3d: bool,
+        pseudo_guess: Option<&PseudoBox>,
+        polar_guess: Option<&PolarBox>,
+    ) -> Result<SurfaceBoxes> {
         match self.kind() {
             // (SmSurfOfRevolution inherits the B-spline override)
             SurfaceKind::Cone(_)
@@ -2033,8 +2064,8 @@ impl Surface {
                     normal: want[0],
                     pseudo: want[1],
                     polar: want[2],
-                    pseudo_guess: None,
-                    polar_guess: None,
+                    pseudo_guess,
+                    polar_guess,
                     expand_by_zone_tol: expand_pos_boxes_by_zone_tol_3d,
                     expand_tolerance,
                 };
@@ -2059,9 +2090,24 @@ impl Surface {
             SurfaceKind::CurveBounded(_) | SurfaceKind::Step(_) | SurfaceKind::SrfInVolume(_) => {
                 self.base_calculate_bounding_box(k, want, expand_pos_boxes_by_zone_tol_3d)
             }
-            SurfaceKind::OffsetSurface(s) => {
-                s.calculate_bounding_box(k, self, uv_domain, want, expand_pos_boxes_by_zone_tol_3d)
-            }
+            // (the basis guesses are passed along to the base surface's boxes)
+            SurfaceKind::OffsetSurface(s) => s.calculate_bounding_box_with(
+                k,
+                self,
+                uv_domain,
+                want,
+                expand_pos_boxes_by_zone_tol_3d,
+                |base| {
+                    base.calculate_bounding_box_with_guesses(
+                        k,
+                        uv_domain,
+                        [true, true, true],
+                        expand_pos_boxes_by_zone_tol_3d,
+                        pseudo_guess,
+                        polar_guess,
+                    )
+                },
+            ),
         }
     }
 
@@ -2070,9 +2116,10 @@ impl Surface {
     /// of revolution reads the domain of the NURB its `MakeNurb` gives
     /// ([`Surface::kind_with_nurb`]), where [`Surface::natural_uv_domain_if_built`] answers the
     /// NURB-less base's empty domain; an offset surface reads its base's (or extended
-    /// surface's) the same way ([`OffsetSurface::natural_uv_domain_with_nurb`]). A
-    /// surface of extrusion already answers from its generator, and every other kind as
-    /// [`Surface::natural_uv_domain_if_built`].
+    /// surface's) the same way ([`OffsetSurface::natural_uv_domain_with_nurb`]), and so
+    /// does a lazy surface of extrusion (`SmSurfOfExtrusion` does not override
+    /// `GetNaturalUVDomain`: its made NURB's domain, whatever the generator's kind).
+    /// Every other kind answers as [`Surface::natural_uv_domain_if_built`].
     ///
     /// # Errors
     ///
@@ -2084,9 +2131,31 @@ impl Surface {
             SurfaceKind::Sphere(s) => s.base().base().natural_uv_domain(),
             SurfaceKind::Torus(s) => s.base().base().natural_uv_domain(),
             SurfaceKind::OffsetSurface(s) => s.natural_uv_domain_with_nurb(k)?,
+            // (the made kind: its base holds the NURB unless the make failed)
+            SurfaceKind::SurfOfExtrusion(s) => s.natural_uv_domain_for_query(),
             // (the other kinds are never lazy)
             _ => self.natural_uv_domain_if_built(),
         })
+    }
+
+    /// [`Surface::natural_uv_domain_with_nurb`] for the port's stand-in object key of
+    /// this surface (where upstream names `this` in a solution, and reads its natural
+    /// domain only if and when it compares objects): a lazy plane's, cone's, sphere's,
+    /// torus's or surface of revolution's domain is read from a NURB made on a copy, so
+    /// taking the key does not make and keep the surface's NURB ahead of upstream (a
+    /// solver built next tests whether the surface has one).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::natural_uv_domain_with_nurb`].
+    pub(crate) fn stand_in_key_domain(&self, k: &Kernel) -> Result<Extent2d> {
+        match self.kind() {
+            SurfaceKind::Plane(p) => Ok(p.natural_uv_domain_without_keeping()),
+            _ => match self.revolution_natural_uv_domain_without_keeping(k)? {
+                Some(domain) => Ok(domain),
+                None => self.natural_uv_domain_with_nurb(k),
+            },
+        }
     }
 
     /// The B-spline part of an analytic kind with its NURB (`GetOrCreateGwNurbPointer`
@@ -2224,9 +2293,14 @@ impl Surface {
         let iso = |param: SurfParamType, value: f64| -> Result<Curve> {
             Ok(Curve::from(match self.kind() {
                 SurfaceKind::BSpline(bs) => IsoCurve::new(bs.clone(), param, value, true, true),
-                _ => {
-                    IsoCurve::from_surface(self.clone_for_evaluation()?, param, value, true, true)?
-                }
+                _ => IsoCurve::from_surface(
+                    k,
+                    self.clone_for_evaluation()?,
+                    param,
+                    value,
+                    true,
+                    true,
+                )?,
             }))
         };
 

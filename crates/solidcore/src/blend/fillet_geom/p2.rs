@@ -54,6 +54,9 @@
 //! - **Tolerances.** `sm_SrfSrfIntersection`'s tolerance is an `SmApproxTol3d`
 //!   parameter: the double converts on entry ([`approx_tol3d`]); `DropCurve`'s too.
 //!   Face tolerances passed to `DropCurve` / `LiftCurve` convert the same way.
+//!   Arc-length walks on edge curves explicitly carry the live edge's zone
+//!   tolerance into their length caches, independently of integration accuracy.
+//!   A reversed copy has no owner and retains the ordinary system tolerance.
 //! - **Statuses.** Upstream ignores the status of `IntersectWithPlane`,
 //!   `sm_TwoPntsIntersection`, `GetRailIndexOfSideEU` and `SetMinMax` here; so does the
 //!   port, except that [`SolidError::Unported`] always propagates. An intersector that
@@ -96,6 +99,7 @@ use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::tol::{approx_tol3d, zone_tol3d};
 use crate::geom::vector2d::Point2;
+use crate::intersect::surface_drop_lib::p3::DropSolveContext;
 use crate::intersect::surface_intersector::p1::{SrfIndex, TsectPnt};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, PI};
@@ -108,6 +112,7 @@ use crate::surface::plane::Plane;
 use crate::surface::surface::p2::SurfaceIntersection;
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
+use crate::topology::brep_cache::CacheObject;
 use crate::topology::edgeuse::p1::{self as eu1, primary_edgeuse};
 use crate::topology::edgeuse::p3::{
     evaluate_binormal, get_or_create_uv_trim_curve, BinormalOptions,
@@ -477,9 +482,11 @@ fn arc_length_param(
     curve: &Curve,
     start: f64,
     length: f64,
+    owner_zone_tol_3d: Option<f64>,
     op: &'static str,
 ) -> Result<f64> {
-    let r = curve.find_parameter_at_arc_length(k, start, length)?;
+    let r =
+        curve.find_parameter_at_arc_length_with_zone_tol(k, start, length, owner_zone_tol_3d)?;
     if r.converged {
         Ok(r.end_param)
     } else {
@@ -509,6 +516,7 @@ pub(crate) fn set_back_frame(
     op: &'static str,
 ) -> Result<(Point3, Point3)> {
     let curve = edge::curve(target, e)?.ok_or_else(|| SolidError::null_pointer(op))?;
+    let owner_zone_tol_3d = Some(edge::tolerance(target, e)?);
     let pv = if k.fixes.fillet_setback_from_start_vertex {
         let ivl = edge::interval(target, e)?;
         let from_start = edge::start_vertex(target, e)? == cp_vertex;
@@ -517,18 +525,20 @@ pub(crate) fn set_back_frame(
         } else {
             (ivl.max(), -set_back_dist)
         };
-        let end_param = arc_length_param(k, curve, start, length, op)?;
+        let end_param = arc_length_param(k, curve, start, length, owner_zone_tol_3d, op)?;
         curve.evaluate(k, end_param, 1, true, true)?
     } else {
         let ivl = curve.natural_interval();
         // Walk along the curve for dSetBackDist
         if edge::vertex(target, e)? == cp_vertex {
-            let end_param = arc_length_param(k, curve, ivl.min(), set_back_dist, op)?;
+            let end_param =
+                arc_length_param(k, curve, ivl.min(), set_back_dist, owner_zone_tol_3d, op)?;
             curve.evaluate(k, end_param, 1, true, true)?
         } else {
             let mut new_curve = curve.copy(k)?;
             let new_ivl = new_curve.reverse_parameterization(k, &ivl)?;
-            let end_param = arc_length_param(k, &new_curve, new_ivl.min(), set_back_dist, op)?;
+            let end_param =
+                arc_length_param(k, &new_curve, new_ivl.min(), set_back_dist, None, op)?;
             new_curve.evaluate(k, end_param, 1, true, true)?
         }
     };
@@ -552,7 +562,7 @@ const fn is_b_spline_kind(c: &Curve) -> bool {
 
 /// `SM_CAST_PTR(SmBSplineSurface, ..)`: the B-spline net of a B-spline surface, a
 /// plane or a surface of revolution.
-const fn b_spline_net(s: &Surface) -> Option<&BSplineSurface> {
+fn b_spline_net(s: &Surface) -> Option<&BSplineSurface> {
     match s.kind() {
         SurfaceKind::BSpline(b) => Some(b),
         SurfaceKind::Plane(p) => Some(p.base()),
@@ -578,6 +588,32 @@ pub(super) fn surface_drop_curve(
     // no failure record (`pOptDropCurveFail = NULL`)
     Ok(surface
         .drop_curve::<NoObject>(k, domain, curve, interval, approx_tol, true, None, true)?
+        .uv_curves)
+}
+
+/// [`surface_drop_curve`] onto a face's surface under the caller's face context
+/// (`context.handle` names the surface in its cache), so the drop's surface cache is
+/// the face's trimmed one, as upstream's `smsurf_GetSurfaceCache` finds it through
+/// `GetFace()`.
+///
+/// # Errors
+///
+/// As [`surface_drop_curve`], and those of the context.
+pub(super) fn surface_drop_curve_with_context(
+    k: &Kernel,
+    surface: &Surface,
+    domain: &Extent2d,
+    curve: &Curve,
+    interval: &Extent1d,
+    approx_tol: f64,
+    context: DropSolveContext<'_, CacheObject>,
+) -> Result<Vec<Curve>> {
+    let approx_tol = approx_tol3d(k, approx_tol);
+    // no failure record (`pOptDropCurveFail = NULL`)
+    Ok(surface
+        .drop_curve_with_context::<CacheObject>(
+            k, domain, curve, interval, approx_tol, true, None, true, context,
+        )?
         .uv_curves)
 }
 
@@ -1279,6 +1315,7 @@ impl FilletBrep {
             let e = eu1::edge(target, eu)?.ok_or_else(|| SolidError::null_pointer(OP))?;
             let ivl = edge::interval(target, e)?;
             let curve = edge::curve(target, e)?.ok_or_else(|| SolidError::null_pointer(OP))?;
+            let owner_zone_tol_3d = Some(edge::tolerance(target, e)?);
 
             let vu = eu1::vertexuse(target, eu)?.ok_or_else(|| SolidError::null_pointer(OP))?;
             let pv = vertexuse_unit::vertex(target, vu)?;
@@ -1286,9 +1323,23 @@ impl FilletBrep {
             let offset_param = if (pv == cp_vertex && orient == OrientType::Same)
                 || (pv != cp_vertex && orient == OrientType::Opposite)
             {
-                arc_length_param(k, curve, ivl.min(), 2.0 * offset_distance, OP)?
+                arc_length_param(
+                    k,
+                    curve,
+                    ivl.min(),
+                    2.0 * offset_distance,
+                    owner_zone_tol_3d,
+                    OP,
+                )?
             } else {
-                arc_length_param(k, curve, ivl.max(), -2.0 * offset_distance, OP)?
+                arc_length_param(
+                    k,
+                    curve,
+                    ivl.max(),
+                    -2.0 * offset_distance,
+                    owner_zone_tol_3d,
+                    OP,
+                )?
             };
             let fetch = get_or_create_uv_trim_curve(k, target, eu, false, false, true)?;
             fetch.status?;
@@ -1904,6 +1955,7 @@ impl FilletBrep {
         let eu = solver_edgeuse(fs1, 0, OP)?;
         let e = eu1::edge(target, eu)?.ok_or_else(|| SolidError::null_pointer(OP))?;
         let ivl = edge::interval(target, e)?;
+        let owner_zone_tol_3d = Some(edge::tolerance(target, e)?);
         let mut vert_at_edge_start = true;
         let mut param = ivl.min();
         if let Some(p) = opt_edge_param {
@@ -1980,7 +2032,14 @@ impl FilletBrep {
             if !(30.0..=150.0).contains(&deg) {
                 // May lead to potential failures, step off the boundary: along the
                 // edge first, then off the boundary edge
-                param = arc_length_param(k, &curve, param, 2.0 * curve_stepoff_dist, OP)?;
+                param = arc_length_param(
+                    k,
+                    &curve,
+                    param,
+                    2.0 * curve_stepoff_dist,
+                    owner_zone_tol_3d,
+                    OP,
+                )?;
                 uvs = find_stepoff_uv(k, target, fs1, param, stepoff_dist)?;
                 break;
             }
@@ -2011,7 +2070,7 @@ impl FilletBrep {
             }
 
             // No solution found there, step off the vertex along the edge and again
-            param = arc_length_param(k, &curve, param, curve_stepoff_dist, OP)?;
+            param = arc_length_param(k, &curve, param, curve_stepoff_dist, owner_zone_tol_3d, OP)?;
             uvs = find_stepoff_uv(k, target, solvers.solver(s1)?, param, stepoff_dist)?;
         }
         self.fillet_vertexuse_mut(vu1)?.set_tsect_pnt(&tsect);

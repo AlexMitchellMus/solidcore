@@ -106,7 +106,9 @@
 //!   call does) and `ReadFromDB` in [`SurfOfRevolution::read_from_db`].
 //! - **NURB.** The queries expect the NURB made ([`Cone::make_nurb`], as the
 //!   `CreateCanonical` functions do); upstream's `GetNaturalUVDomain` makes a missing
-//!   one through the `const` object, here its domain is then `[0, 0] x [0, 0]`.
+//!   one through the `const` object. A bare cone's domain is then `[0, 0] x [0, 0]`;
+//!   a cone in a [`crate::surface::surface::Surface`] makes it and keeps it there
+//!   (`Surface::kind_with_nurb`, `Surface::natural_uv_domain_with_nurb`), as upstream.
 //! - **Debug code.** The `SM_DEBUG_CODE` checks and drawing are omitted.
 
 use crate::curve::curve::p2::{CIRCLE_TYPE, LINE_TYPE};
@@ -1407,32 +1409,53 @@ impl Cone {
         hv: usize,
         flags: EvaluateFlags,
     ) -> Result<Vec<Vec3>> {
+        let rows = self.evaluate_rows(k, uv, hu, hv, flags)?;
+        let mut d = Vec::with_capacity((hu + 1) * (hv + 1));
+        for row in rows {
+            d.extend(row);
+        }
+        Ok(d)
+    }
+
+    /// [`Self::evaluate`] as `D[i][j]` rows: exactly `hu + 1` rows of `hv + 1` entries
+    /// (the base evaluation's rows, zero-padded), so a caller wanting rows does not
+    /// flatten and re-split them.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::evaluate`].
+    pub fn evaluate_rows(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        hu: usize,
+        hv: usize,
+        flags: EvaluateFlags,
+    ) -> Result<Vec<Vec<Vec3>>> {
         // when asked for derivatives - pass the call along to base class (which
         // rejects orders above NL_MAXDER before anything is allocated here)
         let mut d = if hu > 0 || hv > 0 {
             match self.rev.base.evaluate(uv, hu, hv, flags) {
-                Ok(rows) => {
-                    let mut d = vec![Vec3::ZERO; (hu + 1) * (hv + 1)];
-                    for (i, row) in rows.iter().enumerate().take(hu + 1) {
-                        for (j, v) in row.iter().enumerate().take(hv + 1) {
-                            if let Some(slot) = d.get_mut(i * (hv + 1) + j) {
-                                *slot = *v;
-                            }
-                        }
+                Ok(mut rows) => {
+                    rows.truncate(hu + 1);
+                    rows.resize_with(hu + 1, Vec::new);
+                    for row in &mut rows {
+                        row.truncate(hv + 1);
+                        row.resize(hv + 1, Vec3::ZERO);
                     }
-                    d
+                    rows
                 }
                 Err(e) if e.is_unported() => return Err(e),
                 Err(_) => return Err(SolidError::sm_err(OP_EVAL)),
             }
         } else {
-            vec![Vec3::ZERO]
+            vec![vec![Vec3::ZERO]]
         };
 
         // use the step position for tighter tolerances (statuses only select it)
         if let Some(step_uv) = ignored(self.convert_uv_from_nurbs_to_step(k, uv))? {
             if let Some(p) = ignored(self.evaluate_step_point(step_uv))? {
-                if let Some(slot) = d.first_mut() {
+                if let Some(slot) = d.first_mut().and_then(|row| row.first_mut()) {
                     *slot = p;
                 }
             }
@@ -1598,8 +1621,8 @@ impl Cone {
     /// # Errors
     ///
     /// `SM_ERR` when the point does not drop onto the generator (upstream leaves the
-    /// height unset); those of the start-plane transform and the generator solve;
-    /// [`SolidError::Unported`] for a non-planar generator.
+    /// height unset); those of the start-plane transform and the generator solve; for a
+    /// non-planar generator, those of the B-spline inversion and the conversions.
     pub fn step_inversion(
         &self,
         k: &Kernel,
@@ -1633,7 +1656,10 @@ impl Cone {
 
     /// `SmSurfOfRevolution::STEPInversion` on the cone's base parts
     /// ([`SurfOfRevolution::step_inversion_with_outputs`], unit
-    /// `surface.surf_of_revolution_p2`), over the cone's STEP domain.
+    /// `surface.surf_of_revolution_p2`), over the cone's STEP domain. A non-planar
+    /// generator (a cone record read with that flag) converts through the cone's own
+    /// `ConvertUVFromSTEPToNURBS` / `ConvertUVFromNURBSToSTEP`, which upstream calls
+    /// virtually.
     fn rev_step_inversion(
         &self,
         k: &Kernel,
@@ -1643,7 +1669,20 @@ impl Cone {
         uv_guess: Option<Point2>,
     ) -> Result<ConeStepInversion> {
         let rev = &self.rev;
-        let r = rev.step_inversion_with_outputs(k, anal_domain, point_on_surf, tol_3d, uv_guess)?;
+        let r = if rev.planar_generator {
+            rev.step_inversion_with_outputs(k, anal_domain, point_on_surf, tol_3d, uv_guess)?
+        } else {
+            rev.step_inversion_non_planar(
+                k,
+                anal_domain,
+                point_on_surf,
+                tol_3d,
+                uv_guess,
+                None,
+                |uv| self.convert_uv_from_step_to_nurbs(k, uv),
+                |uv| self.convert_uv_from_nurbs_to_step(k, uv),
+            )?
+        };
         Ok(ConeStepInversion {
             uv: r.uv,
             location: r.location,
@@ -2319,5 +2358,37 @@ mod tests {
                 .unwrap();
         assert!(r.coincident);
         assert_eq!(r.reversed, Some(true));
+    }
+
+    /// A cone record read with its generator flagged non-planar takes the inherited
+    /// general-solver branch of `STEPInversion`, converting through the cone's own
+    /// parameter conversions: it finds the parameters the analytic branch finds.
+    #[test]
+    fn non_planar_flag_step_inversion_converts_through_the_cone() {
+        let k = k();
+        for swap in [false, true] {
+            for inside in [false, true] {
+                let planar =
+                    Cone::create_canonical(&k, &std_placement(), 1.0, 2.0, 3.0, swap, inside)
+                        .unwrap();
+                let mut non_planar = planar.clone();
+                non_planar.rev.planar_generator = false;
+                let dom = planar.rev.anal_uv_domain;
+                let (u, v) = (dom.u_interval(), dom.v_interval());
+                for (fu, fv) in [(0.3, 0.4), (0.7, 0.15), (0.55, 0.8)] {
+                    let step = Point2::new(
+                        u.min() + fu * (u.max() - u.min()),
+                        v.min() + fv * (v.max() - v.min()),
+                    );
+                    let p = planar.evaluate_step_point(step).unwrap();
+                    let a = planar.step_inversion(&k, p, 1e-7, None).unwrap();
+                    let b = non_planar.step_inversion(&k, p, 1e-7, None).unwrap();
+                    assert!((a.uv - step).length() < 1e-6, "{:?} {step:?}", a.uv);
+                    assert!((a.uv - b.uv).length() < 1e-6, "{:?} {:?}", a.uv, b.uv);
+                    assert_eq!(a.location, b.location);
+                    assert!(b.inside);
+                }
+            }
+        }
     }
 }

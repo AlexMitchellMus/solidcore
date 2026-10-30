@@ -216,27 +216,27 @@ fn raw(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
     })
 }
 
-/// What [`check`] decided: the shim may run on the input, or the B-rep could not be
-/// built and [`eval`] reports that export (every op reports the same failure).
-enum Checked {
-    Run,
-    Unbuilt(Vec<f64>),
-}
-
-/// The checks of [`eval`] (see the module docs), without calling the shim.
-fn check(op: Op, path: &str, input: &[f64]) -> Result<Checked, FfiError> {
+/// The checks of [`eval`] that need no B-rep: the standalone ops' whole input (then
+/// `None`: nothing is left to check), else the B-rep block, the editing flag and the
+/// HANG-16 magnitude bound, returning the reader at the op's arguments and the head
+/// (the B-rep block and flags) for the export.
+fn check_head<'a>(
+    op: Op,
+    path: &str,
+    input: &'a [f64],
+) -> Result<Option<(Reader<'a>, &'a [f64])>, FfiError> {
     let mut rd = Reader::new(input);
     match op {
         Op::Construct => {
             rd.finite()?;
             rd.finite()?;
             rd.done()?;
-            return Ok(Checked::Run);
+            return Ok(None);
         }
         Op::ApiCopyNull => {
             int(&mut rd, 0, 0)?;
             rd.done()?;
-            return Ok(Checked::Run);
+            return Ok(None);
         }
         _ => {}
     }
@@ -254,31 +254,46 @@ fn check(op: Op, path: &str, input: &[f64]) -> Result<Checked, FfiError> {
     {
         return Err(bad("geometry value beyond 1e150 (HANG-16)"));
     }
-    let export = p2::eval(p2::Op::Export, path, head)?;
-    let Some(c) = vu::counts(&export) else {
-        // the B-rep could not be built: every op reports the same failure
-        return Ok(Checked::Unbuilt(export));
-    };
-    let extras = p2::eval(p2::Op::Extras, path, head)?;
-    let has_infinite = extras.get(2).is_some_and(|&r| r >= 0.0);
-    args(op, &mut rd, &c, has_infinite)?;
-    rd.done()?;
-    Ok(Checked::Run)
+    Ok(Some((rd, head)))
 }
 
-/// The checks [`eval`] makes before calling the shim, without running it: `Ok` for an
-/// input `eval` would run (or report as an unbuilt B-rep). The runner applies them to
-/// the Rust side too, so an input the FFI refuses is a harness error on both sides and
-/// the Rust port never runs the guarded hang regimes: a `TurnNurbsOffset` of `1e300` on
-/// `box_with_large_fillet.smb` (nightly fuzz case `fuzz00282`) is refused here for the
-/// C++ (HANG-16) while the port, faithful to upstream, spent 25 s rebuilding the face's
-/// UV trim curves on the approximated offset surface and exceeded the fuzz time limit.
+/// The op's arguments after the head, checked against the B-rep's entity counts
+/// `counts` (`topology_vertexuse::counts` order) and whether it has an infinite region,
+/// then nothing may be left.
+fn check_args(
+    op: Op,
+    rd: &mut Reader<'_>,
+    counts: &[usize; 10],
+    has_infinite: bool,
+) -> Result<(), FfiError> {
+    args(op, rd, counts, has_infinite)?;
+    rd.done()
+}
+
+/// The checks [`eval`] makes before calling the shim, without running it or exporting
+/// the B-rep: `counts` and `has_infinite` describe the B-rep the caller built from the
+/// same input (the export's counts in `eval`; the runner's Rust side passes its own
+/// B-rep's). The runner applies them to the Rust side, so an input the FFI refuses is a
+/// harness error on both sides and the Rust port never runs the guarded hang regimes: a
+/// `TurnNurbsOffset` of `1e300` on `box_with_large_fillet.smb` (nightly fuzz case
+/// `fuzz00282`) is refused here for the C++ (HANG-16) while the port, faithful to
+/// upstream, spent 25 s rebuilding the face's UV trim curves on the approximated offset
+/// surface and exceeded the fuzz time limit.
 ///
 /// # Errors
 ///
 /// [`FfiError::InvalidArgument`] for a malformed input, as [`eval`].
-pub fn validate(op: Op, path: &str, input: &[f64]) -> Result<(), FfiError> {
-    check(op, path, input).map(|_| ())
+pub fn validate(
+    op: Op,
+    path: &str,
+    input: &[f64],
+    counts: &[usize; 10],
+    has_infinite: bool,
+) -> Result<(), FfiError> {
+    match check_head(op, path, input)? {
+        None => Ok(()),
+        Some((mut rd, _)) => check_args(op, &mut rd, counts, has_infinite),
+    }
 }
 
 /// Runs `op` on `input` (see the module docs); `path` is the `.smb` file of a file
@@ -289,8 +304,16 @@ pub fn validate(op: Op, path: &str, input: &[f64]) -> Result<(), FfiError> {
 /// [`FfiError::InvalidArgument`] for a malformed input; [`FfiError::Status`] for a shim
 /// failure.
 pub fn eval(op: Op, path: &str, input: &[f64]) -> Result<Vec<f64>, FfiError> {
-    match check(op, path, input)? {
-        Checked::Run => raw(op, path, input),
-        Checked::Unbuilt(export) => Ok(export),
-    }
+    let Some((mut rd, head)) = check_head(op, path, input)? else {
+        return raw(op, path, input);
+    };
+    let export = p2::eval(p2::Op::Export, path, head)?;
+    let Some(c) = vu::counts(&export) else {
+        // the B-rep could not be built: every op reports the same failure
+        return Ok(export);
+    };
+    let extras = p2::eval(p2::Op::Extras, path, head)?;
+    let has_infinite = extras.get(2).is_some_and(|&r| r >= 0.0);
+    check_args(op, &mut rd, &c, has_infinite)?;
+    raw(op, path, input)
 }

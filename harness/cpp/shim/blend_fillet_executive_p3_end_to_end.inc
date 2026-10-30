@@ -5,6 +5,8 @@
 #include <SmApiGeneral.h>
 #include <SmApiQueries.h>
 #include <SmApiSurfaces.h>
+#include <SmFilletCorner.h>
+#include <SmVertex.h>
 #include <SmLoop.h>
 #include <cmath>
 #include <limits>
@@ -109,11 +111,75 @@ SmStatus curve_sih_fillet_edges(SmBrep* pBrep,SmTArray<SmEdge*>& rEdges,double d
     return SM_SUCCESS;
 }
 
+// A fixture-selected corner assignment between the public executive's corner
+// creation and its real filleting call. Missing identities are fixture errors,
+// not synthetic SmStatus results. Ordinary executive statuses remain in result.
+int32_t setback_fillet_edges(SmBrep* body,SmTArray<SmEdge*>& selected,
+    const double* fillet,const double* setback,SmStatus& result) {
+    SmTArray<SmVertex*> vertices;body->GetVertices(vertices);
+    SmVertex* vertex=nullptr;ULONG matches=0;
+    for(ULONG i=0;i<vertices.GetSize();++i) {
+        const auto point=vertices[i]->GetPoint();
+        if(point[0]==setback[0] && point[1]==setback[1] && point[2]==setback[2]) {
+            vertex=vertices[i];++matches;
+        }
+    }
+    if(matches!=1)return SC_ERR_ARG;
+    SmFilletExecutive executive(*SmApiGetOrCreateContext(),body);
+    executive.SetDoGlobalMerge(TRUE);
+    const auto xsect=fillet[1]==0?SM_FSG_LINEAR:fillet[1]==2?SM_FSG_BLEND_CURVE:SM_FSG_CIRCULAR;
+    result=executive.SetFilletParameters(body,selected,xsect,SM_FS_CONST_RADIUS,
+        fillet[0],nullptr,-1,-1,-1,-1,ULONG(fillet[2]),fillet[3]);
+    if(result!=SM_SUCCESS)return SC_OK;
+    result=executive.CreateFilletCorners();
+    if(result!=SM_SUCCESS)return SC_OK;
+    auto* corner=executive.GetFilletCornerOfVertex(vertex);
+    if(!corner)return SC_ERR_ARG;
+    corner->SetSetBackDist(setback[3]);
+    result=executive.DoFilleting();
+    // SmApiSetBevelCorners also ignores this status and retains its executive
+    // through StitchAndOrient. The separate lifecycle control records that scope.
+    if(result==SM_SUCCESS)body->StitchAndOrient();
+    return SC_OK;
+}
+
 // `curve_sih` > 0 fillets with curve_sih_fillet_edges at that step-back factor; a
 // non-null `end_radius` runs SmApiVariableRadiusFillet from fillet[0] to *end_radius
 // (thumbweight fillet[3] must be 1.0, the variable-radius API takes none).
+// `law` (validated by the Rust binding): degree, radius count, radii, unique knot count,
+// knots, multiplicities, edge map min/max; SetFilletParameters(SM_FS_VARIABLE_RADIUS)
+// with an SmBSplineFilletLaw over that curve, laid out as SmApiVariableRadiusFillet.
+SmStatus law_fillet_edges(SmBrep* body,SmTArray<SmEdge*>& edges,double radius,ULONG xsect,
+    ULONG continuity,const double* law) {
+    const SmContext* ctx=SmApiGetOrCreateContext();
+    const ULONG degree=ULONG(law[0]), points=ULONG(law[1]);
+    const double* radii=law+2;
+    const ULONG knots=ULONG(law[2+points]);
+    const double* knot=law+3+points;
+    const double* mult=knot+knots;
+    const double* map=mult+knots;
+    SmTArray<SmPoint3d> control; SmTArray<double> unique; SmTArray<ULONG> mults;
+    for (ULONG i=0; i<points; ++i) control.Add(SmPoint3d(radii[i],0,0));
+    for (ULONG i=0; i<knots; ++i) { unique.Add(knot[i]); mults.Add(ULONG(mult[i])); }
+    SmBSplineCurve* curve=nullptr;
+    SER(SmBSplineCurve::CreateCanonical(*ctx,3,degree,control,SM_CF_UNSPECIFIED,mults,unique,
+        SM_KT_UNSPECIFIED,NULL,NULL,curve));
+    SmBSplineFilletLaw sLaw(curve,SmExtent1d(map[0],map[1]));
+    SmFilletSurfaceGeneratorType eFSGType=SM_FSG_CIRCULAR;
+    if (xsect == 0) eFSGType=SM_FSG_LINEAR;
+    else if (xsect == 2) eFSGType=SM_FSG_BLEND_CURVE;
+    SmFilletExecutive sFilExec(*ctx,body);
+    sFilExec.SetDoGlobalMerge(TRUE);
+    SER(sFilExec.SetFilletParameters(body,edges,eFSGType,SM_FS_VARIABLE_RADIUS,radius,&sLaw,
+        -1.0,-1.0,-1.0,-1.0,continuity));
+    SER(sFilExec.DoFillet());
+    body->StitchAndOrient();
+    return SM_SUCCESS;
+}
+
 int32_t fillet_and_record(SmBrep* body,const double* fillet,int64_t n,std::vector<double>& values,
-    bool piecewise=false,double curve_sih=0.0,const double* end_radius=nullptr) {
+    bool piecewise=false,double curve_sih=0.0,const double* end_radius=nullptr,
+    const double* setback=nullptr,const double* law=nullptr) {
     if (n < 5) return SC_ERR_ARG;
     if (end_radius && (!std::isfinite(*end_radius) || fillet[3] != 1.0)) return SC_ERR_ARG;
     const double ulong_limit=std::ldexp(1.0,std::numeric_limits<ULONG>::digits);
@@ -138,13 +204,21 @@ int32_t fillet_and_record(SmBrep* body,const double* fillet,int64_t n,std::vecto
             }
         }
     }
-    const auto result=end_radius
+    SmStatus result;
+    if(setback) {
+        const auto rc=setback_fillet_edges(body,selected,fillet,setback,result);
+        if(rc!=SC_OK)return rc;
+    } else if(law) {
+        result=law_fillet_edges(body,selected,fillet[0],ULONG(fillet[1]),ULONG(fillet[2]),law);
+    } else {
+    result=end_radius
         ? SmApiVariableRadiusFillet(body,selected,fillet[0],*end_radius,ULONG(fillet[1]),ULONG(fillet[2]))
         : curve_sih > 0.0
         ? curve_sih_fillet_edges(body,selected,fillet[0],ULONG(fillet[1]),ULONG(fillet[2]),fillet[3],curve_sih)
         : piecewise
         ? piecewise_fillet_edges(body,selected,fillet[0],ULONG(fillet[1]),ULONG(fillet[2]),fillet[3])
         : SmApiFilletEdges(body,selected,fillet[0],ULONG(fillet[1]),ULONG(fillet[2]),fillet[3]);
+    }
     // Selected pointers may no longer be live; all result traversals are fresh.
     section(values,before);
     values.push_back(status(result));
@@ -170,7 +244,8 @@ int32_t fillet_and_record(SmBrep* body,const double* fillet,int64_t n,std::vecto
 // then owning-list edge indices. This initial fixture constructor is a box.
 namespace fillet_real_solid {
 int32_t real_solid(const double* input, int64_t n, double* out, int64_t cap, int64_t* out_len,
-    bool piecewise, double curve_sih=0.0, const double* end_radius=nullptr) {
+    bool piecewise, double curve_sih=0.0, const double* end_radius=nullptr,
+    const double* setback=nullptr, const double* law=nullptr) {
     if (!input || n < 9) return SC_ERR_ARG;
     for (int64_t i=0; i<n; ++i) if (!std::isfinite(input[i])) return SC_ERR_ARG;
     for (int i=0; i<3; ++i) if (input[i] <= SM_EFF_ZERO) return SC_ERR_ARG;
@@ -181,7 +256,7 @@ int32_t real_solid(const double* input, int64_t n, double* out, int64_t cap, int
     if (setup != SM_SUCCESS || !raw) return SC_ERR_ARG;
     std::unique_ptr<SmBrep> body(raw);
     std::vector<double> values;
-    const auto rc=fillet_real_solid::fillet_and_record(body.get(),input+3,n-3,values,piecewise,curve_sih,end_radius);
+    const auto rc=fillet_real_solid::fillet_and_record(body.get(),input+3,n-3,values,piecewise,curve_sih,end_radius,setback,law);
     if (rc != SC_OK) return rc;
     return sc_copy_out(values.data(),int64_t(values.size()),out,cap,out_len);
     SC_CATCH
@@ -196,6 +271,33 @@ SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_variable_solid(
     const double* input, int64_t n, double end_radius,
     double* out, int64_t cap, int64_t* out_len) {
     return fillet_real_solid::real_solid(input,n,out,cap,out_len,false,0.0,&end_radius);
+}
+
+// The box wire of sc_blend_fillet_executive_p3_real_solid, filleted with a B-spline
+// radius law (fillet_real_solid::law_fillet_edges); the binding validates `law`.
+SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_law_solid(
+    const double* input, int64_t n, const double* law, int64_t law_n,
+    double* out, int64_t cap, int64_t* out_len) {
+    if(!law || law_n<5 || n<7 || input[6]!=1.0)return SC_ERR_ARG;
+    for(int64_t i=0;i<law_n;++i)if(!std::isfinite(law[i]))return SC_ERR_ARG;
+    // Block lengths only; the binding checks the values.
+    if(law[1]<0||law[1]>64||std::floor(law[1])!=law[1])return SC_ERR_ARG;
+    const int64_t points=int64_t(law[1]);
+    if(2+points>=law_n)return SC_ERR_ARG;
+    const double knots=law[2+points];
+    if(knots<0||knots>64||std::floor(knots)!=knots)return SC_ERR_ARG;
+    if(law_n!=3+points+2*int64_t(knots)+2)return SC_ERR_ARG;
+    return fillet_real_solid::real_solid(input,n,out,cap,out_len,false,0.0,nullptr,nullptr,law);
+}
+
+// The legacy box wire is unchanged. The separate block is exactly XYZ and the
+// setback distance; its finite domain is a fixture contract, not setter policy.
+SC_EXPORT int32_t sc_blend_fillet_executive_p3_real_solid_setback(
+    const double* input,int64_t n,const double* setback,int64_t setback_n,
+    double* out,int64_t cap,int64_t* out_len) {
+    if(!setback || setback_n!=4)return SC_ERR_ARG;
+    for(int i=0;i<4;++i)if(!std::isfinite(setback[i]))return SC_ERR_ARG;
+    return fillet_real_solid::real_solid(input,n,out,cap,out_len,false,0.0,nullptr,setback);
 }
 
 // The box wire of sc_blend_fillet_executive_p3_real_solid, filleted with the

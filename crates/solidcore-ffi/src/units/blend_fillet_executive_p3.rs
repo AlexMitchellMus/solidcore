@@ -112,6 +112,24 @@ extern "C" {
         cap: i64,
         len: *mut i64,
     ) -> i32;
+    fn sc_blend_fillet_executive_p3_real_law_solid(
+        input: *const f64,
+        n: i64,
+        law: *const f64,
+        law_n: i64,
+        out: *mut f64,
+        cap: i64,
+        len: *mut i64,
+    ) -> i32;
+    fn sc_blend_fillet_executive_p3_real_solid_setback(
+        input: *const f64,
+        n: i64,
+        setback: *const f64,
+        setback_n: i64,
+        out: *mut f64,
+        cap: i64,
+        len: *mut i64,
+    ) -> i32;
 
 }
 
@@ -189,6 +207,111 @@ pub fn real_variable_solid(input: &[f64], end_radius: f64) -> Result<Vec<f64>, F
             input.as_ptr(),
             input.len() as i64,
             end_radius,
+            out.as_mut_ptr(),
+            out.len() as i64,
+            len,
+        )
+    })
+}
+
+/// Largest degree and control-point count of a fixture radius law.
+const LAW_MAX_DEGREE: f64 = 3.0;
+const LAW_MAX_POINTS: usize = 64;
+
+/// Validate the unchanged real-box wire (default thumbweight) and a B-spline radius
+/// law block: degree, radius count, the radii (control points `(r, 0, 0)`), unique
+/// knot count, the strictly increasing knots, their multiplicities (`degree + 1` at
+/// the ends, `1..=degree` inside, summing to radii + degree + 1), then the edge map's
+/// min and max. Every value finite. These bounds define the fixture format: within
+/// them `SmBSplineCurve::CreateCanonical` builds the curve on both sides.
+pub fn validate_real_law_solid(input: &[f64], law: &[f64]) -> Result<(), FfiError> {
+    validate_real_solid(input)?;
+    let bad = |what: &str| FfiError::InvalidArgument(format!("radius law: {what}"));
+    if input.get(6) != Some(&1.0) {
+        return Err(bad("default thumbweight required"));
+    }
+    if law.iter().any(|value| !value.is_finite()) {
+        return Err(bad("non-finite value"));
+    }
+    let mut r = Cursor::new(law);
+    let degree = r.num()?;
+    if degree.fract() != 0.0 || !(1.0..=LAW_MAX_DEGREE).contains(&degree) {
+        return Err(bad("degree outside 1..=3"));
+    }
+    let degree = degree as usize;
+    let points = r.index(LAW_MAX_POINTS)?;
+    if points <= degree {
+        return Err(bad("fewer radii than degree + 1"));
+    }
+    r.slice(points)?;
+    let knots = r.index(LAW_MAX_POINTS)?;
+    if knots < 2 {
+        return Err(bad("fewer than two knots"));
+    }
+    let values = r.slice(knots)?;
+    if values.iter().zip(values.iter().skip(1)).any(|(a, b)| a >= b) {
+        return Err(bad("knots not strictly increasing"));
+    }
+    let mut total = 0;
+    for i in 0..knots {
+        let end = i == 0 || i + 1 == knots;
+        let mult = r.index(degree + 1)?;
+        if (end && mult != degree + 1) || (!end && !(1..=degree).contains(&mult)) {
+            return Err(bad("invalid knot multiplicity"));
+        }
+        total += mult;
+    }
+    if total != points + degree + 1 {
+        return Err(bad("multiplicities do not match the radius count"));
+    }
+    r.slice(2)?;
+    r.done()
+}
+
+/// `SetFilletParameters(SM_FS_VARIABLE_RADIUS)` with an `SmBSplineFilletLaw` built
+/// from the law block, then `DoFillet` and `StitchAndOrient`, as
+/// `SmApiVariableRadiusFillet` does with its linear law. Uses the same complete
+/// result record as [`real_solid`].
+pub fn real_law_solid(input: &[f64], law: &[f64]) -> Result<Vec<f64>, FfiError> {
+    validate_real_law_solid(input, law)?;
+    call_with_buffer(65536, |out, len| unsafe {
+        sc_blend_fillet_executive_p3_real_law_solid(
+            input.as_ptr(),
+            input.len() as i64,
+            law.as_ptr(),
+            law.len() as i64,
+            out.as_mut_ptr(),
+            out.len() as i64,
+            len,
+        )
+    })
+}
+
+/// Validate the unchanged box wire and the separate XYZ/distance fixture block.
+/// Finiteness defines this bridge's input format, not the native setter's policy;
+/// zero and negative finite distances remain representable.
+pub fn validate_real_solid_setback(input: &[f64], setback: [f64; 4]) -> Result<(), FfiError> {
+    validate_real_solid(input)?;
+    if setback.iter().any(|value| !value.is_finite()) {
+        return Err(FfiError::InvalidArgument(
+            "non-finite corner setback fixture".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Run the actual executive with a setback assignment after corner creation.
+/// The output is the complete [`real_solid`] record, including ordinary operation
+/// errors. A missing unique vertex or prepared corner is a malformed fixture;
+/// callers must report bridge errors as harness errors, not C++-undefined inputs.
+pub fn real_solid_setback(input: &[f64], setback: [f64; 4]) -> Result<Vec<f64>, FfiError> {
+    validate_real_solid_setback(input, setback)?;
+    call_with_buffer(65536, |out, len| unsafe {
+        sc_blend_fillet_executive_p3_real_solid_setback(
+            input.as_ptr(),
+            input.len() as i64,
+            setback.as_ptr(),
+            4,
             out.as_mut_ptr(),
             out.len() as i64,
             len,
@@ -516,13 +639,18 @@ pub fn curve_sih_source(
 /// (0/1).
 pub fn validate_surface_surface(input: &[f64]) -> Result<(), FfiError> {
     if input.len() != 30 || input.iter().any(|v| !v.is_finite()) {
-        return Err(FfiError::InvalidArgument("invalid surface-surface wire".into()));
+        return Err(FfiError::InvalidArgument(
+            "invalid surface-surface wire".into(),
+        ));
     }
     let code = input.get(27).copied().unwrap_or(-1.0);
     if code < 0.0 || code.fract() != 0.0 || code >= 18446744073709551616.0 {
         return Err(FfiError::InvalidArgument("invalid native ULONG".into()));
     }
-    if input.get(28..30).is_none_or(|f| f.iter().any(|v| *v != 0.0 && *v != 1.0)) {
+    if input
+        .get(28..30)
+        .is_none_or(|f| f.iter().any(|v| *v != 0.0 && *v != 1.0))
+    {
         return Err(FfiError::InvalidArgument("invalid flag".into()));
     }
     Ok(())
@@ -567,7 +695,10 @@ pub fn validate_surface_surface_bodies(input: &[f64]) -> Result<(), FfiError> {
     if code < 0.0 || code.fract() != 0.0 || code >= 18446744073709551616.0 {
         return Err(FfiError::InvalidArgument("invalid native ULONG".into()));
     }
-    if input.get(30..32).is_none_or(|f| f.iter().any(|v| *v != 0.0 && *v != 1.0)) {
+    if input
+        .get(30..32)
+        .is_none_or(|f| f.iter().any(|v| *v != 0.0 && *v != 1.0))
+    {
         return Err(FfiError::InvalidArgument("invalid flag".into()));
     }
     Ok(())
@@ -604,7 +735,11 @@ mod source_tests {
     fn curve_sih_rejects_invalid_step_back() {
         for step_back in [0.0, -1.0, f64::NAN, f64::INFINITY] {
             assert!(super::curve_sih_source(step_back, &cylinder(), None).is_err());
-            assert!(super::curve_sih_solid(step_back, &[10.0, 10.0, 10.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]).is_err());
+            assert!(super::curve_sih_solid(
+                step_back,
+                &[10.0, 10.0, 10.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]
+            )
+            .is_err());
         }
     }
     #[test]
@@ -725,6 +860,43 @@ mod real_solid_tests {
     use super::validate_real_solid;
     fn record() -> Vec<f64> {
         vec![10.0, 20.0, 30.0, 0.5, 1.0, 1.0, 1.0, 1.0, 0.0]
+    }
+    #[test]
+    fn setback_block_keeps_the_complete_legacy_wire_and_finite_distance_domain() {
+        let mut value = record();
+        for distance in [-8.0, 0.0, 8.0] {
+            assert!(
+                super::validate_real_solid_setback(&value, [60.0, 40.0, 20.0, distance]).is_ok()
+            );
+        }
+        for index in 0..4 {
+            let mut block = [60.0, 40.0, 20.0, 8.0];
+            block[index] = f64::NAN;
+            assert!(super::validate_real_solid_setback(&value, block).is_err());
+        }
+        value[7] = 2.0;
+        assert!(super::validate_real_solid_setback(&value, [60.0, 40.0, 20.0, 8.0]).is_err());
+    }
+    #[test]
+    fn native_setback_block_count_is_checked_before_reading_it() {
+        let value = record();
+        let block = [60.0, 40.0, 20.0, 8.0];
+        let mut out = [0.0; 1];
+        let mut len = 0;
+        for count in [-1, 0, 3, 5] {
+            let status = unsafe {
+                super::sc_blend_fillet_executive_p3_real_solid_setback(
+                    value.as_ptr(),
+                    value.len() as i64,
+                    block.as_ptr(),
+                    count,
+                    out.as_mut_ptr(),
+                    1,
+                    &raw mut len,
+                )
+            };
+            assert_eq!(status, crate::SC_ERR_ARG);
+        }
     }
     #[test]
     fn variable_endpoint_is_separate_and_complete_wire_still_checked() {

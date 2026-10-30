@@ -452,7 +452,7 @@ impl Curve {
         match self.kind() {
             // the SmCrvOnSurf override (its cache update is lost on this copy)
             CurveKind::CrvOnSurf(c) => {
-                let mut c = c.as_ref().clone();
+                let mut c = c.clone_exact_shared();
                 let (curve, gap) =
                     c.approximate_curve(k, breaks, approx_tol_3d, opts.match_parameterization)?;
                 Ok(CurveApproximation {
@@ -1647,6 +1647,41 @@ impl Curve {
         self.global_point_solve_cached(
             k, interval, op, test_point, dist_tol, requested, opts, &mut None,
         )
+    }
+
+    /// [`Curve::global_point_solve`] for a caller that names no handles, keeping the
+    /// curve's cache in `cache` across calls as [`Curve::global_point_solve_cached`]
+    /// does. The cache names the stand-in handle of the unnamed solve (the curve with its
+    /// natural interval), so the slot must belong to this curve, unchanged since the
+    /// cache was built.
+    ///
+    /// # Errors
+    ///
+    /// As [`Curve::global_point_solve`].
+    pub(crate) fn global_point_solve_unnamed_cached<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        interval: &Extent1d,
+        op: SolverOperation,
+        test_point: Point3,
+        dist_tol: f64,
+        requested: SolutionRequested,
+        target_distance: Option<f64>,
+        cache: &mut Option<CurveCache<OperandObject>>,
+    ) -> Result<SolutionArray<O>> {
+        let ivl = self.natural_interval();
+        let inner = GlobalPointSolveOptions {
+            target_distance,
+            opt_vectors: None,
+            handle: Some(OperandObject::Curve(0, ivl)),
+            analytic_handle: Some(OperandObject::Curve(2, ivl)),
+            zone_tol_3d: None,
+        };
+        Ok(self
+            .global_point_solve_cached(
+                k, interval, op, test_point, dist_tol, requested, &inner, cache,
+            )?
+            .without_objects())
     }
 
     /// [`Curve::global_point_solve`] keeping the curve's cache in `cache` across calls,

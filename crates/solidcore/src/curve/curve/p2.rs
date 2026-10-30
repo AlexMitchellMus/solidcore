@@ -591,6 +591,9 @@ pub struct Curve {
     /// Not upstream: the memo of the curve's cache ([`CurveMemo`]), shared by clones
     /// and emptied by every edit of the geometry.
     memo: CurveMemo,
+    /// Not upstream: the tolerance of the edge whose shape this curve defines, with the
+    /// owner it was recorded under ([`Curve::set_owner_zone_tol_3d`]).
+    owner_zone_tol_3d: Option<(Option<ObjectRef>, f64)>,
 }
 
 /// The copy constructor: copies the geometry, resets the owner (and the identity: a
@@ -602,6 +605,7 @@ impl Clone for Curve {
             owner: None,
             notify_identity: IdentitySlot::new(),
             memo: self.memo.share(),
+            owner_zone_tol_3d: None,
         }
     }
 }
@@ -624,7 +628,7 @@ impl Curve {
             CurveKind::Offset(c) => CurveKind::Offset(c.clone_exact_bounded()),
             CurveKind::Conic(c) => CurveKind::Conic(*c),
             CurveKind::CrvInVolume(c) => CurveKind::CrvInVolume(Box::new(c.clone_exact_bounded())),
-            CurveKind::CrvOnSurf(c) => CurveKind::CrvOnSurf(Box::new(c.as_ref().clone())),
+            CurveKind::CrvOnSurf(c) => CurveKind::CrvOnSurf(Box::new(c.clone_exact_shared())),
             CurveKind::TangentField(c) => CurveKind::TangentField(Box::new(c.as_ref().clone())),
             CurveKind::Line(c) => CurveKind::Line(c.clone_exact_bounded()),
             CurveKind::Ellipse(c) => CurveKind::Ellipse(c.clone_exact_bounded()),
@@ -637,6 +641,7 @@ impl Curve {
             // an evaluation snapshot is never notified under the original's identity
             notify_identity: IdentitySlot::new(),
             memo: self.memo.share(),
+            owner_zone_tol_3d: self.owner_zone_tol_3d,
         }
     }
 }
@@ -794,6 +799,7 @@ impl Curve {
             owner: self.owner,
             notify_identity: IdentitySlot::new(),
             memo: self.memo.share(),
+            owner_zone_tol_3d: self.owner_zone_tol_3d,
         })
     }
 
@@ -806,19 +812,26 @@ impl Curve {
             owner: None,
             notify_identity: IdentitySlot::new(),
             memo: CurveMemo::new(),
+            owner_zone_tol_3d: None,
         }
     }
 
-    /// A copy (as `Clone`) with an empty curve cache memo of its own: the curve a
-    /// cache keeps of its own, so a memo never holds itself.
-    #[must_use]
-    pub(crate) fn clone_detached(&self) -> Self {
-        Self {
-            kind: self.kind.clone(),
+    /// The curve a cache keeps of its own: an exact copy (as
+    /// [`Curve::clone_for_evaluation`], without the copy constructor's knot fix-up,
+    /// since upstream's `SmCurveCache::m_crCurve` references the curve itself) without
+    /// owner and with an empty curve cache memo of its own, so a memo never holds
+    /// itself.
+    /// # Errors
+    /// Those of [`Curve::clone_for_evaluation`] (geometry nested too deeply).
+    pub(crate) fn clone_detached(&self) -> Result<Self> {
+        let copy = self.clone_for_evaluation()?;
+        Ok(Self {
+            kind: copy.kind,
             owner: None,
             notify_identity: IdentitySlot::new(),
             memo: CurveMemo::new(),
-        }
+            owner_zone_tol_3d: None,
+        })
     }
 
     /// The curve cache memo (see [`CurveMemo`]).
@@ -1184,6 +1197,31 @@ impl Curve {
     #[must_use]
     pub const fn owner(&self) -> Option<ObjectRef> {
         self.owner
+    }
+
+    /// The tolerance of the edge whose shape this curve defines
+    /// (`SmTol::GetZoneTol3d(const SmObject*)` on a curve: `GetEdge()->GetTolerance()`),
+    /// when a caller holding the edge recorded it on this curve value
+    /// ([`Curve::set_owner_zone_tol_3d`]) and the owner has not changed since; `None`
+    /// otherwise (the curve's caches then use the system tolerance).
+    #[must_use]
+    pub fn owner_zone_tol_3d(&self) -> Option<f64> {
+        match self.owner_zone_tol_3d {
+            Some((recorded, tol)) if recorded == self.owner => Some(tol),
+            _ => None,
+        }
+    }
+
+    /// Records the tolerance of the edge whose shape this curve defines (`None` clears
+    /// it), for the caches built over this value (`SmCurve::CacheMakeOrValidate` reads
+    /// it through the owner, `SmTol::GetApproxTol3d(&m_crCurve)`). Not upstream: the
+    /// port's curves cannot reach their edge, so a caller that holds the edge records
+    /// its tolerance on its evaluation copy of the edge's curve
+    /// ([`Curve::clone_for_evaluation`] keeps it; a [`Clone`], a new curve without
+    /// owner as upstream's copy, does not). A later owner change
+    /// ([`Curve::set_owner`]) makes the record unreadable.
+    pub fn set_owner_zone_tol_3d(&mut self, tol: Option<f64>) {
+        self.owner_zone_tol_3d = tol.map(|t| (self.owner, t));
     }
 
     /// Sets the owner and returns the previous one (`SetOwner`), plus the
@@ -1826,13 +1864,88 @@ impl Curve {
             CurveKind::Parabola(c) => Ok(Self::from(c.copy())),
             CurveKind::Hermite(_) | CurveKind::Conic(_) | CurveKind::Iso(_) => Err(base_err()),
             CurveKind::Projected(c) => c.copy(k).map(Self::from),
-            CurveKind::Offset(c) => Ok(Self::from(c.copy())),
-            CurveKind::CrvInVolume(c) => Ok(Self::from(c.copy())),
+            CurveKind::Offset(c) => c.copy().map(Self::from),
+            CurveKind::CrvInVolume(c) => c.copy().map(Self::from),
             CurveKind::CrvOnSurf(c) => c.copy(k).map(Self::from),
             // SmCrvOnSurf::Copy (not overridden): `new SmCrvOnSurf(*this)`, the base only
             CurveKind::TangentField(c) => c.base().copy(k).map(Self::from),
             CurveKind::Line(c) => Ok(Self::from(c.copy())),
         }
+    }
+
+    /// `CreateMirrorCurve` (base: `SM_ERR`): a copy mirrored about the XY plane of
+    /// `mirror_plane`.
+    ///
+    /// Every `SmBSplineCurve`-derived kind (line, ellipse and circle, parabola,
+    /// hyperbola) inherits the B-spline override: the result is a plain B-spline curve
+    /// over the NURB the kind makes first (on a copy here). A curve on a surface and a
+    /// curve in a volume mirror what they wrap.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` for kinds without the override (Hermite, projected, iso, offset,
+    /// conic and composite curves); those of the NURB construction and of the override.
+    pub fn create_mirror_curve(&self, k: &Kernel, mirror_plane: &Axis2Placement) -> Result<Self> {
+        match &self.kind {
+            CurveKind::BSpline(c) => c.create_mirror_curve(mirror_plane),
+            CurveKind::Line(c) => {
+                if c.base().gw_nurb().is_some() {
+                    c.base().create_mirror_curve(mirror_plane)
+                } else {
+                    let mut n = c.copy();
+                    n.make_nurb()?;
+                    n.base().create_mirror_curve(mirror_plane)
+                }
+            }
+            CurveKind::Ellipse(c) => {
+                if c.base().gw_nurb().is_some() {
+                    c.base().create_mirror_curve(mirror_plane)
+                } else {
+                    let mut n = c.copy(k)?;
+                    n.make_nurb(k)?;
+                    n.base().create_mirror_curve(mirror_plane)
+                }
+            }
+            CurveKind::Parabola(c) => {
+                if c.base().gw_nurb().is_some() {
+                    c.base().create_mirror_curve(mirror_plane)
+                } else {
+                    let mut n = c.copy();
+                    n.make_nurb(None)?;
+                    n.base().create_mirror_curve(mirror_plane)
+                }
+            }
+            CurveKind::Hyperbola(c) => {
+                if c.base().gw_nurb().is_some() {
+                    c.base().create_mirror_curve(mirror_plane)
+                } else {
+                    let mut n = c.copy();
+                    n.make_nurb(None)?;
+                    n.base().create_mirror_curve(mirror_plane)
+                }
+            }
+            CurveKind::CrvInVolume(c) => {
+                return c.create_mirror_curve(mirror_plane).map(Self::from)
+            }
+            CurveKind::CrvOnSurf(c) => {
+                return c.create_mirror_curve(k, mirror_plane).map(Self::from);
+            }
+            // `SmTangentField` inherits `SmCrvOnSurf::CreateMirrorCurve`, which builds a plain
+            // `SmCrvOnSurf` on the mirrored surface.
+            CurveKind::TangentField(c) => {
+                return c
+                    .base()
+                    .create_mirror_curve(k, mirror_plane)
+                    .map(Self::from);
+            }
+            CurveKind::Hermite(_)
+            | CurveKind::Conic(_)
+            | CurveKind::Projected(_)
+            | CurveKind::Iso(_)
+            | CurveKind::Offset(_)
+            | CurveKind::Composite(_) => return Err(base_err()),
+        }
+        .map(Self::from)
     }
 
     /// `CreateAnalyticCurve` (base: no analytic curve): an analytic equivalent
@@ -4313,7 +4426,15 @@ mod tests {
         surface.set_owner(Some(face));
         surface.set_owner_zone_tol_3d(Some(0.125));
         let source = Curve::from(
-            IsoCurve::from_surface(surface, SurfParamType::U, 0.25, false, false).unwrap(),
+            IsoCurve::from_surface(
+                &Kernel::default(),
+                surface,
+                SurfParamType::U,
+                0.25,
+                false,
+                false,
+            )
+            .unwrap(),
         );
         let copy = source.clone_for_evaluation().unwrap();
         let CurveKind::Iso(iso) = copy.kind() else {
@@ -4405,7 +4526,8 @@ mod tests {
         loop {
             let mut s = SurfOfExtrusion::empty();
             s.gen_curve = Some(curve.clone());
-            match IsoCurve::from_surface(Surface::from(s), SurfParamType::U, 0.0, true, false) {
+            let k = Kernel::default();
+            match IsoCurve::from_surface(&k, Surface::from(s), SurfParamType::U, 0.0, true, false) {
                 Ok(iso) => curve = Curve::from(iso),
                 Err(e) => {
                     assert!(matches!(e, SolidError::InvalidInput { .. }));

@@ -374,14 +374,18 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             Some(t) => Some(t.retag_curve_tree(handle)?),
             None => None,
         };
+        let analytic = match &self.analytic {
+            Some(a) => Some(a.clone_detached().ok()?),
+            None => None,
+        };
         Some(CurveCache {
-            curve: self.curve.clone_detached(),
+            curve: self.curve.clone_detached().ok()?,
             curve_handle: handle,
             interval: self.interval,
             tree,
             continuities: self.continuities.clone(),
             tried_analytic: self.tried_analytic,
-            analytic: self.analytic.as_ref().map(Curve::clone_detached),
+            analytic,
             spans: self.spans.clone(),
             parents: self.parents.clone(),
             opts: self.opts,
@@ -614,7 +618,8 @@ impl<O: Copy + PartialEq> CurveCache<O> {
             }
             CurveKind::Ellipse(e) => {
                 if e.base().gw_nurb().is_none() {
-                    e.make_nurb_owned(k, owner)?;
+                    // m_crCurve's GetEdge(): the edge whose tolerance the builder gave
+                    e.make_nurb_owned_with_edge_tol(k, owner, self.owner_zone_tol_3d)?;
                 }
                 true
             }

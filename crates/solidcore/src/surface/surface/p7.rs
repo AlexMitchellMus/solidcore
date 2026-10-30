@@ -235,8 +235,7 @@ pub fn base_evaluate_normal<S: SurfaceEvaluate + ?Sized>(
         }
     }
 
-    // (a generic `SurfaceEvaluate` receiver: the trait has no kernel)
-    let uv_domain = surface.natural_uv_domain_if_built();
+    let uv_domain = surface.natural_uv_domain_with_nurb(k)?;
     let mut step = 1.0e-8;
 
     // First check for the parallel-derivatives case (the lengths of the
@@ -2064,7 +2063,8 @@ pub struct HigherOrderDerivs {
 ///
 /// # Errors
 ///
-/// Those of `Evaluate1stDerivatives`.
+/// Those of `Evaluate1stDerivatives` and of the natural domain (a lazy analytic
+/// surface makes its NURB first).
 pub fn compute_higher_order_derivs<S: SurfaceEvaluate + ?Sized>(
     k: &Kernel,
     surface: &S,
@@ -2074,8 +2074,7 @@ pub fn compute_higher_order_derivs<S: SurfaceEvaluate + ?Sized>(
     want_g4: bool,
 ) -> Result<HigherOrderDerivs> {
     // locals
-    // (a generic `SurfaceEvaluate` receiver: the trait has no kernel)
-    let domain = surface.natural_uv_domain_if_built();
+    let domain = surface.natural_uv_domain_with_nurb(k)?;
 
     // finite difference step - watch for stepping out of surface boundaries
     let mut step = EFF_ZERO_SQRT / 1000.0; // 1.0e-9
@@ -2138,7 +2137,8 @@ pub fn compute_higher_order_derivs<S: SurfaceEvaluate + ?Sized>(
 ///
 /// # Errors
 ///
-/// Those of `Evaluate1stDerivatives`; the status of `Unitize` for a zero result.
+/// Those of `Evaluate1stDerivatives` and of the natural domain (a lazy analytic
+/// surface makes its NURB first); the status of `Unitize` for a zero result.
 pub fn compute_inward_vector<S: SurfaceEvaluate + ?Sized>(
     k: &Kernel,
     surface: &S,
@@ -2148,8 +2148,7 @@ pub fn compute_inward_vector<S: SurfaceEvaluate + ?Sized>(
     let (_, du, dv) = evaluate_1st_derivatives(k, surface, uv, Side::Left, Side::Left)?;
 
     // towards midPoint UV vec
-    // (a generic `SurfaceEvaluate` receiver: the trait has no kernel)
-    let mid_uv = surface.natural_uv_domain_if_built().evaluate(0.5, 0.5);
+    let mid_uv = surface.natural_uv_domain_with_nurb(k)?.evaluate(0.5, 0.5);
     let dir_uv = mid_uv - uv;
     let dir_uv = dir_uv.unitize().unwrap_or(dir_uv);
 
@@ -2821,9 +2820,9 @@ impl<O: SolutionObject> SsGlobalSolver<'_, '_, O> {
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] for two patch nodes when normalizing (the patch data
-    /// lives in the surface caches, which a `Tree` does not reach yet:
-    /// `surface.surface_cache_p1`).
+    /// [`SolidError::Unported`] for two patch nodes when normalizing without
+    /// [`SsGlobalSolver::caches`] (the patch data lives in the surface caches:
+    /// `surface.surface_cache_p1`); the production solve always sets them.
     pub fn may_contain_answers(&self, branch: &Branch) -> Result<bool> {
         let k = self.kernel;
         if self.base.operation == SolverOperation::Normalize {
@@ -2873,12 +2872,11 @@ impl<O: SolutionObject> SsGlobalSolver<'_, '_, O> {
                     return self.base.branch_may_contain_answers(branch);
                 }
                 // The patches (the nodes' m_pData) are SurfaceCache::patch(node) of the
-                // two surface caches. DISPATCH GAP: the constructor (SsGlobalSolver::new,
-                // surface::surface::p1) takes the trees as upstream does, and a Tree does
-                // not reach its cache; handing the caches over needs them mutable (the
-                // polar boxes are built lazily). No UNPORTED marker: the constructor is
-                // ported; the error names the owner of the patch data
-                // (surface.surface_cache_p1).
+                // two surface caches, which the branch above reads. Without them (a
+                // solver built without caches: tests and runners; the production SS
+                // solve, Surface::global_surface_solve_in here, always sets `caches`
+                // after SsGlobalSolver::new) the polar boxes are out of reach; the
+                // error names the owner of the patch data (surface.surface_cache_p1).
                 // (then sm_IsNodeValid of both nodes, returning SM_SUCCESS = FALSE when
                 // outside, ComputeConeBoundTo and the polar box cone tests)
                 return Err(SolidError::unported(

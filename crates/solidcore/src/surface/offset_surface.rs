@@ -346,7 +346,7 @@ fn highest_offset_deriv(hu: usize, hv: usize, only_upper_half: bool) -> Option<u
 
 /// `SM_CAST_PTR(SmBSplineSurface, surface)`: the B-spline kinds (planes, surfaces of
 /// revolution, cones, spheres and tori are `SmBSplineSurface`s).
-const fn is_b_spline_kind(surface: &Surface) -> bool {
+fn is_b_spline_kind(surface: &Surface) -> bool {
     matches!(
         surface.kind(),
         SurfaceKind::BSpline(_)
@@ -708,6 +708,29 @@ impl OffsetSurface {
         Ok(sur)
     }
 
+    /// `CreateMirrorSurface`: an offset of the mirrored base (owned by the new offset)
+    /// and of the mirrored extension, if any. The distance changes sign, as the mirror
+    /// reverses the base's orientation.
+    ///
+    /// # Errors
+    ///
+    /// Those of the base's and the extension's [`Surface::create_mirror_surface`] and of
+    /// [`OffsetSurface::new`].
+    pub fn create_mirror_surface(&self, k: &Kernel, mirror_plane: &Axis2Placement) -> Result<Self> {
+        let mirror = self.surface.create_mirror_surface(k, mirror_plane)?;
+        let mut off = Self::new(k, self.offset_distance.get(), mirror, true, SS_UNKNOWN)?;
+        off.allow_extension = self.allow_extension;
+        if let Some(e) = self.with_current_extension(|e| {
+            e.map(|e| e.create_mirror_surface(k, mirror_plane))
+                .transpose()
+        })? {
+            off.extended_surface = Some(Box::new(e));
+        }
+        // This needs to be done because mirror reverses orientation of the surface.
+        off.offset_distance.set(-self.offset_distance.get());
+        Ok(off)
+    }
+
     /// `operator==`: an offset surface (`SmSurface::operator==`) with the same distance
     /// (to the scaled zero), equal base surfaces, and the same periodicity flags and
     /// singularities.
@@ -804,6 +827,17 @@ impl OffsetSurface {
             is_periodic_on_v: self.is_periodic_on_v,
             singularities: self.singularities,
         }
+    }
+
+    /// The base surface and the stored extension, mutable, for
+    /// [`Surface::detach_nurb_cells`] (a pending extension is not reached: an exact
+    /// copy has folded it into the stored one).
+    pub(crate) fn nested_surfaces_mut(&mut self) -> Vec<&mut Surface> {
+        let mut v = vec![self.surface.as_mut()];
+        if let Some(e) = self.extended_surface.as_deref_mut() {
+            v.push(e);
+        }
+        v
     }
 
     /// A copy for evaluation: the members as they are, the base and extended
@@ -1805,13 +1839,28 @@ impl OffsetSurface {
     /// `SM_ERR` when the base surface is not owned (after the extended surface was
     /// swapped); those of [`Surface::swap_uv`].
     pub fn swap_uv(&mut self, k: &Kernel) -> Result<()> {
+        self.swap_uv_notifying(k, &mut |_, _, _| Ok(()))
+    }
+
+    /// [`OffsetSurface::swap_uv`] with the extended and base surfaces' edit
+    /// notifications sent through `notify` ([`Surface::swap_uv_notifying`]); the offset
+    /// surface notifies nothing itself, as upstream.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`OffsetSurface::swap_uv`] and of `notify`.
+    pub(crate) fn swap_uv_notifying(
+        &mut self,
+        k: &Kernel,
+        notify: &mut crate::surface::surface::p2::SurfaceEditNotify<'_>,
+    ) -> Result<()> {
         self.fold_pending_extension();
         if let Some(e) = self.extended_surface.as_deref_mut() {
-            e.swap_uv(k)?;
+            e.swap_uv_notifying(k, notify)?;
             self.offset_distance.set(-self.offset_distance.get());
         }
         if self.owns_surface {
-            self.surface.swap_uv(k)?;
+            self.surface.swap_uv_notifying(k, notify)?;
             self.offset_distance.set(-self.offset_distance.get());
         } else {
             // Can not swap UV if I do not own the surface
@@ -2093,18 +2142,13 @@ fn read_body(k: &Kernel, db: &mut DatabaseReader, version: u64) -> Result<Offset
 /// The NURB of a B-spline kind surface (`GetOrCreateGwNurbPointer`, which calls the
 /// virtual `MakeNurb` when it is missing): the B-spline's (a plain B-spline cannot make
 /// one), the plane's (made on a copy when missing), the surface of revolution's (also
-/// of a cone, cylinder, sphere or torus) and the surface of extrusion's.
-/// A surface of revolution is not given a missing NURB here (its `MakeNurb` needs the
-/// kernel's tolerances, which evaluations do not take, and a default kernel would
-/// substitute tolerances silently). No defined upstream run reaches that case: the
-/// offset's constructor and `ReadFromDB` first evaluate the base (`IsPeriodic`,
-/// `GetSingularities`), and `SmBSplineSurface::Evaluate` passes `m_pNurb` to NLib
-/// without creating it, which is undefined for a NURB-less base. Every Rust
-/// constructor path builds the NURB (`SurfOfRevolution::new` alone does not, as
-/// upstream's constructor; such a base fails here with `SM_ERR_NULL_POINTER`).
-fn nurb_of(surface: &Surface) -> Result<crate::nurbs::srf_basic::Surface> {
+/// of a cone, cylinder, sphere or torus) and the surface of extrusion's. A lazy
+/// analytic's missing NURB is made with the kernel's tolerances and kept on the surface
+/// ([`Surface::kind_with_nurb`], as its evaluations make it); a make that leaves none
+/// (a failing `MakeNurb`, whose status upstream ignores) is `SM_ERR_NULL_POINTER`.
+fn nurb_of(k: &Kernel, surface: &Surface) -> Result<crate::nurbs::srf_basic::Surface> {
     let missing = || SolidError::null_pointer(OP_EXTEND);
-    match surface.kind() {
+    match surface.kind_with_nurb(k)? {
         SurfaceKind::BSpline(b) => b.gw_nurb().cloned().ok_or_else(missing),
         SurfaceKind::Plane(p) => p.base_with_nurb()?.gw_nurb().cloned().ok_or_else(missing),
         SurfaceKind::SurfOfRevolution(s) => s.base().gw_nurb().cloned().ok_or_else(missing),
@@ -2117,8 +2161,8 @@ fn nurb_of(surface: &Surface) -> Result<crate::nurbs::srf_basic::Surface> {
 }
 
 /// One NLib G1R extension of `surface` reaching `uv` (the fork's `sm_ExtendToward`).
-fn extend_toward(surface: &Surface, uv: Point2) -> Result<Surface> {
-    let sur = nurb_of(surface)?;
+fn extend_toward(k: &Kernel, surface: &Surface, uv: Point2) -> Result<Surface> {
+    let sur = nurb_of(k, surface)?;
     let mut esur: Option<UnboundedExtension> = None;
     match eval_pt_derivs_unbounded(&sur, uv.x, uv.y, 0, ExtendContinuity::G1R, &mut esur) {
         Err(e) if e.is_unported() => return Err(e),
@@ -2189,7 +2233,7 @@ fn extend_from_base(
     let low = if domain.contains_point(low_uv, 0.0) {
         None
     } else {
-        Some(extend_toward(base, low_uv)?)
+        Some(extend_toward(k, base, low_uv)?)
     };
     let from = low.as_ref().unwrap_or(base);
     if from
@@ -2198,7 +2242,7 @@ fn extend_from_base(
     {
         return Ok(low);
     }
-    Ok(Some(extend_toward(from, high_uv)?))
+    Ok(Some(extend_toward(k, from, high_uv)?))
 }
 
 /// `sm_ExtendSurface`: makes `uv` lie in the domain of `surface` by wrapping it in
@@ -2284,7 +2328,7 @@ fn extend_surface(
     }
 
     // extend the NURB (the extension is kept between the two tries, as upstream's esur)
-    let sur = nurb_of(surface)?;
+    let sur = nurb_of(k, surface)?;
     let mut esur: Option<UnboundedExtension> = None;
     let first = eval_pt_derivs_unbounded(&sur, s_uv.x, s_uv.y, 0, ExtendContinuity::G1R, &mut esur);
     if let Err(e) = first {
@@ -2446,6 +2490,14 @@ impl SurfaceEvaluate for OffsetEval<'_> {
 
     fn natural_uv_domain_if_built(&self) -> Extent2d {
         self.with_extension(|ext| domain_with(&self.off.surface, ext.current()))
+    }
+
+    fn natural_uv_domain_with_nurb(&self, k: &Kernel) -> Result<Extent2d> {
+        // the extension of the call, else the base (as OffsetSurface::natural_uv_domain_with_nurb)
+        self.with_extension(|ext| match ext.current() {
+            Some(e) => e.natural_uv_domain_with_nurb(k),
+            None => self.off.surface.natural_uv_domain_with_nurb(k),
+        })
     }
 
     fn evaluate(

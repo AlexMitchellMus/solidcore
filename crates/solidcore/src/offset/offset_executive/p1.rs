@@ -77,7 +77,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::boolean::merge::p4::KernelManifoldIntersector;
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
-use crate::geom::context::MarkType;
+use crate::geom::context::{Context, MarkType};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
@@ -212,6 +212,11 @@ pub struct OffsetExecutive {
     /// convex round thinner than the wall), mated across instead of offset
     /// (`m_sCollapsedFaces`; only with `Kernel::fixes.offset_collapsed_rounds_mated`).
     pub(super) collapsed_faces: Vec<FaceId>,
+    /// The faces of a local operation and the surfaces replacing theirs, in step (the
+    /// part of `SmLocalOperationGeometryCreation` the executive reads: `m_vFaces`,
+    /// `m_vSurfaces`).
+    pub(super) local_faces: Vec<FaceId>,
+    pub(super) local_surfaces: Vec<Surface>,
 }
 
 impl OffsetExecutive {
@@ -258,6 +263,8 @@ impl OffsetExecutive {
             blend_to_faces: Relation::default(),
             extended_surfaces: BTreeMap::new(),
             collapsed_faces: Vec::new(),
+            local_faces: Vec::new(),
+            local_surfaces: Vec::new(),
         }
     }
 
@@ -340,6 +347,13 @@ impl OffsetExecutive {
     pub fn set_shell_faces(&mut self, faces: &[FaceId]) {
         self.shell_faces.clear();
         self.shell_faces.extend_from_slice(faces);
+    }
+
+    /// The geometry of a local operation (`SmLocalOperationGeometryCreation`'s face and
+    /// surface lists): `surfaces[i]` replaces the surface of `faces[i]`.
+    pub fn set_local_surfaces(&mut self, faces: &[FaceId], surfaces: Vec<Surface>) {
+        self.local_faces = faces.to_vec();
+        self.local_surfaces = surfaces;
     }
 
     /// Sets `m_eOffsetOperation`.
@@ -1837,163 +1851,172 @@ impl OffsetExecutive {
         use crate::topology::topology_traverser::Marks;
 
         let arena_face = |face: FaceId| loopuse::notify_ref(EntityRef::Face(face));
-        let mut planar_brep = new_brep(kernel, USE_DEFAULT, USE_DEFAULT)?;
-        planar_brep.set_editing_enabled(true);
-        planar_brep.set_tolerance(1.0e-6);
+        // The domain and planar B-reps and their 2D Boolean are made through the
+        // kernel context, whose callbacks a kernel-context caller has lent to
+        // `notifications.context` (upstream: the one context).
+        let lent = notifications.context.as_deref_mut();
+        let result =
+            Context::with_lease_returned(kernel, lent, |kernel| -> Result<Option<Brep>> {
+                let mut planar_brep = new_brep(kernel, USE_DEFAULT, USE_DEFAULT)?;
+                planar_brep.set_editing_enabled(true);
+                planar_brep.set_tolerance(1.0e-6);
 
-        // get bounding box containing all pFU->Face->UVTrimCurves
-        let mut total_bbox = Extent3d::new();
-        if let Some(uv_curves) = curves.uv_curves.as_mut() {
-            for curve in uv_curves {
-                let bbox = uv_curve_bounding_box(kernel, curve)?;
-                total_bbox = total_bbox.union(&bbox);
-            }
-        }
+                // get bounding box containing all pFU->Face->UVTrimCurves
+                let mut total_bbox = Extent3d::new();
+                if let Some(uv_curves) = curves.uv_curves.as_mut() {
+                    for curve in uv_curves {
+                        let bbox = uv_curve_bounding_box(kernel, curve)?;
+                        total_bbox = total_bbox.union(&bbox);
+                    }
+                }
 
-        // create a 3d line between every offsetSurface domain corner point
-        let min = offset_domain.min();
-        let max = offset_domain.max();
-        let mut box_curves = Vec::new();
-        for (start, end, ivl) in [
-            (
-                min,
-                offset_domain.evaluate(1.0, 0.0),
-                Extent1d::from_raw(min.x, max.x),
-            ),
-            (
-                offset_domain.evaluate(0.0, 1.0),
-                max,
-                Extent1d::from_raw(min.x, max.x),
-            ),
-            (
-                min,
-                offset_domain.evaluate(0.0, 1.0),
-                Extent1d::from_raw(min.y, max.y),
-            ),
-            (
-                offset_domain.evaluate(1.0, 0.0),
-                max,
-                Extent1d::from_raw(min.y, max.y),
-            ),
-        ] {
-            let mut line = crate::nurbs::b_spline_curve::BSplineCurve::create_line_segment(
-                3,
-                Vec3::new(start.x, start.y, 0.0),
-                Vec3::new(end.x, end.y, 0.0),
-            )?;
-            ignore_status(line.edit_parameterization(&ivl))?;
-            box_curves.push(Curve::from(line));
-        }
+                // create a 3d line between every offsetSurface domain corner point
+                let min = offset_domain.min();
+                let max = offset_domain.max();
+                let mut box_curves = Vec::new();
+                for (start, end, ivl) in [
+                    (
+                        min,
+                        offset_domain.evaluate(1.0, 0.0),
+                        Extent1d::from_raw(min.x, max.x),
+                    ),
+                    (
+                        offset_domain.evaluate(0.0, 1.0),
+                        max,
+                        Extent1d::from_raw(min.x, max.x),
+                    ),
+                    (
+                        min,
+                        offset_domain.evaluate(0.0, 1.0),
+                        Extent1d::from_raw(min.y, max.y),
+                    ),
+                    (
+                        offset_domain.evaluate(1.0, 0.0),
+                        max,
+                        Extent1d::from_raw(min.y, max.y),
+                    ),
+                ] {
+                    let mut line = crate::nurbs::b_spline_curve::BSplineCurve::create_line_segment(
+                        3,
+                        Vec3::new(start.x, start.y, 0.0),
+                        Vec3::new(end.x, end.y, 0.0),
+                    )?;
+                    ignore_status(line.edit_parameterization(&ivl))?;
+                    box_curves.push(Curve::from(line));
+                }
 
-        // make a new Brep containing 1 planar face bounded by the 3d Curves just made
-        let mut domain_brep = new_brep(kernel, USE_DEFAULT, USE_DEFAULT)?;
-        domain_brep.set_tolerance(planar_brep.tolerance());
-        domain_brep.set_editing_enabled(true);
-        {
-            let mut state = ArenaNotifyState::new(&domain_brep);
-            let mut env = state.env(None);
-            let mut marks = Marks::default();
-            let mut fenv = FaceBuildEnv {
-                env: &mut env,
-                marks: &mut marks,
-                this_face: &arena_face,
-            };
-            let region = domain_brep.infinite_region();
-            let tolerance = domain_brep.tolerance();
-            create_planar_face_with_3d_curves(
-                kernel,
-                &mut domain_brep,
-                region,
-                &box_curves,
-                tolerance,
-                &mut fenv,
-            )?;
-        }
+                // make a new Brep containing 1 planar face bounded by the 3d Curves just made
+                let mut domain_brep = new_brep(kernel, USE_DEFAULT, USE_DEFAULT)?;
+                domain_brep.set_tolerance(planar_brep.tolerance());
+                domain_brep.set_editing_enabled(true);
+                {
+                    let mut state = ArenaNotifyState::new(&domain_brep);
+                    let mut env = state.env(None);
+                    let mut marks = Marks::default();
+                    let mut fenv = FaceBuildEnv {
+                        env: &mut env,
+                        marks: &mut marks,
+                        this_face: &arena_face,
+                    };
+                    let region = domain_brep.infinite_region();
+                    let tolerance = domain_brep.tolerance();
+                    create_planar_face_with_3d_curves(
+                        kernel,
+                        &mut domain_brep,
+                        region,
+                        &box_curves,
+                        tolerance,
+                        &mut fenv,
+                    )?;
+                }
 
-        // copy the plane just made and get its natural domain
-        let mut copy_plane = {
-            // GetSurfaces: the surfaces their faces own, under the faces' identities.
-            let owners = bp1::surface_owners(&domain_brep, None, &arena_face)?;
-            let first_face = required(owners.first().copied())?;
-            let first = required(domain_brep.face(first_face)?.surface.as_ref())?;
-            if !matches!(first.kind(), SurfaceKind::Plane(_)) {
-                // SM_CAST_PTR yields NULL, dereferenced next upstream.
-                return Err(SolidError::null_pointer(OP));
-            }
-            first.copy(kernel)?
-        };
-        let mut copy_domain = copy_plane.natural_uv_domain_with_nurb(kernel)?;
-        let SurfaceKind::Plane(plane) = copy_plane.kind_mut() else {
-            return Err(SolidError::null_pointer(OP));
-        };
+                // copy the plane just made and get its natural domain
+                let mut copy_plane = {
+                    // GetSurfaces: the surfaces their faces own, under the faces' identities.
+                    let owners = bp1::surface_owners(&domain_brep, None, &arena_face)?;
+                    let first_face = required(owners.first().copied())?;
+                    let first = required(domain_brep.face(first_face)?.surface.as_ref())?;
+                    if !matches!(first.kind(), SurfaceKind::Plane(_)) {
+                        // SM_CAST_PTR yields NULL, dereferenced next upstream.
+                        return Err(SolidError::null_pointer(OP));
+                    }
+                    first.copy(kernel)?
+                };
+                let mut copy_domain = copy_plane.natural_uv_domain_with_nurb(kernel)?;
+                let SurfaceKind::Plane(plane) = copy_plane.kind_mut() else {
+                    return Err(SolidError::null_pointer(OP));
+                };
 
-        // increase the copy domain to include the projection of every UV trim curve
-        // bounding box corner onto this plane.
-        for corner in [
-            total_bbox.min(),
-            total_bbox.max(),
-            total_bbox.evaluate(1.0, 0.0, 0.0),
-            total_bbox.evaluate(0.0, 1.0, 0.0),
-        ] {
-            copy_domain.add_point(plane.project_point_to_uv_domain(corner));
-        }
-        ignore_status(plane.adjust_step_uv_domain(&copy_domain))?;
-        let copy_plane_domain = copy_plane.natural_uv_domain_with_nurb(kernel)?;
+                // increase the copy domain to include the projection of every UV trim curve
+                // bounding box corner onto this plane.
+                for corner in [
+                    total_bbox.min(),
+                    total_bbox.max(),
+                    total_bbox.evaluate(1.0, 0.0, 0.0),
+                    total_bbox.evaluate(0.0, 1.0, 0.0),
+                ] {
+                    copy_domain.add_point(plane.project_point_to_uv_domain(corner));
+                }
+                ignore_status(plane.adjust_step_uv_domain(&copy_domain))?;
+                let copy_plane_domain = copy_plane.natural_uv_domain_with_nurb(kernel)?;
 
-        // make a planar face using the offset UV trim curves (as 3D curves)
-        let mut loops = Vec::new();
-        for &count in &curves.curve_loops {
-            loops.push(
-                usize::try_from(count)
-                    .map_err(|_| SolidError::invalid_input(OP, "loop count exceeds usize"))?,
-            );
-        }
-        let input = FaceCurvesInput {
-            loops,
-            curves_3d: curves
-                .uv_curves
-                .take()
-                .map(|list| list.into_iter().map(Some).collect()),
-            uv_curves: None,
-            orientations: std::mem::take(&mut curves.curve_orients),
-            loop_points: std::mem::take(&mut curves.loop_points),
-        };
-        {
-            let mut state = ArenaNotifyState::new(&planar_brep);
-            let mut env = state.env(None);
-            let region = planar_brep.infinite_region();
-            bp7::make_face_with_curves(
-                kernel,
-                &mut planar_brep,
-                region,
-                input,
-                copy_plane,
-                &copy_plane_domain,
-                OrientType::Same,
-                None,
-                &arena_face,
-                &mut env,
-            )?;
-        }
+                // make a planar face using the offset UV trim curves (as 3D curves)
+                let mut loops = Vec::new();
+                for &count in &curves.curve_loops {
+                    loops.push(
+                        usize::try_from(count).map_err(|_| {
+                            SolidError::invalid_input(OP, "loop count exceeds usize")
+                        })?,
+                    );
+                }
+                let input = FaceCurvesInput {
+                    loops,
+                    curves_3d: curves
+                        .uv_curves
+                        .take()
+                        .map(|list| list.into_iter().map(Some).collect()),
+                    uv_curves: None,
+                    orientations: std::mem::take(&mut curves.curve_orients),
+                    loop_points: std::mem::take(&mut curves.loop_points),
+                };
+                {
+                    let mut state = ArenaNotifyState::new(&planar_brep);
+                    let mut env = state.env(None);
+                    let region = planar_brep.infinite_region();
+                    bp7::make_face_with_curves(
+                        kernel,
+                        &mut planar_brep,
+                        region,
+                        input,
+                        copy_plane,
+                        &copy_plane_domain,
+                        OrientType::Same,
+                        None,
+                        &arena_face,
+                        &mut env,
+                    )?;
+                }
 
-        // Intersect in 2d the domain B-rep with the planar B-rep.
-        let mut result = None;
-        {
-            let mut primitive = PrimitiveCreation::new(None, 0, false);
-            let mut domain_marks = Marks::default();
-            let mut planar_marks = Marks::default();
-            let mut state = ArenaNotifyState::new(&domain_brep);
-            state.seed(&planar_brep);
-            primitive.boolean_2d(
-                kernel,
-                &mut domain_brep,
-                &mut planar_brep,
-                Boolean2d::Intersection,
-                &mut result,
-                (&mut domain_marks, &mut planar_marks),
-                &mut state.env(None),
-            )?;
-        }
+                // Intersect in 2d the domain B-rep with the planar B-rep.
+                let mut result = None;
+                {
+                    let mut primitive = PrimitiveCreation::new(None, 0, false);
+                    let mut domain_marks = Marks::default();
+                    let mut planar_marks = Marks::default();
+                    let mut state = ArenaNotifyState::new(&domain_brep);
+                    state.seed(&planar_brep);
+                    primitive.boolean_2d(
+                        kernel,
+                        &mut domain_brep,
+                        &mut planar_brep,
+                        Boolean2d::Intersection,
+                        &mut result,
+                        (&mut domain_marks, &mut planar_marks),
+                        &mut state.env(None),
+                    )?;
+                }
+                Ok(result)
+            })?;
         // Upstream dereferences the result next, even when Boolean2D left it null.
         let mut result = required(result)?;
 
@@ -2417,7 +2440,7 @@ impl OffsetExecutive {
         offset_key_of: &dyn Fn(EntityRef) -> ObjectRef,
         offset_curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
     ) -> Result<()> {
-        crate::geom::context::Context::with_notification_context(kernel, |kernel, context| {
+        Context::with_notification_context(kernel, |kernel, context| {
             self.build_offset_of_faceuse(
                 kernel,
                 original,
@@ -2928,7 +2951,7 @@ mod tests {
 
     /// Runs `run` with empty notification stores keyed by arena identity.
     fn with_state<R>(run: impl FnOnce(&mut NotifyState<'_>) -> R) -> R {
-        let mut records = BTreeMap::new();
+        let mut records = topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let key = |entity| loopuse::notify_ref(entity);
         let mut env = NotifyEnv {
@@ -3073,7 +3096,8 @@ mod tests {
                 type_code,
             }
         };
-        let mut records = BTreeMap::from([(brep_key, topology::Topology::new())]);
+        let mut records =
+            topology::NotifyRecords::from(BTreeMap::from([(brep_key, topology::Topology::new())]));
         for &entity in entities {
             records.insert(key(entity).key, topology::Topology::new());
         }
@@ -3637,7 +3661,8 @@ mod tests {
         assert!(original.editing_enabled());
         // ShrinkGeometry trims the two edge curves; without offset surfaces the
         // continuation's loops are empty (SM_SUCCESS)
-        let (mut records, mut attributes) = (BTreeMap::new(), AttributeStore::default());
+        let (mut records, mut attributes) =
+            (topology::NotifyRecords::new(), AttributeStore::default());
         OffsetExecutive::replace_implicit_offsets(
             &mut Kernel::default(),
             &mut result,
@@ -3766,7 +3791,8 @@ mod tests {
         let mut brep = Brep::new();
         let (plain, _) = add_face(&mut brep, plane(0.0));
         let (offset_face, _) = add_face(&mut brep, Surface::from(offset));
-        let (mut records, mut attributes) = (BTreeMap::new(), AttributeStore::default());
+        let (mut records, mut attributes) =
+            (topology::NotifyRecords::new(), AttributeStore::default());
         let mut kernel = kernel;
         OffsetExecutive::replace_implicit_offsets(
             &mut kernel,
@@ -4240,7 +4266,7 @@ mod tests {
     fn face_env<R>(
         run: impl FnOnce(&mut NotifyEnv<'_>, &dyn Fn(EntityRef) -> ObjectRef) -> R,
     ) -> R {
-        let mut records = BTreeMap::new();
+        let mut records = topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let key = |_: EntityRef| ObjectRef {
             key: ObjectKey(1),
@@ -4387,7 +4413,7 @@ mod tests {
         let kernel_events = callbacks::install(&mut kernel.context);
         let mut external_context = Context::default();
         let external_events = callbacks::install(&mut external_context);
-        let mut records = BTreeMap::<ObjectKey, Topology>::new();
+        let mut records = topology::NotifyRecords::new();
         records.insert(caller.key, Topology::default());
         let mut attributes = AttributeStore::new();
         let key_of = |_entity| result_key;
@@ -4694,7 +4720,7 @@ mod tests {
             value.key.0 += 100;
             value
         };
-        let mut records = BTreeMap::new();
+        let mut records = topology::NotifyRecords::new();
         for (entity, metadata) in [
             (EntityRef::Edge(EdgeId::from_index(0)), 37),
             (EntityRef::Vertex(VertexId::from_index(0)), 11),

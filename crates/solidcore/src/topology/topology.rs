@@ -25,6 +25,7 @@
 //! | [`Topology::is_marked`]                      | `SmTopology::IsMarked`                           |
 //! | [`destroy_topology`](crate::topology::proto_topology::p1::destroy_topology) | `SmTopology::~SmTopology` (unit `topology.proto_topology_p1`) |
 //! | [`TopologyRecords`]                          | the `SmTopology*` casts of `Notify`'s arguments  |
+//! | [`NotifyRecords`]                            | the `SmTopology` members of every object of a store |
 //! | [`notify`]                                   | `SmTopology::Notify`                             |
 //! | [`NotifyEvent`]                              | `SmNotifyEvent` (data only)                      |
 //! | [`TopologyChangeLists`]                      | the arrays `SmTopologyChangeCallback` points at  |
@@ -89,7 +90,7 @@
 //!   helpers, `UnMark`, `IsUnMarked`, `IsMarkLocked`, the flag bit helpers and the
 //!   placement `operator new` / `delete` are not part of this unit.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::error::{EntityRef, Result, SolidError};
@@ -305,6 +306,169 @@ pub trait TopologyRecords {
     fn topology(&self, key: ObjectKey) -> Option<&Topology>;
     /// Mutable access to the record of `key`.
     fn topology_mut(&mut self, key: ObjectKey) -> Option<&mut Topology>;
+}
+
+/// The topology records of the objects a caller notifies through, keyed by their
+/// notification identities: upstream keeps one in every object (`SmTopology`'s
+/// members). Reads go through the map ([`Deref`](std::ops::Deref)); writes go through
+/// the methods here, so a store also remembers how far each B-rep's objects have been
+/// checked and given a record (`topology::brep::p3`), which a removal forgets.
+#[derive(Debug, Clone, Default)]
+pub struct NotifyRecords {
+    map: BTreeMap<ObjectKey, Topology>,
+    progress: Vec<SeedProgress>,
+}
+
+/// How far a [`NotifyRecords`] has checked and seeded the objects of one B-rep value,
+/// under one identity, per entity kind (`topology::brep::p3`). A B-rep value's arenas
+/// only append and empty slots for good, so indices below a mark stay as they were.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SeedProgress {
+    /// The B-rep and the caller identity the progress holds for.
+    pub(crate) id: Vec<u64>,
+    /// The B-rep value it was taken on ([`ProgressTag`]).
+    pub(crate) instance: Arc<()>,
+    /// Per kind: no arena index from here on has passed the reserved-key check yet.
+    pub(crate) checked_to: [usize; 10],
+    /// Per kind: the indices below `checked_to` that have not passed it (all of them
+    /// emptied slots, which a check only covers once they fall in its window).
+    pub(crate) unchecked: [BTreeSet<usize>; 10],
+    /// Per kind: the arena length up to which every live object has its record.
+    pub(crate) seeded_to: [usize; 10],
+}
+
+/// Names one B-rep value for a [`NotifyRecords`]' progress: what was checked and
+/// seeded of one value stays so, but a copy is another value (`Clone` gives an empty
+/// tag) whose objects may differ. Compared by allocation ([`Arc::ptr_eq`]), never hashed.
+#[derive(Debug, Default)]
+pub(crate) struct ProgressTag(Option<Arc<()>>);
+
+impl Clone for ProgressTag {
+    /// An empty tag: the copy is another B-rep value.
+    fn clone(&self) -> Self {
+        Self(None)
+    }
+}
+
+impl ProgressTag {
+    /// The value's tag, made on first use.
+    pub(crate) fn get(&mut self) -> Arc<()> {
+        Arc::clone(self.0.get_or_insert_with(|| Arc::new(())))
+    }
+}
+
+impl std::ops::Deref for NotifyRecords {
+    type Target = BTreeMap<ObjectKey, Topology>;
+    fn deref(&self) -> &Self::Target {
+        &self.map
+    }
+}
+
+impl PartialEq for NotifyRecords {
+    fn eq(&self, other: &Self) -> bool {
+        self.map == other.map
+    }
+}
+
+impl From<BTreeMap<ObjectKey, Topology>> for NotifyRecords {
+    fn from(map: BTreeMap<ObjectKey, Topology>) -> Self {
+        Self {
+            map,
+            progress: Vec::new(),
+        }
+    }
+}
+
+impl FromIterator<(ObjectKey, Topology)> for NotifyRecords {
+    fn from_iter<I: IntoIterator<Item = (ObjectKey, Topology)>>(iter: I) -> Self {
+        Self::from(iter.into_iter().collect::<BTreeMap<_, _>>())
+    }
+}
+
+impl NotifyRecords {
+    /// An empty store.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The record of `key`, made default first if it has none.
+    pub fn or_default(&mut self, key: ObjectKey) -> &mut Topology {
+        self.map.entry(key).or_default()
+    }
+
+    /// Sets the record of `key`, returning the previous one.
+    pub fn insert(&mut self, key: ObjectKey, record: Topology) -> Option<Topology> {
+        self.map.insert(key, record)
+    }
+
+    /// Mutable access to the record of `key`.
+    pub fn get_mut(&mut self, key: &ObjectKey) -> Option<&mut Topology> {
+        self.map.get_mut(key)
+    }
+
+    /// Mutable access to every record, in key order.
+    pub fn values_mut(
+        &mut self,
+    ) -> std::collections::btree_map::ValuesMut<'_, ObjectKey, Topology> {
+        self.map.values_mut()
+    }
+
+    /// Removes the record of `key`.
+    pub fn remove(&mut self, key: &ObjectKey) -> Option<Topology> {
+        self.progress.clear();
+        self.map.remove(key)
+    }
+
+    /// Keeps the records `keep` accepts (it may also change them).
+    pub fn retain(&mut self, keep: impl FnMut(&ObjectKey, &mut Topology) -> bool) {
+        self.progress.clear();
+        self.map.retain(keep);
+    }
+
+    /// Removes every record.
+    pub fn clear(&mut self) {
+        self.progress.clear();
+        self.map.clear();
+    }
+
+    /// The records and the progress kept for `id` on the B-rep value `instance` (made
+    /// empty if there is none), for `topology::brep::p3`'s per-edit check and seeding,
+    /// which only adds records.
+    pub(crate) fn progress_for(
+        &mut self,
+        id: Vec<u64>,
+        instance: Arc<()>,
+    ) -> Option<(&mut BTreeMap<ObjectKey, Topology>, &mut SeedProgress)> {
+        // (a value only the store still names is gone: its progress is never used again)
+        self.progress.retain(|p| Arc::strong_count(&p.instance) > 1);
+        let at = self
+            .progress
+            .iter()
+            .position(|p| p.id == id && Arc::ptr_eq(&p.instance, &instance));
+        let Self { map, progress } = self;
+        let p = if let Some(at) = at {
+            progress.get_mut(at)
+        } else {
+            progress.push(SeedProgress {
+                id,
+                instance,
+                ..SeedProgress::default()
+            });
+            progress.last_mut()
+        };
+        Some((map, p?))
+    }
+}
+
+impl TopologyRecords for NotifyRecords {
+    fn topology(&self, key: ObjectKey) -> Option<&Topology> {
+        self.map.get(&key)
+    }
+
+    fn topology_mut(&mut self, key: ObjectKey) -> Option<&mut Topology> {
+        self.map.get_mut(&key)
+    }
 }
 
 impl TopologyRecords for BTreeMap<ObjectKey, Topology> {
@@ -1178,7 +1342,7 @@ mod tests {
         }
     }
 
-    fn pool(n: u64) -> BTreeMap<ObjectKey, Topology> {
+    fn pool(n: u64) -> NotifyRecords {
         (0..n).map(|k| (ObjectKey(k), Topology::new())).collect()
     }
 
@@ -1284,7 +1448,7 @@ mod tests {
     #[test]
     fn destroy_unlisted_and_linked() {
         use crate::topology::proto_topology::p1::destroy_topology;
-        let mut recs: BTreeMap<ObjectKey, Topology> = BTreeMap::new();
+        let mut recs = NotifyRecords::new();
         recs.insert(ObjectKey(0), Topology::new());
         assert!(destroy_topology(&mut recs, ObjectKey(0)).is_ok());
         // an owner without list data (never an SmOwningTopology here)
