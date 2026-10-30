@@ -118,6 +118,7 @@ fn recorded_owners(b: &Brep) -> BTreeMap<EntityRef, ObjectRef> {
 
 /// The level-2 check's failure count and report lines under the owners the body
 /// records (#1670).
+// TODO(#1670): return to plain `check_brep` once tangency-labs/solidcore#1674 merges.
 fn check(k: &mut Kernel, b: &mut Brep) -> (usize, Vec<String>) {
     let owners = recorded_owners(b);
     let none = ObjectRef {
