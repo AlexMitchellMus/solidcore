@@ -18,7 +18,8 @@
 //! afterwards the attributes of target edges they deleted are cleared from the
 //! session store. With the opt-in `Kernel::fixes.fillet_refuse_non_manifold_result`
 //! `do_fillet` ends with the closed-manifold check of the generic
-//! `FilletExecutive::do_fillet` (not upstream, WR-212, tangency-labs/solidcore#422).
+//! `FilletExecutive::do_fillet` (not upstream, WR-212, tangency-labs/solidcore#422);
+//! the public wrappers that drive it put the caller's body back on that refusal.
 //! After the in-place merge (also on error) the geometry bound to the target's
 //! edges, edge uses and faces under the session's kernel identities is rebound to the
 //! target's naming, as the piecewise merge does (owners are pointers upstream;
@@ -41,6 +42,36 @@ use crate::topology::brep::{p1, p3};
 use crate::topology::{BrepId, EdgeId};
 
 const OP: &str = "blend::fillet_executive::session::finish";
+
+/// Whether `error` is the refusal of `fixes.fillet_refuse_non_manifold_result`
+/// (WR-212): a result that is not a closed manifold solid, the only status 1001 of
+/// this file that names an edge. The public wrappers recognise it to put the caller's
+/// body back.
+pub(crate) fn is_non_manifold_refusal(error: &SolidError) -> bool {
+    matches!(
+        error,
+        SolidError::Upstream {
+            operation: OP,
+            code: 1001,
+            entity: Some(EntityRef::Edge(_)),
+        }
+    )
+}
+
+/// `error` without the entity it names (the refused result's edge, gone once the
+/// caller's body is put back).
+pub(crate) fn without_entity(error: SolidError) -> SolidError {
+    match error {
+        SolidError::Upstream {
+            operation, code, ..
+        } => SolidError::Upstream {
+            operation,
+            code,
+            entity: None,
+        },
+        other => other,
+    }
+}
 
 /// `FILEXEC_ERR`: the executive's generic failure status.
 fn failure() -> SolidError {
