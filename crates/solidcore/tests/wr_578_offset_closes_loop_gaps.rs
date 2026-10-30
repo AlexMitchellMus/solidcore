@@ -167,3 +167,51 @@ fn wr_578_notched_box_open_at_the_floor_shells() {
         0.0
     ));
 }
+
+/// tangency-labs/solidcore#1528's plate: a 27.5 thick plate on three straight sides and
+/// a half circle r 10 (x < 0), a blind hole r 5 along x through the round side at
+/// (y, z) = (12.5, 12.5) from x = -10 to 7.5, shelled 2 inward, open at x = 42.5. Upstream
+/// builds it; the fork's `CloseLoopGaps` refuses it (a gap with neither end at its vertex,
+/// where the hole's tube runs past the round wall's span), and so does the opt-in, which
+/// matches the fork (a documented limit: a fork regression, to be fixed in the fork).
+fn plate_1528(k: &mut Kernel) -> Brep {
+    let slab = create_box(k, Point3::new(0.0, 0.0, 0.0), 42.5, 20.0, 27.5).unwrap();
+    let round = create_cylinder(k, Point3::new(0.0, 10.0, 0.0), 10.0, 27.5).unwrap();
+    let plate = boolean_union(k, slab, round).unwrap();
+    let mut hole = create_cylinder(k, Point3::new(0.0, 0.0, 0.0), 5.0, 17.5).unwrap();
+    // local z (the axis) along +x from x = -10: x = (0, 1, 0), y = (0, 0, 1)
+    let placement = Axis2Placement::new(
+        Point3::new(-10.0, 12.5, 12.5),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+    );
+    transform(k, &mut hole, &placement, None, false).unwrap();
+    let mut b = boolean_difference(k, plate, hole).unwrap();
+    b.refresh_cached_topology();
+    b
+}
+
+fn shell_1528(fixed: bool) -> (Kernel, solidcore::Result<Brep>) {
+    let mut k = kernel(fixed);
+    let b = plate_1528(&mut k);
+    let open = planar_faces_at(&k, &b, 0, 42.5);
+    assert_eq!(open.len(), 1, "the far end");
+    let result = shell(&mut k, b, -2.0, &open);
+    (k, result)
+}
+
+#[test]
+fn wr_578_issue_1528_plate_is_refused_as_the_fork_does() {
+    let (k0, default) = shell_1528(false);
+    assert!(report(
+        &k0,
+        "wr_578 #1528 plate default",
+        default,
+        None,
+        0.0
+    ));
+    match shell_1528(true).1 {
+        Err(SolidError::Upstream { code, .. }) => assert_eq!(code, SM_ERR),
+        other => panic!("the fork refuses #1528's plate: {other:?}"),
+    }
+}
