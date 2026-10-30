@@ -10,13 +10,18 @@ the C++ side in a forked child, so an upstream null dereference becomes a crash 
 that is compared with the port's constructor `InvalidInput`. Each case compares every
 call's status and a full dump of the B-rep that was built.
 
-Result: `PARTIAL topology.brep_constructor cases=185 passed=125 failed=0 deferred=60
-max_rel_err=0e0 blocked_by=topology.brep_validate_pointers(60)`.
+First result (2026-10-25): `PARTIAL topology.brep_constructor cases=185 passed=125
+failed=0 deferred=60 max_rel_err=0e0`, all 60 deferrals at `EndShell(TRUE)`.
 
-All deferrals are `EndShell(TRUE)`. Upstream calls `SmBrep::ValidatePointers` first and
-ignores its status, but that call creates the missing UV trim curves of every face that
-already has one (`plan/upstream-issues/WR-446--brepconstructor-endshell-validatepointers-makes-uv-trim-curves.md`).
-It is not ported; the new unit `topology.brep_validate_pointers` tracks it.
+Upstream `EndShell(TRUE)` calls `SmBrep::ValidatePointers` first and ignores its
+status, but that call creates the missing UV trim curves of every face that already
+has one (`plan/upstream-issues/WR-446--brepconstructor-endshell-validatepointers-makes-uv-trim-curves.md`).
+`ValidatePointers`, with `sm_CheckEdgeuseGeometry`, is ported on main as
+`topology::brep::validation::validate_pointers` (unit `topology.brep_validation`).
+When this PR was refreshed on main (2026-10-30), `EndShell(TRUE)` was wired to it with
+upstream's defaults (no report list, `SM_LEVEL_0`, `SM_NO_WALK`; status ignored), so
+those cases are compared rather than deferred. Current counts: see the PR difftest
+summary.
 
 ## The importer recipe (`step_import::script::from_body`)
 
