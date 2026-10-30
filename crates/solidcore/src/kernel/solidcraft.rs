@@ -72,6 +72,7 @@ macro_rules! solidcraft_preset {
 
 solidcraft_preset! {
     fork: [
+        ellipse_adjust_step_interval_keeps_turns, // WR-211; smlib 5c0b5ed
         fillet_torus_rail_on_axis, // WR-592; smlib 994f129
         fillet_retry_radius_as_first, // WR-300; smlib 1d06159
         fillet_rail_rim_on_face, // WR-301; smlib f6ed05a

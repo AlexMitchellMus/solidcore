@@ -17,6 +17,7 @@ const FORK_RECORDS: &[(&str, &[&str])] = &[
     ("WR-76", &["ssi_trace_tangent_curves_once"]),
     ("WR-79", &["sphere_small_circle_not_touching"]),
     ("WR-80", &["ssi_no_reverse_of_empty_trace"]),
+    ("WR-211", &["ellipse_adjust_step_interval_keeps_turns"]),
     ("WR-255", &["uv_trim_corner_end_points_only"]),
     ("WR-260", &["edge_reversal_keeps_failed_edge"]),
     ("WR-265", &["boolean_outer_shell_first"]),
@@ -136,10 +137,6 @@ const FORK_RECORDS: &[(&str, &[&str])] = &[
 
 /// Records citing a fork commit with no field porting it, and why.
 const FORK_RECORDS_WITHOUT_FIX: &[(&str, &str)] = &[
-    (
-        "WR-211",
-        "the fork's fix is not ported (the port follows the reference build)",
-    ),
     (
         "WR-259",
         "the fork's fix differs; the port's own `cone_parallel_line_*` are `reported`",

@@ -147,7 +147,7 @@ impl Caches {
 #[allow(clippy::struct_excessive_bools)]
 #[non_exhaustive]
 pub struct UpstreamFixes {
-    /// `SmFilletGeom::Trim` returns the first curve/surface trim or interval-intersection error instead of dropping it and continuing with an unset interval (WR-583, #483). Earlier successful edits remain; off by default for pinned C++ parity.
+    /// `SmFilletGeom::Trim` returns the first curve/surface trim or interval-intersection error instead of dropping it and continuing with an unset interval (WR-604, #483). Earlier successful edits remain; off by default for pinned C++ parity.
     pub fillet_trim_status: bool,
     /// `CalcRailIntEdgeuse`'s retry rail search holds a variable round's radius only where its first search does (at a corner calculated as constant radius), so the rail misses the arc it would meet only at that radius and the corner cuts the round off against the body; needs `fillet_nx1_end_rib_global_merge` there (WR-300, #1023).
     pub fillet_retry_radius_as_first: bool,
@@ -230,7 +230,7 @@ pub struct UpstreamFixes {
     pub uv_trim_checks_on_surface: bool,
     /// `SmFace::ComputeLoopOrientation`'s 3D path holds a loop's dimensionless area to a floor relative to the loop's own bounding box instead of the face's whole domain, so a loop far smaller than its face (a 0.002 hole in a 3 m plate) is oriented (WR-561, #1523; tangency-labs/smlib 54ca3e0).
     pub loop_orientation_floor_from_loop_box: bool,
-    /// The curve property solves ignore a failed guess in `SolveOscillating`'s sign-change search (WR-253, #481).
+    /// The one-dimensional local solves ignore a failed guess in `SolveOscillating`'s sign-change search (WR-253, #481).
     pub oscillating_skips_failed_guesses: bool,
     /// `sm_RefineCCSolutions` judges a range end's shift by its distance from 1 (WR-383, #527).
     pub refine_cc_range_ends: bool,
@@ -464,6 +464,15 @@ pub struct UpstreamFixes {
     pub stitch_solid_nests_cavities: bool,
     /// `SmPrimitiveCreation::CreateBox` returns the status of each face it makes (a plane that cannot be made, a face whose making fails even after the face was made, such as a box far smaller than the tolerance whose top face closes up on its bottom one) and of its `StitchAndOrient`, and makes no face on a side of zero extent. Upstream drops every one of those statuses and returns success with whatever faces were made (WR-596; the fork's tangency-labs/smlib@0df62c8, 35008b1 and 449c81c, `AddBoxFace`).
     pub box_face_failures_propagate: bool,
+    /// `SmEllipse::AdjustSTEPInterval` converts a new interval end outside the current arc
+    /// itself: past a full-turn arc it is taken whole turns back into the arc and its NURBS
+    /// parameter moved by the circle's NURBS length per turn (the other way for an
+    /// inside-out curve); past a partial arc the arc's NURBS interval continues in
+    /// proportion to the angle. Upstream's polar converter clamps such an angle to the arc's
+    /// ends, so a full circle moved to `[360, 540]` (a torus face whose tube range starts a
+    /// turn on) collapses to one NURBS parameter and the surface built on it gets NaN knots
+    /// and fails with `SM_ERR` (WR-211, #428; the fork's tangency-labs/smlib@5c0b5ed).
+    pub ellipse_adjust_step_interval_keeps_turns: bool,
 }
 
 /// Options for [`Kernel::new`].
