@@ -1,6 +1,10 @@
 //! Differential checks of B-rep pointer reports and coincidence pairs against the
-//! unchanged c9c5979 C++ reference. Native fixtures export their actual topology,
-//! geometry ownership and global list order. Post-call curve samples compare the
+//! unchanged c9c5979 C++ reference. The Rust side builds a [`BrepIn`] source itself
+//! ([`crate::own_builder`]) and reads an `.smb` file with the Rust reader
+//! ([`crate::own_reader::brep_in_order`]), both under this runner's conventions. Only
+//! the `SmBrepConstructor` sheet grids (`grid_faces`, `shared_boundaries`), whose
+//! constructor is not ported, still export their topology, geometry ownership and
+//! global list order for the Rust side to import. Post-call curve samples compare the
 //! reversal repairs and lazily created UV curves made by the checks themselves.
 use super::topology_edgeuse_p1::{brep_block_of, import_raw_with_types, path_of, BrepIn};
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -250,6 +254,61 @@ fn imported(export: &[f64]) -> Result<Brep, HarnessError> {
     }
     Ok(b)
 }
+fn own_face_owner(f: FaceId) -> ObjectRef {
+    key(EntityRef::Face(f))
+}
+fn own_edgeuse_owner(eu: EdgeuseId) -> ObjectRef {
+    key(EntityRef::Edgeuse(eu))
+}
+fn own_edge_owner(e: EdgeId) -> (ObjectRef, ObjectRef) {
+    (
+        key(EntityRef::Edge(e)),
+        key(EntityRef::Brep(solidcore::topology::BrepId::from_index(0))),
+    )
+}
+/// The shim's build conventions (`sc_edgeuse_graph.h`), with the geometry owned under
+/// this runner's notification identities ([`key`]), as [`imported`] names it.
+const CONVENTIONS: crate::own_builder::Conventions<'static> = crate::own_builder::Conventions {
+    prefix_lists: false,
+    vertex_edge_gaps: false,
+    vertex_lists_last: false,
+    skip_edge_list: false,
+    face_owner: &own_face_owner,
+    edge_owner: &own_edge_owner,
+    edgeuse_owner: &own_edgeuse_owner,
+};
+/// The Rust B-rep of a [`BrepIn`] source built by the Rust kernel
+/// ([`crate::own_builder`]) or, for an `.smb` file, read by the Rust reader and
+/// renumbered into the shim's traversal order ([`crate::own_reader::brep_in_order`]):
+/// native lists, face uses and geometry owners under [`CONVENTIONS`], `Notify` naming as
+/// [`imported`] sets it. A failed build is the shim's failed construction; a failed
+/// read is a Rust divergence, reported as an error. `None` for the sources still
+/// imported from the shim's export: the `SmBrepConstructor` sheet grids (`grid_faces`,
+/// `shared_boundaries`), whose constructor is not ported.
+fn own_brep(i: &Inputs) -> Result<Option<Result<Brep, Output>>, HarnessError> {
+    use crate::own_builder::Built;
+    if i.grid_faces.is_some() || i.shared_boundaries.is_some() {
+        return Ok(None);
+    }
+    let file = matches!(i.brep, BrepIn::File { .. });
+    let mut k = Kernel::default();
+    Ok(Some(
+        match crate::own_reader::brep_in_order(&mut k, &i.brep, false, false, &CONVENTIONS)? {
+            Built::Brep(b) => {
+                let mut b = *b;
+                b.set_naming(NamingScheme::Notify);
+                Ok(b)
+            }
+            Built::Failed(e) => Err(Output::unported(&e).unwrap_or_else(|| {
+                if file {
+                    Output::err(format!("rust read failed: {e}"))
+                } else {
+                    Output::rejected("native fixture construction failed")
+                }
+            })),
+        },
+    ))
+}
 fn orient(v: f64) -> solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType {
     use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
     match v as u8 {
@@ -476,11 +535,17 @@ impl UnitDiff for Runner {
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
-        let (_, _, export) = exported(&i)?;
-        if export.first() != Some(&0.0) {
-            return Ok(Output::rejected("native fixture construction failed"));
-        }
-        let mut b = imported(&export)?;
+        let mut b = match own_brep(&i)? {
+            Some(Ok(b)) => b,
+            Some(Err(o)) => return Ok(o),
+            None => {
+                let (_, _, export) = exported(&i)?;
+                if export.first() != Some(&0.0) {
+                    return Ok(Output::rejected("native fixture construction failed"));
+                }
+                imported(&export)?
+            }
+        };
         mutate(&mut b, &i)?;
         let kernel = Kernel::default();
         let mut reports = AssertArray::new();

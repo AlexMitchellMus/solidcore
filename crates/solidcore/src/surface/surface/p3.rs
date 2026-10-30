@@ -14,6 +14,7 @@
 //! | [`Surface::evaluate_normal_section`], [`evaluate_normal_section_of`], [`SurfaceNormalSection`] | `SmSurface::EvaluateNormalSection` |
 //! | [`Surface::get_singularities`], [`Surface::get_singularities_of_face`], [`Singularities`] | `SmSurface::GetSingularities`                    |
 //! | [`Surface::cover_coincident_surface_deferring_trims`], [`CoverCoincident`] | `SmSurface::CoverCoincidentSurface`     |
+//! | [`Surface::calculate_tight_bounding_box`]        | `SmSurface::CalculateTightBoundingBox`           |
 //! | [`check_shape_match`]                             | `smsurf_CheckShapeMatch`                         |
 //! | [`FindPsNormalEnfo`] (`EvalNFunctions`)           | `SmFindPSNormalENFO::Evaluate` (struct: `surface.surface_p1`) |
 //! | [`SssIntersectEnfo`] (`EvalNFunctions`)           | `SmSSSIntersectENFO::Evaluate` (struct: `surface.surface_p1`) |
@@ -29,7 +30,9 @@
 //!   `OutOfBoundsEnabled` flag of the (B-spline based) surfaces is done on the surface
 //!   itself where it is `&mut` ([`Surface::cover_coincident_surface_deferring_trims`]) and on an
 //!   out-of-bounds copy where upstream changes a `const` surface
-//!   ([`Surface::local_surface_surface_intersect`]).
+//!   ([`Surface::local_surface_surface_intersect`]); that copy is an evaluation copy
+//!   (exact knots, owner kept), not the copy constructor, so it evaluates the surface
+//!   upstream evaluates.
 //! - **Ignored statuses.** Where upstream ignores the status of an evaluation its
 //!   outputs keep their previous values (initially undefined); the port does the same
 //!   and still propagates [`SolidError::Unported`].
@@ -140,6 +143,9 @@ fn surface_approx_tol_3d(
     // without it stays UNPORTED(topology.face_p2): SmFace::GetTolerance
     // (`Surface::face_zone_tol_3d`); the face props pass it through
     // `get_singularities_of_face`
+    // Proof (unreachable): a B-rep face's surface carries the face tolerance
+    // (Brep::sync_face_surface_tolerance invariant, see Surface::face_zone_tol_3d); 0 hits
+    // in the green difftest sweep.
     if let Some(zone) = surface.face_zone_tol_3d()? {
         return Ok(approx_tol3d(k, 0.5 * zone));
     }
@@ -188,13 +194,20 @@ pub(crate) fn set_out_of_bounds_enabled(surface: &mut Surface, enabled: bool) {
 
 /// A copy of `surface` that evaluates out of bounds, when it is a B-spline based
 /// surface that does not already (the `SmTemporaryChangeValue` of a `const` surface).
-fn out_of_bounds_copy(surface: &Surface) -> Option<Surface> {
+/// Upstream changes the flag on the surface itself, so this is an evaluation copy
+/// ([`Surface::clone_for_evaluation`]: knots exactly as they are, owner kept), not the
+/// copy constructor, whose knot fix-up can move near-coincident knots.
+///
+/// # Errors
+///
+/// Those of [`Surface::clone_for_evaluation`] (a geometry graph nested too deep).
+fn out_of_bounds_copy(surface: &Surface) -> Result<Option<Surface>> {
     if out_of_bounds_enabled(surface) == Some(false) {
-        let mut copy = surface.clone();
+        let mut copy = surface.clone_for_evaluation()?;
         set_out_of_bounds_enabled(&mut copy, true);
-        Some(copy)
+        Ok(Some(copy))
     } else {
-        None
+        Ok(None)
     }
 }
 
@@ -740,6 +753,107 @@ impl Surface {
         })
     }
 
+    /// The tight axis-aligned box of the surface over `uv_domain`
+    /// (`CalculateTightBoundingBox`): for a B-spline-based surface with fewer than three
+    /// control points in each direction, the box of its four corner points; otherwise
+    /// the points maximising the signed distance along `±x`, `±y`, `±z` over the domain
+    /// (`SM_SR_ALL` global solves, statuses ignored), and the tight boxes of the four
+    /// boundary iso curves of the domain.
+    ///
+    /// # Errors
+    ///
+    /// Those of the boundary iso curves and their boxes; [`SolidError::Unported`] from
+    /// the solves and evaluations.
+    pub fn calculate_tight_bounding_box(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+    ) -> Result<Extent3d> {
+        use crate::geom::global_solver::SolutionRequested;
+        use crate::nurbs::b_spline_surface::SurfParamType;
+
+        let mut tight_box = Extent3d::new();
+
+        // Special case for 2x2 B-Spline surfaces (SM_CAST_NONNULL_PTR(SmBSplineSurface)):
+        let bspline_based = !matches!(
+            self.kind(),
+            SurfaceKind::OffsetSurface(_)
+                | SurfaceKind::CurveBounded(_)
+                | SurfaceKind::Step(_)
+                | SurfaceKind::SrfInVolume(_)
+        );
+        if bspline_based
+            && self.number_control_points(k, SurfParamType::U) < 3
+            && self.number_control_points(k, SurfParamType::V) < 3
+        {
+            // This works even if the domain is different from the natural domain
+            // (statuses ignored: a failed evaluation keeps the last point):
+            let mut pt = Vec3::UNDEF;
+            for (u, v) in [
+                (uv_domain.min().x, uv_domain.min().y),
+                (uv_domain.max().x, uv_domain.min().y),
+                (uv_domain.min().x, uv_domain.max().y),
+                (uv_domain.max().x, uv_domain.max().y),
+            ] {
+                if let Some(p) = ignored(self.evaluate_point(k, Point2::new(u, v)))? {
+                    pt = p;
+                }
+                tight_box.add_point(pt);
+            }
+            return Ok(tight_box);
+        } // end 2x2 B-Spline check.
+
+        // Loop on three directions, positive then negative (statuses ignored)
+        let mut dir_vec = Vec3::new(1.0, 0.0, 0.0); // +/- x
+        for idx in 0..3 {
+            if idx == 1 {
+                dir_vec = Vec3::new(0.0, 1.0, 0.0); // +/- y
+            }
+            if idx == 2 {
+                dir_vec = Vec3::new(0.0, 0.0, 1.0); // +/- z
+            }
+            for pass in 0..2 {
+                if pass == 1 {
+                    dir_vec = -dir_vec;
+                }
+                let solutions = ignored(super::p4::global_point_solve_starts(
+                    k,
+                    self,
+                    uv_domain,
+                    SolverOperation::Signed3dDirectedMaximize,
+                    dir_vec,
+                    EFF_ZERO_SQRT,
+                    SolutionRequested::All,
+                ))?
+                .unwrap_or_default();
+                for sol in &solutions {
+                    let mut eval = super::p2::SurfaceEval::with_uv(
+                        k,
+                        Some(self),
+                        sol.parameters.first().copied().unwrap_or(0.0),
+                        sol.parameters.get(1).copied().unwrap_or(0.0),
+                    );
+                    tight_box.add_point(eval_pos(&mut eval)?);
+                }
+            }
+        }
+
+        // Now do the boundaries.  [B203]
+        for (param, ivl) in [
+            (SurfParamType::U, uv_domain.u_interval()),
+            (SurfParamType::V, uv_domain.v_interval()),
+        ] {
+            for iso in [ivl.min(), ivl.max()] {
+                let curve = self
+                    .create_iso_parametric_curve(k, param, iso, 0.0, Some(uv_domain), false)?
+                    .curve;
+                let crv_box = curve.calculate_tight_bounding_box(k, &curve.natural_interval())?;
+                tight_box = tight_box.union(&crv_box);
+            }
+        }
+        Ok(tight_box)
+    }
+
     /// Whether `other` (or the subset `other_domain` of it) fits inside this surface: a
     /// grid of points of `other` is dropped to this surface and, when all coincide within
     /// `tol`, this surface's STEP domain is expanded to cover them
@@ -823,7 +937,7 @@ impl Surface {
         };
 
         // We're going to have to expand ourselves right away.
-        let big_domain = self.max_analytic_domain(k)?;
+        let mut big_domain = self.max_analytic_domain(k)?;
         if big_domain.is_degenerate(0.0) {
             return Ok(failure);
         }
@@ -839,6 +953,24 @@ impl Surface {
             Some(d) => *d,
             None => other.natural_uv_domain_with_nurb(k)?,
         };
+
+        // Not upstream (WR-536), opt-in `boolean2d_plane_covers_far_faces` (the fork's
+        // tangency-labs/smlib@67b8a1e): a plane is unbounded and its STEP parameterization
+        // affine, so it can grow to cover the other surface however far that lies from
+        // this face (two holes 1.5 m apart on a 3 m sheet, each face a few millimetres
+        // wide). GetMaxAnalyticDomain's fixed reach of 100 widths is for B-splines, whose
+        // extension degrades with distance; for a plane, grow the search domain to the
+        // orthogonal projection of the other surface's bounding box, which holds every
+        // point the checks below drop.
+        if k.fixes.boolean2d_plane_covers_far_faces {
+            if let SurfaceKind::Plane(plane) = self.kind() {
+                let mut other_box = other.calculate_tight_bounding_box(k, &other_dom)?;
+                other_box.expand_absolute(tol);
+                for corner in other_box.corners() {
+                    big_domain.add_point(plane.project_point_to_uv_domain(corner));
+                }
+            }
+        }
 
         // upstream ignores the status of the point evaluations
         let mut pt = Vec3::UNDEF;
@@ -1125,10 +1257,8 @@ impl Surface {
 
         // But make sure that we didn't expand it to spill outside of sBigDomain.  This
         // would happen if the domain is against the seam of a surface of revolution, for
-        // example.  (Upstream ignores the status of the intersection.)
-        if let Ok(clipped) = new_domain.intersect(&big_domain) {
-            new_domain = clipped;
-        }
+        // example.
+        new_domain = clip_to_big_domain(&new_domain, &big_domain);
 
         // Now union the projection of Other surface on our domain with our original
         // domain, and update our domain to it.
@@ -1406,9 +1536,9 @@ impl Surface {
         uv_guess3: Point2,
     ) -> Result<Option<LocalSssSolution>> {
         // temporarily enable OutOfBounds evaluations for all B-spline based surfaces
-        let copy1 = out_of_bounds_copy(self);
-        let copy2 = out_of_bounds_copy(surface2);
-        let copy3 = out_of_bounds_copy(surface3);
+        let copy1 = out_of_bounds_copy(self)?;
+        let copy2 = out_of_bounds_copy(surface2)?;
+        let copy3 = out_of_bounds_copy(surface3)?;
         let s1 = copy1.as_ref().unwrap_or(self);
         let s2 = copy2.as_ref().unwrap_or(surface2);
         let s3 = copy3.as_ref().unwrap_or(surface3);
@@ -1705,6 +1835,32 @@ fn step_inversion_in<O: SolutionObject>(
     }
 }
 
+/// `sUpdateDomain.Intersect(sBigDomain, sNewDomain)` in `CoverCoincidentSurface`:
+/// `domain` clipped to `big_domain`. Upstream ignores the status, but on disjoint
+/// extents `SmExtent2d::Intersect` has `Init()`ed its result (`SmExtent2d.cpp:414`-`418`),
+/// so the covered domain is then the uninitialised extent (and the following union
+/// leaves the surface's own STEP domain as it is).
+fn clip_to_big_domain(domain: &Extent2d, big_domain: &Extent2d) -> Extent2d {
+    domain
+        .intersect(big_domain)
+        .unwrap_or_else(|_| Extent2d::new())
+}
+
+/// `SmSurfaceEval::Pos()`: the position, also when the evaluation failed (then what
+/// the failed evaluation wrote).
+fn eval_pos(eval: &mut super::p2::SurfaceEval<'_>) -> Result<Point3> {
+    match eval.pos() {
+        Ok(p) => Ok(p),
+        Err(e) if e.is_unported() => Err(e),
+        Err(_) => Ok(eval
+            .values()
+            .first()
+            .and_then(|r| r.first())
+            .copied()
+            .unwrap_or(Vec3::UNDEF)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1741,7 +1897,7 @@ mod tests {
         let mut s = Surface::from(rev);
         assert_eq!(out_of_bounds_enabled(&s), Some(false));
         assert_eq!(gen_flag(&s), Some(false));
-        let copy = out_of_bounds_copy(&s).unwrap();
+        let copy = out_of_bounds_copy(&s).unwrap().unwrap();
         assert_eq!(out_of_bounds_enabled(&copy), Some(true));
         assert_eq!(gen_flag(&copy), Some(false));
         set_out_of_bounds_enabled(&mut s, true);
@@ -1821,18 +1977,38 @@ mod tests {
         Ok(())
     }
 
-    /// Default (pinned SMLib `c9c5979`): the cover succeeds and extends the domain onto
-    /// the fold, as upstream does (WR-407).
+    /// Default (SMLib v1.0.1): the flat sheet is now planar to `SM_EFF_ZERO` (`IsPlanar`
+    /// tests the unpadded pseudo box, `SmSurface.cpp:22371` at `3fd5b95`), so
+    /// `GetMaxAnalyticDomain` expands it relatively by 100 instead of by half a span per
+    /// cubic direction. The search over that domain reaches the folded continuation and
+    /// the cover fails, changing nothing. At `c9c5979` the padded box was not planar; the
+    /// domain ended at the fold (u = 1.5) and the cover succeeded (WR-407).
     #[test]
-    fn issue_434_default_covers_across_the_fold() -> Result<()> {
+    fn issue_434_default_refuses_the_fold_of_a_planar_sheet() -> Result<()> {
         let k = Kernel::default();
         assert!(!k.fixes.cover_refuses_folded_continuation);
         let (covered, u_max) = issue_434_cover_across_a_fold(&k)?;
         assert!(
-            covered.success,
-            "upstream covers across the fold: {covered:?}"
+            !covered.success,
+            "the planar sheet's cover across the fold fails: {covered:?}"
         );
-        assert!(u_max > 1.0, "upstream extends the u domain: {u_max}");
+        assert_eq!(u_max, 1.0);
         Ok(())
+    }
+
+    #[test]
+    fn cover_clip_to_big_domain_inits_a_disjoint_domain_as_upstream() {
+        let big = Extent2d::from_bounds(0.0, 0.0, 10.0, 10.0);
+        // overlapping: the common part
+        let inside = Extent2d::from_bounds(-1.0, 2.0, 5.0, 12.0);
+        let clipped = clip_to_big_domain(&inside, &big);
+        assert_eq!(clipped, Extent2d::from_bounds(0.0, 2.0, 5.0, 10.0));
+        // disjoint: SmExtent2d::Intersect Init()s its result
+        let outside = Extent2d::from_bounds(20.0, 20.0, 30.0, 30.0);
+        let cleared = clip_to_big_domain(&outside, &big);
+        assert_eq!(cleared, Extent2d::new());
+        // the union that follows then keeps the surface's own domain
+        let orig = Extent2d::from_bounds(1.0, 1.0, 9.0, 9.0);
+        assert_eq!(orig.union(&cleared), orig);
     }
 }

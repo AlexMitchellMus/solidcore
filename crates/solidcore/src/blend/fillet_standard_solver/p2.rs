@@ -34,9 +34,11 @@
 //! Deviations:
 //! - **Object model** as in `blend.fillet_standard_solver_p1` (the solvers are its
 //!   structs). The tangent-rollover guess of `SmConstantRadiusFS::LoadInitialValues`
-//!   comes from [`ConstantRadiusOps::tangent_rollover_guess`]: the geometry for the
-//!   surfaces of `SmFilletGeom::RailEdgeuseIntersect` supplies its rails' guesses
-//!   (`blend::fillet_solver::surfaces`); context-free callers have none.
+//!   comes from [`ConstantRadiusOps::tangent_rollover_guess`]: every scope that sets
+//!   the solver's geometry for the surfaces (`SmFilletGeom::RailEdgeuseIntersect`, the
+//!   corners' `ReCalcFilletGeom` scopes) hands the solver that geometry's rail guesses,
+//!   taken when the scope starts (`blend::fillet_solver::surfaces`); context-free
+//!   callers have none.
 //! - **Virtual dispatch.** `SetupOffsetExtension` is dispatched on the solver's class
 //!   through [`ConstantRadiusOps`]: `SmSurfaceSurfaceFS` has its own version
 //!   (`blend.fillet_standard_solver_p1`); every other constant-radius solver uses the
@@ -201,7 +203,9 @@ fn interval_at<'a>(ivls: &'a mut ExtentNd, i: usize, op: &'static str) -> Result
 /// out of bounds) are kept.
 fn as_sm_err(e: SolidError, op: &'static str) -> SolidError {
     match e {
-        SolidError::Unported { .. } | SolidError::InvalidInput { .. } => e,
+        SolidError::Unported { .. }
+        | SolidError::InvalidInput { .. }
+        | SolidError::PortInvariant { .. } => e,
         _ => SolidError::sm_err(op),
     }
 }
@@ -361,14 +365,15 @@ pub trait ConstantRadiusOps {
     /// The tangent-rollover guess of rail `rail`'s other surface: in the
     /// tangent-rollover case (`GetFilletGeomForSurfaces()` of type
     /// `SM_FG_TANGENT_ROLLOVER`) the UV position stored in a rail vertex use's
-    /// intersection point (`None`: no such point, or no such geometry). Context-free
-    /// callers have no geometry for the surfaces.
+    /// intersection point (`None`: no such point, or no such geometry). The geometry
+    /// for the surfaces is the solver's, set by the scope that lent its surfaces
+    /// ([`FilletSolver::tangent_rollover_guess`]); context-free callers have none.
     ///
     /// # Errors
-    /// `SM_ERR_NULL_POINTER` without the geometry's rail.
+    /// `SM_ERR_NULL_POINTER` without the geometry's rail; [`SolidError::InvalidInput`]
+    /// for a geometry for the surfaces set outside a lending scope.
     fn tangent_rollover_guess(&self, rail: usize) -> Result<Option<Point2>> {
-        let _ = rail;
-        Ok(None)
+        self.constant_radius().solver.tangent_rollover_guess(rail)
     }
 
     /// `SetupOffsetExtension(pSurf, rDomain)` of the solver's class.
@@ -663,7 +668,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
                 k,
                 base2,
                 face_owner(brep.as_deref_mut(), base2_id),
-                &base2.natural_uv_domain(),
+                &base2.natural_uv_domain_with_nurb(k)?,
                 pnt,
                 EFF_ZERO_SQ,
             )?;
@@ -681,7 +686,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
         // Before we add the rGuessT values, drop point to other offset surface
         // to get a better guess
         let uv_guess = Point2::new(srf2_guess_uv.x, srf2_guess_uv.y);
-        let mut domain = base2.natural_uv_domain();
+        let mut domain = base2.natural_uv_domain_with_nurb(k)?;
         solver.setup_offset_extension(k, base2, &mut domain)?; // expands sDomain
 
         if let Some((sol_uv, dist)) = offset_local_point_solve(k, surface2, &domain, pnt, uv_guess)?
@@ -698,7 +703,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
                 k,
                 base2,
                 face_owner(brep, base2_id),
-                &base2.natural_uv_domain(),
+                &base2.natural_uv_domain_with_nurb(k)?,
                 pnt,
                 EFF_ZERO_SQ,
             )?;
@@ -715,7 +720,7 @@ fn cr_initial_body<S: ConstantRadiusOps + ?Sized>(
 
     // Start setting the return values:
     // the next two entries in rIntervals and rPeriodicities.
-    let mut domain = base2.natural_uv_domain();
+    let mut domain = base2.natural_uv_domain_with_nurb(k)?;
     solver.setup_offset_extension(k, base2, &mut domain)?; // expands sDomain
 
     let surface2_index = guess_t.len();
@@ -1101,7 +1106,7 @@ pub fn point_on_plane_solve(
     let mut guess_t = vec![uv1.x, uv1.y];
 
     let mut surface1 = rail_offset(solver.solver(), 0)?.clone();
-    let domain_before = surface1.surface.natural_uv_domain();
+    let domain_before = surface1.surface.natural_uv_domain_with_nurb(k)?;
     let surf1_index = 0; // UV values of Surface1
     let rail_index = 0;
 
@@ -1122,7 +1127,7 @@ pub fn point_on_plane_solve(
     // evaluations of crSurface1 made, unless the solver's own offset was extended
     // later in the call, as by the custom solvers' GuessPointOnPlaneSolve)
     let own = &mut rail_offset_mut(solver.solver_mut(), 0)?.surface;
-    if own.natural_uv_domain() == domain_before {
+    if own.natural_uv_domain_with_nurb(k)? == domain_before {
         own.take_extension_of(&surface1.surface);
     }
     let init = init?;
@@ -1285,6 +1290,24 @@ impl ConstantDistanceFs {
         // Create offset surfaces of appropriate radius in appropriate
         // direction.  For now assume that the orientations at the center of the
         // edge work for the rest of the edge.
+        if k.fixes.fillet_knife_edge_rounds {
+            // (fork b7ec55b) offset each surface to the side of it the other face lies
+            // on (sm_SectorSides), a cusp's faces too
+            let mut cd = Self { solver, distance };
+            let radial = cd.solver.edgeuses[1];
+            let Some(sides) =
+                super::p1::sector_sides(k, brep, [Some(edgeuse), radial], cd.distance, OP)?
+            else {
+                // Smooth, or no sector: can't fillet this.
+                cd.solver.edgeuses = [None, None];
+                // (SE(SM_ERR): only signalled)
+                return Ok(cd);
+            };
+            cd.solver.orientations = sides;
+            let eu1 =
+                radial.ok_or_else(|| SolidError::invalid_input(OP, "edge use without radial"))?;
+            return cd.finish_offsets(k, brep, pseudo, edgeuse, eu1, OP);
+        }
         let fr = edgeuse_frame(k, brep, edgeuse, OP)?;
         let mut cd = Self { solver, distance };
 
@@ -1311,17 +1334,32 @@ impl ConstantDistanceFs {
         let eu1 = fr
             .radial
             .ok_or_else(|| SolidError::invalid_input(OP, "edge use without radial"))?;
-        let s0 = face_base(brep, edgeuse, OP)?;
-        let s1 = face_base(brep, eu1, OP)?;
-        let approx_radius = cd.distance * 2.0_f64.sqrt() / 2.0;
-        let [o0, o1] = cd.solver.orientations;
-        cd.solver.surfaces = rail_slots(
+        cd.finish_offsets(k, brep, pseudo, edgeuse, eu1, OP)
+    }
+
+    /// The tail of [`ConstantDistanceFs::from_edgeuse`] once the orientations are set:
+    /// offset surfaces of both faces by `dDistance * sqrt(2) / 2` (extension allowed),
+    /// then `FinishConstruction`.
+    fn finish_offsets(
+        mut self,
+        k: &Kernel,
+        brep: &Brep,
+        pseudo: &mut FilletBrep,
+        edgeuse: EdgeuseId,
+        eu1: EdgeuseId,
+        op: &'static str,
+    ) -> Result<Self> {
+        let s0 = face_base(brep, edgeuse, op)?;
+        let s1 = face_base(brep, eu1, op)?;
+        let approx_radius = self.distance * 2.0_f64.sqrt() / 2.0;
+        let [o0, o1] = self.solver.orientations;
+        self.solver.surfaces = rail_slots(
             extending_offset(k, approx_radius * o0, s0)?,
             extending_offset(k, approx_radius * o1, s1)?,
         );
 
-        cd.solver.finish_construction(k, pseudo)?; // Take care of other things in the base class.
-        Ok(cd)
+        self.solver.finish_construction(k, pseudo)?; // Take care of other things in the base class.
+        Ok(self)
     }
 }
 
@@ -1399,6 +1437,39 @@ impl VariableRadiusFs {
         set_law_arc_length(k, &original, &law_interval, approx_tol_3d, &mut law)?;
         curve_based.original = Some(original);
 
+        if k.fixes.fillet_knife_edge_rounds {
+            // (fork b7ec55b) the law's radius at the middle first, then each surface
+            // offset to the side of it the other face lies on (sm_SectorSides), a cusp's
+            // faces too
+            let mut vr = Self {
+                curve_based,
+                law,
+                law_orientation,
+                law_interval,
+            };
+            // (SE: a failed law evaluation leaves the radius undefined; only Unported
+            // propagates)
+            let values = ignored(vr.law.evaluate(
+                vr.law_interval.evaluate(0.5),
+                &vr.law_interval,
+                vr.law_orientation,
+            ))?
+            .ok_or_else(|| SolidError::invalid_input(OP, "undefined fillet law radius"))?;
+            let [approx_radius, _, _] = values;
+            let radial = vr.curve_based.solver.edgeuses[1];
+            let Some(sides) =
+                super::p1::sector_sides(k, brep, [Some(edgeuse), radial], approx_radius.abs(), OP)?
+            else {
+                // Smooth, or no sector: can't fillet this.
+                vr.curve_based.solver.edgeuses = [None, None];
+                // (SE(SM_ERR): only signalled)
+                return Ok(vr);
+            };
+            vr.curve_based.solver.orientations = sides;
+            let eu1 =
+                radial.ok_or_else(|| SolidError::invalid_input(OP, "edge use without radial"))?;
+            return vr.finish_offsets(k, brep, pseudo, edgeuse, eu1, approx_radius, OP);
+        }
         let fr = edgeuse_frame(k, brep, edgeuse, OP)?;
         let mut vr = Self {
             curve_based,
@@ -1438,16 +1509,33 @@ impl VariableRadiusFs {
         let eu1 = fr
             .radial
             .ok_or_else(|| SolidError::invalid_input(OP, "edge use without radial"))?;
-        let s0 = face_base(brep, edgeuse, OP)?;
-        let s1 = face_base(brep, eu1, OP)?;
-        let [o0, o1] = vr.curve_based.solver.orientations;
-        vr.curve_based.solver.surfaces = rail_slots(
+        vr.finish_offsets(k, brep, pseudo, edgeuse, eu1, approx_radius, OP)
+    }
+
+    /// The tail of [`VariableRadiusFs::from_edgeuse`] once the orientations and the
+    /// law's radius at the middle are known: offset surfaces of both faces by that radius
+    /// (extension allowed), then `FinishConstruction`.
+    #[allow(clippy::too_many_arguments)]
+    fn finish_offsets(
+        mut self,
+        k: &Kernel,
+        brep: &Brep,
+        pseudo: &mut FilletBrep,
+        edgeuse: EdgeuseId,
+        eu1: EdgeuseId,
+        approx_radius: f64,
+        op: &'static str,
+    ) -> Result<Self> {
+        let s0 = face_base(brep, edgeuse, op)?;
+        let s1 = face_base(brep, eu1, op)?;
+        let [o0, o1] = self.curve_based.solver.orientations;
+        self.curve_based.solver.surfaces = rail_slots(
             extending_offset(k, approx_radius * o0, s0)?,
             extending_offset(k, approx_radius * o1, s1)?,
         );
 
-        vr.curve_based.solver.finish_construction(k, pseudo)?; // Take care of other things in the base class.
-        Ok(vr)
+        self.curve_based.solver.finish_construction(k, pseudo)?; // Take care of other things in the base class.
+        Ok(self)
     }
 
     /// `SmVariableRadiusFS(crContext, dThisApproxTol3d, dAngleTolerance,
@@ -1656,8 +1744,12 @@ impl VariableRadiusFs {
         let solver = &self.curve_based.solver;
         let surf1 = Surface::from(rail_offset(solver, 0)?.surface.clone());
         let surf2 = Surface::from(rail_offset(solver, 1)?.surface.clone());
-        let mut domain1 = rail_offset(solver, 0)?.surface.natural_uv_domain();
-        let mut domain2 = rail_offset(solver, 1)?.surface.natural_uv_domain();
+        let mut domain1 = rail_offset(solver, 0)?
+            .surface
+            .natural_uv_domain_with_nurb(k)?;
+        let mut domain2 = rail_offset(solver, 1)?
+            .surface
+            .natural_uv_domain_with_nurb(k)?;
         solver.setup_offset_extension(k, &surf1, &mut domain1)?;
         solver.setup_offset_extension(k, &surf2, &mut domain2)?;
         // Setup FilletIntersector (no current fillet geometry: the default NULL)
@@ -1982,7 +2074,7 @@ impl VariableRadiusFs {
             let other_rail = 1 - rail_index;
             let solver = &self.curve_based.solver;
             let surface2 = solver.rail(other_rail)?;
-            let domain = surface2.base_surface().natural_uv_domain();
+            let domain = surface2.base_surface().natural_uv_domain_with_nurb(k)?;
             let size = solver.surface_extension_factor * domain.size();
             let extended = Extent2d::from_points(
                 Point2::new(domain.min().x - size.x, domain.min().y - size.y),
@@ -2546,8 +2638,16 @@ impl SurfaceSurfaceFs {
     /// As [`SurfaceSurfaceFs::calc_fillet_geom`] before the pseudo-B-rep.
     pub fn calc_fillet_start(&mut self, k: &Kernel) -> Result<Option<SurfaceSurfaceStart>> {
         const OP: &str = OP_SS_CALC;
-        let domain1 = self.base.surface(0)?.surface.natural_uv_domain();
-        let domain2 = self.base.surface(1)?.surface.natural_uv_domain();
+        let domain1 = self
+            .base
+            .surface(0)?
+            .surface
+            .natural_uv_domain_with_nurb(k)?;
+        let domain2 = self
+            .base
+            .surface(1)?
+            .surface
+            .natural_uv_domain_with_nurb(k)?;
 
         // Need to solve for start point using guess point
         let [g0, g1] = self.uv_guesses;
