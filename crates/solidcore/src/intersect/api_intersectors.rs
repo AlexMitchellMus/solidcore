@@ -35,27 +35,33 @@
 //! caller's arrays and on a failure removes what it appended (`sm_RestoreCurveSurfaceHits`),
 //! so its "own" entries (`lFirstOwnCurve`, `lFirstOwnPoint`) are all of [`CurveHits`] here.
 //! Their solve's solutions name the curve and the surface, whose surface domain is read
-//! kernel-free (a lazy analytic's NURB-less base answers an empty domain). Before the
-//! face classification of a solution, its solve result is copied out of the borrowed
-//! B-rep (the classification takes the B-rep mutably). `SM_ASSERT_VALID` and the
+//! kernel-free (a lazy analytic's NURB-less base answers an empty domain). A face's
+//! surface is solved as an evaluation copy (same owner and cache slot) and classified
+//! through the B-rep's [`BrepFaceServices`], so it reaches the face's trimmed cache as
+//! upstream's does through `GetFace()`; there the curve is a [`CurveFaceObject`] (a free
+//! curve with its natural interval). `SM_ASSERT_VALID` and the
 //! `SM_DEBUG_CODE` drawing are not ported.
 
 use crate::curve::curve::Curve;
 use crate::error::{ignored, Result, SolidError};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
-use crate::geom::solution_array::{ObjectKind, SolutionEnd, SolutionObject, SolutionType};
+use crate::geom::solution_array::{
+    ObjectKind, SolutionArray, SolutionEnd, SolutionObject, SolutionType,
+};
 use crate::geom::tol::{zone_tol3d, USE_DEFAULT};
 use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::{Point3, Vec3};
-use crate::intersect::point_class::{PointClassType, PointClassification};
+use crate::intersect::point_class::PointClassType;
 use crate::kernel::Kernel;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
-use crate::query::face::p2::{point_classify, PointClassifyOptions};
+use crate::query::brep::{BrepFaceServices, CurveFaceObject, CurveFaceServices};
 use crate::surface::surface::Surface;
+use crate::surface::surface_cache::face_context::FaceQueries;
 use crate::topology::brep::planar_section::{
     create_planar_section_curves, PlanarSectionOptions, SectionOutputs,
 };
+use crate::topology::brep_cache::CacheObject;
 use crate::topology::face::p3::{face_intersect_breps, FaceBreps, FaceIntersectOptions};
 use crate::topology::Brep;
 use crate::topology::FaceId;
@@ -388,7 +394,41 @@ fn curve_surface_solutions(
         &curve.natural_interval(),
         CURVE_TOLERANCE,
     )?;
-    Ok(solutions
+    Ok(solution_list(&solutions))
+}
+
+/// [`curve_surface_solutions`] of face `f`'s surface (`surface`, an evaluation copy of
+/// it) over the face's UV domain, through the B-rep's face services: the surface reaches
+/// its face's trimmed cache (`smsurf_GetSurfaceCache`) as upstream's does through
+/// `GetFace()`.
+fn curve_face_solutions(
+    k: &Kernel,
+    curve: &Curve,
+    services: &BrepFaceServices<'_>,
+    f: FaceId,
+    surface: &Surface,
+    uv_domain: &Extent2d,
+) -> Result<Vec<CurveSurfaceSolution>> {
+    let interval = curve.natural_interval();
+    let solutions = surface.global_curve_intersect_with_context(
+        k,
+        [
+            Some(CurveFaceObject::Curve(interval)),
+            Some(CurveFaceObject::Brep(CacheObject::Surface(f))),
+        ],
+        None,
+        &mut CurveFaceServices(services),
+        uv_domain,
+        curve,
+        &interval,
+        CURVE_TOLERANCE,
+    )?;
+    Ok(solution_list(&solutions))
+}
+
+/// Each solution's [`CurveSurfaceSolution`].
+fn solution_list<O: SolutionObject>(solutions: &SolutionArray<O>) -> Vec<CurveSurfaceSolution> {
+    solutions
         .as_slice()
         .iter()
         .map(|sol| {
@@ -398,7 +438,7 @@ fn curve_surface_solutions(
                 sol.end,
             )
         })
-        .collect())
+        .collect()
 }
 
 /// `sm_HasOwnCurveWithEnds`: whether one of `curves` (this call's own overlaps) starts
@@ -425,21 +465,22 @@ fn has_own_curve_with_ends(
 
 /// `sm_AppendCurveSurfaceHits` after the solve: appends to `hits` the overlaps (a copy of
 /// `curve` trimmed to each range) and the points (`curve` at each point solution) of
-/// `solutions`. With `face`, a solution whose surface UV (a range's UV midpoint) the face
-/// classifies outside (`SM_PC_UNKNOWN`) is dropped. With `skip_duplicates`, a point
+/// `solutions`. With `face` (its B-rep's face services and the face), a solution whose
+/// surface UV (a range's UV midpoint) the face classifies outside (`SM_PC_UNKNOWN`) is
+/// dropped. With `skip_duplicates`, a point
 /// within `0.001` of one already in `hits`, or a range whose ends match those of an
 /// overlap already in `hits`, is skipped.
 fn append_curve_surface_hits(
     k: &Kernel,
     curve: &Curve,
     solutions: &[CurveSurfaceSolution],
-    mut face: Option<(&mut Brep, FaceId)>,
+    face: Option<(&BrepFaceServices<'_>, FaceId)>,
     skip_duplicates: bool,
     hits: &mut CurveHits,
 ) -> Result<()> {
     let tol = CURVE_TOLERANCE;
     for &(range, start, end) in solutions {
-        if let Some((b, f)) = face.as_mut() {
+        if let Some((services, f)) = face {
             let mut uv = Point2::new(start.param(1)?, start.param(2)?);
             if range {
                 uv = Point2::new(
@@ -447,22 +488,16 @@ fn append_curve_surface_hits(
                     0.5 * (start.param(2)? + end.param(2)?),
                 );
             }
-            let mut pc = PointClassification::new(zone_tol3d(k, USE_DEFAULT));
-            let zone_tol = crate::topology::face::p2::tolerance(b, *f)?;
-            point_classify(
+            // pFace->PointClassify(sUV, SmTol::GetZoneTol3d(pFace), FALSE, TRUE, sPC) of a
+            // default SmPointClassification (the zone tolerance argument is not used:
+            // the classification's own tolerance is the default one)
+            let (class, _) = services.face_point_classify(
                 k,
-                b,
-                *f,
+                CacheObject::Face(f),
                 uv,
-                &mut pc,
-                PointClassifyOptions {
-                    src_zone_tol_3d: zone_tol,
-                    do_boundary_intersections: false,
-                    use_uv_classification: true,
-                    ..PointClassifyOptions::default()
-                },
+                zone_tol3d(k, USE_DEFAULT),
             )?;
-            if pc.point_class() == PointClassType::Unknown {
+            if class == PointClassType::Unknown.code() {
                 continue;
             }
         }
@@ -532,16 +567,15 @@ pub fn intersect_curve_face(
     b: &mut Brep,
     f: FaceId,
 ) -> Result<CurveHits> {
+    // (an evaluation copy of the face's surface: same owner and cache slot)
     let surface = crate::topology::face::p2::surface(b, f)?
-        .ok_or_else(|| SolidError::sm_err(OP_CURVE_FACE))?;
-    let solutions = curve_surface_solutions(
-        k,
-        curve,
-        surface,
-        &crate::topology::face::p2::uv_domain(b, f)?,
-    )?;
+        .ok_or_else(|| SolidError::sm_err(OP_CURVE_FACE))?
+        .clone_for_evaluation()?;
+    let uv_domain = crate::topology::face::p2::uv_domain(b, f)?;
+    let services = BrepFaceServices::new(b);
+    let solutions = curve_face_solutions(k, curve, &services, f, &surface, &uv_domain)?;
     let mut hits = CurveHits::default();
-    append_curve_surface_hits(k, curve, &solutions, Some((b, f)), false, &mut hits)?;
+    append_curve_surface_hits(k, curve, &solutions, Some((&services, f)), false, &mut hits)?;
     found(hits, OP_CURVE_FACE)
 }
 
@@ -556,18 +590,26 @@ pub fn intersect_curve_face(
 /// [`intersect_curve_face`] on any face (no partial result is returned).
 pub fn intersect_curve_brep(k: &Kernel, curve: &Curve, b: &mut Brep) -> Result<CurveHits> {
     let faces = crate::topology::brep::p1::faces(b, None)?;
+    // (one set of face services for the call: each face's cache is kept, as upstream's
+    // on its surface)
+    let services = BrepFaceServices::new(b);
     let mut hits = CurveHits::default();
     for f in faces {
-        let Some(surface) = crate::topology::face::p2::surface(b, f)? else {
+        // (an evaluation copy of the face's surface: same owner and cache slot)
+        let face_surface = services.with_brep(|b| {
+            let Some(surface) = crate::topology::face::p2::surface(b, f)? else {
+                return Ok(None);
+            };
+            Ok(Some((
+                surface.clone_for_evaluation()?,
+                crate::topology::face::p2::uv_domain(b, f)?,
+            )))
+        })?;
+        let Some((surface, uv_domain)) = face_surface else {
             continue;
         };
-        let solutions = curve_surface_solutions(
-            k,
-            curve,
-            surface,
-            &crate::topology::face::p2::uv_domain(b, f)?,
-        )?;
-        append_curve_surface_hits(k, curve, &solutions, Some((&mut *b, f)), true, &mut hits)?;
+        let solutions = curve_face_solutions(k, curve, &services, f, &surface, &uv_domain)?;
+        append_curve_surface_hits(k, curve, &solutions, Some((&services, f)), true, &mut hits)?;
     }
     found(hits, OP_CURVE_BREP)
 }
