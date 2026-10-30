@@ -8,7 +8,7 @@
 //! | [`collect_faces`] | `SmTopologyTraverser::CollectFaces`, `sm_CollectFaces` |
 //! | [`collect_wire_edges`] | `SmTopologyTraverser::CollectWireEdges`, `sm_CollectWires` |
 //! | [`closure_traversal`], [`faceuse_traversal`] | `ClosureTraversal`, `FaceuseTraversal` |
-//! | [`closure_traversal_from_both_sides`] | `ClosureTraversalFromBothSides` (fork tangency-labs/smlib@69c5198, WR-566) |
+//! | [`closure_traversal_from_both_sides`] | `ClosureTraversalFromBothSides` (fork tangency-labs/smlib@69c5198, WR-584) |
 //! | [`remove_shell`], [`faceuse_shell_replacement`] | `RemoveShell`, `FaceuseShellReplacement` |
 //! | [`shell_traversal`], `shell_connectivity` (private) | `ShellTraversal`, `sm_ShellConnectivity` |
 //! | [`is_inner_shell`] | `IsInnerShell`, `IsOdd` |
@@ -35,7 +35,7 @@
 //! `ClosureTraversalFromBothSides` is not in the pinned upstream: it is the fork's
 //! (tangency-labs/smlib@69c5198), used only under
 //! [`UpstreamFixes::boolean_new_face_closure_both_sides`](crate::kernel::UpstreamFixes::boolean_new_face_closure_both_sides)
-//! (WR-566). Its `std::unordered_map` side table becomes a vector indexed by face-use
+//! (WR-584). Its `std::unordered_map` side table becomes a vector indexed by face-use
 //! arena slot (lookups only, as the fork; no iteration).
 
 use std::collections::BTreeMap;
@@ -384,7 +384,7 @@ pub fn closure_traversal(
     faceuse_traversal(k, b, marks, start, lock.mark_type(), faceuses)
 }
 
-/// `ClosureTraversalFromBothSides` (fork tangency-labs/smlib@69c5198, WR-566):
+/// `ClosureTraversalFromBothSides` (fork tangency-labs/smlib@69c5198, WR-584):
 /// [`closure_traversal`]'s answer, found by two breadth-first searches through edge-use
 /// radials, one from `start` and one from its mate, expanding one face use of each in
 /// turn. The searches meet (the mate is reachable: not closed) or one side runs out

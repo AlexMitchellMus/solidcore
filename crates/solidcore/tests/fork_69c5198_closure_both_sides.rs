@@ -1,4 +1,4 @@
-//! WR-566 (the fork's tangency-labs/smlib@69c5198): `SmBrep::TestClosureSplitRegion`
+//! WR-584 (the fork's tangency-labs/smlib@69c5198): `SmBrep::TestClosureSplitRegion`
 //! asks whether a new face closes a region with `ClosureTraversal`, a depth-first walk
 //! from one side that stops only at the face's mate, so a face that does not close a
 //! region walks (and marks) most of its shell first.

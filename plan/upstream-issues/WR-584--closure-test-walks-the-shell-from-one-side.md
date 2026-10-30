@@ -1,4 +1,4 @@
-#### WR-566. `TestClosureSplitRegion`'s closure test walks the whole shell from one side for a face that closes nothing
+#### WR-584. `TestClosureSplitRegion`'s closure test walks the whole shell from one side for a face that closes nothing
 - **Severity:** Performance (quadratic in the shell's size over a boolean; the result is unchanged)
 - **Area:** Booleans / topology (region splitting)
 - **Location:** `source/SMLib/src/SmBrep.cpp`, `SmBrep::TestClosureSplitRegion(SmFaceuse*)`: it asks `SmTopologyTraverser::ClosureTraversal` (`source/SMLib/src/SmTopologyTraverser.cpp`, via `FaceuseTraversal`) whether the new face use's mate is reachable through edge-use radials.
