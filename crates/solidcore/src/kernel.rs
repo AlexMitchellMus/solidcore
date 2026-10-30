@@ -188,6 +188,8 @@ pub struct UpstreamFixes {
     pub fillet_knife_edge_rounds: bool,
     /// `DoExtendedOffset` finds the excess offset faces after the merge only, not also on the untrimmed faces before it (WR-341, #977).
     pub offset_excess_faces_after_merge: bool,
+    /// The extended offset (`SmOffsetExecutive::DoExtendedOffset`, which shells and offsets with extended convex edges) caps each vertex of the original with one edge (a cone's apex, the tip of a drilled hole) with the sphere `BuildOffsetOfVertex` builds for it, a face of the whole sphere zone the merge joins to the cone's offset; upstream builds no vertex offsets there, so the cone's offset ends open on the circle the apex's normals sweep out and the shell fails (WR-531; the fork's tangency-labs/smlib@d5dadaa).
+    pub offset_point_vertex_caps: bool,
     /// `BuildOffsetOfFaceuse` clips a face to its offset domain from its counterclockwise loops (an inset is not turned inside out) (WR-342, #974).
     pub offset_clip_right_side_out: bool,
     /// `SmSurfOfRevolution::CreateOffsetSurface` cuts the offset generator at the axis on either side of the frame origin (WR-343, #973).
@@ -252,8 +254,6 @@ pub struct UpstreamFixes {
     pub revolve_nested_shells_as_cavities: bool,
     /// With `revolve_nested_shells_as_cavities`, a full-turn rotational sweep whose stitch left one shell in the infinite region but nested the others itself (a profile with a hole: the hole's ring lies inside the ring around it, in that ring's region) sets every region's void flag from the nesting (`SetRegionIsVoidFlagsForNestedSolids`) when every shell is a closed face-use shell, so the hole's ring is a void, not material (WR-529; the fork's tangency-labs/smlib@38b4212).
     pub revolve_holed_profile_void: bool,
-    /// `SmStitch::StitchIntoSolid`, once the stitch leaves no lamina edge and more than one region, sets the regions as a nested solid model (`FindAndSetInfiniteRegion(NULL, SM_VS_NESTEDSOLID)`, editing disabled): material inside the outer shell, a void inside a closed shell nested in it, each region's outer shell first. Upstream only finds the infinite region, so a cavity's region stays material and its shell stays where the glue put it (WR-565; the fork's tangency-labs/smlib@351c57c).
-    pub stitch_solid_is_nested_cavities_void: bool,
     /// A curve sweep caps from the side faces at the sweep's start and end (WR-404, #411).
     pub curve_sweep_caps_at_sweep_ends: bool,
     /// Planar faces from curves join a loop touching another loop at a vertex into that loop (WR-405, #892).
@@ -428,6 +428,8 @@ pub struct UpstreamFixes {
     pub curve_tight_box_interval_knots: bool,
     /// `SmTopologyIntersector::IntersectTopology` skips a face pair whose face boxes lie farther apart than the intersection tolerance (a box that cannot be computed, or holds nothing, rules nothing out), and `SmBrep::MakeEdgeInFaceWithVU`, on a plane, leaves in place without classifying an inner loop whose test point lies outside the box of the new face's outer loop (grown by the edges' tolerances, at the retry tolerance). Upstream pairs every face of one sheet with every face of the other through whole-surface checks and classifies every inner loop against each imprinted face, so a 2D boolean of a sheet with n holes takes time in n^2 (WR-527, #1526/#1527; the fork's tangency-labs/smlib@60b1c6a).
     pub boolean_skips_faces_apart: bool,
+    /// `SmStitch::StitchIntoSolid`, when its stitch leaves no lamina edge and more than one region, makes the B-rep a nested solid model (`FindAndSetInfiniteRegion(NULL, SM_VS_NESTEDSOLID)`, with editing disabled): material inside the outer shell, a void inside a shell within it, and so on, each region's outer shell first. Upstream's stitch only finds the infinite region (`SM_VS_INFINITEREGION_SWAP`), so the region inside a closed shell nested in another stays solid and the shells stay where the gluing put them: a holed profile swept round a closed path measures as if it had no hole, and twisted a half turn fails the check (Test #12, an inner shell not inside its region's outer shell) (WR-569; the fork's tangency-labs/smlib@351c57c).
+    pub stitch_solid_nests_cavities: bool,
 }
 
 /// Options for [`Kernel::new`].

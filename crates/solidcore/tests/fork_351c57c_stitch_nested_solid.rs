@@ -1,9 +1,9 @@
-//! WR-565 (the fork's tangency-labs/smlib@351c57c): `SmStitch::StitchIntoSolid` finds
+//! WR-569 (the fork's tangency-labs/smlib@351c57c): `SmStitch::StitchIntoSolid` finds
 //! the infinite region only, so a closed shell nested inside another stays in the region
 //! the gluing put it in and the region inside it stays material.
 //!
 //! The case: twelve separate square faces, the six of the cube -5..5 and the six of the
-//! cube -2..2, stitched into a solid. With `Kernel::fixes.stitch_solid_is_nested_cavities_void`
+//! cube -2..2, stitched into a solid. With `Kernel::fixes.stitch_solid_nests_cavities`
 //! the regions are set as a nested solid model: the small cube is the cavity, and the
 //! volume is 10^3 - 4^3 = 936.
 #![allow(
@@ -70,7 +70,7 @@ fn volume(k: &Kernel, b: &mut Brep) -> f64 {
 /// Stitches the hollow cube; the kernel, the stitched B-rep and the stitch's solid flag.
 fn stitched(fix: bool) -> (Kernel, Brep, bool) {
     let mut k = Kernel::default();
-    k.fixes.stitch_solid_is_nested_cavities_void = fix;
+    k.fixes.stitch_solid_nests_cavities = fix;
     let mut b = new_brep(&mut k, USE_DEFAULT, USE_DEFAULT).unwrap();
     add_cube_faces(&mut k, &mut b, 5.0);
     add_cube_faces(&mut k, &mut b, 2.0);
