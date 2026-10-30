@@ -9,12 +9,7 @@
 //! refuses that open offset. With `offset_point_vertex_caps` the apex's offset is a
 //! sphere zone of radius 2 and the shell is a closed solid.
 //!
-//! The result is checked with the geometry owners the body itself records: a merged
-//! shell result is labelled `NamingScheme::Notify` while its edges' curves are owned
-//! under the caller's merge and result identities (#1670, open), so `check_brep`'s owner
-//! comparison in `SmBrep` test 61 fails on such edges of any merged shell, with or
-//! without the opt-in. Every other check, and the rest of test 61 (each edge's ends on
-//! its vertices), still runs.
+//! The result must pass SMLib's level-2 check (`check_brep`) clean.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -28,17 +23,14 @@ mod offset_fixture;
 use offset_fixture::{planar_faces_at, shell};
 use solidcore::boolean::api_brep::boolean_difference;
 use solidcore::curve::curve::Curve;
-use solidcore::geom::attribute::ObjectKey;
-use solidcore::geom::object::ObjectRef;
 use solidcore::math::{Point3, Vec3};
 use solidcore::primitive::api_curves::create_line_segment;
 use solidcore::primitive::api_primitives::create_box;
 use solidcore::query::api_queries::brep_is_manifold_solid;
 use solidcore::surface::surface::SurfaceKind;
 use solidcore::sweep::api_brep::create_rotational_sweep;
-use solidcore::topology::brep::validation::{check_brep_with_keys, CheckLevel};
-use solidcore::{Brep, EntityRef, Kernel};
-use std::collections::BTreeMap;
+use solidcore::topology::brep::validation::{check_brep, CheckLevel};
+use solidcore::{Brep, Kernel};
 
 /// A 40 x 40 x 20 box with a hole r 3 drilled 10 deep from the top at (20, 20), its
 /// tip a 118 degree cone.
@@ -88,45 +80,9 @@ fn shelled(fixed: bool, refuse_open: bool, open_top: bool) -> solidcore::Result<
     Ok((k, b))
 }
 
-/// The geometry owners `b` records: each edge's curve's, face's surface's and edge
-/// use's UV trim curve's (the only entities the check names as owners).
-fn recorded_owners(b: &Brep) -> BTreeMap<EntityRef, ObjectRef> {
-    let mut owners = BTreeMap::new();
-    for e in b.edges().ids() {
-        if let Some(o) = b.edge(e).unwrap().curve.as_ref().and_then(Curve::owner) {
-            owners.insert(EntityRef::Edge(e), o);
-        }
-    }
-    for f in b.faces().ids() {
-        if let Some(o) = b.face(f).unwrap().surface.as_ref().and_then(|s| s.owner()) {
-            owners.insert(EntityRef::Face(f), o);
-        }
-    }
-    for eu in b.edgeuses().ids() {
-        if let Some(o) = b
-            .edgeuse(eu)
-            .unwrap()
-            .uv_trim_curve
-            .as_ref()
-            .and_then(Curve::owner)
-        {
-            owners.insert(EntityRef::Edgeuse(eu), o);
-        }
-    }
-    owners
-}
-
-/// The level-2 check's failure count and report lines under the owners the body
-/// records (#1670).
-// TODO(#1670): return to plain `check_brep` once tangency-labs/solidcore#1674 merges.
+/// The level-2 check's failure count and report lines.
 fn check(k: &mut Kernel, b: &mut Brep) -> (usize, Vec<String>) {
-    let owners = recorded_owners(b);
-    let none = ObjectRef {
-        type_code: 0,
-        key: ObjectKey(0),
-    };
-    let keys = |e: EntityRef| owners.get(&e).copied().unwrap_or(none);
-    let c = check_brep_with_keys(k, b, CheckLevel::Level2, &keys).unwrap();
+    let c = check_brep(k, b, CheckLevel::Level2).unwrap();
     (c.failure_count(), c.lines())
 }
 
@@ -155,6 +111,7 @@ fn wr_531_drilled_hole_shells_with_a_sphere_cap() {
             );
             assert_eq!(spheres(&b), 1, "{case}: one cap on a sphere");
             let (failed, lines) = check(&mut k, &mut b);
+            eprintln!("wr_531 {case}: {failed} failures {lines:?}");
             assert_eq!(failed, 0, "{case}: {lines:?}");
         }
     }
