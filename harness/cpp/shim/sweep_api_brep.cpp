@@ -58,6 +58,7 @@ enum : int32_t
     OP_TAPER = 9,
     OP_LINEAR_REPS = 10,
     OP_ROTATIONAL_REPS = 11,
+    OP_FROM_BOX_FACE = 12,
 };
 
 // Curve kinds of a curve block.
@@ -354,7 +355,7 @@ SmSweepOptions options_of(const SweepArgs& a)
 
 void run(Rd& rd, std::vector<double>& o, bool observe = false)
 {
-    int32_t op = (int32_t)rd.idx(1, 11);
+    int32_t op = (int32_t)rd.idx(1, 12);
     if (observe && op != OP_LINEAR) throw Bad();
     switch (op)
     {
@@ -502,6 +503,45 @@ void run(Rd& rd, std::vector<double>& o, bool observe = false)
                                                   a.has_options ? &opts : NULL, res, &s, &sd, &e);
         }
         put_sweep(o, stat, res, s, sd, e);
+        break;
+    }
+    case OP_FROM_BOX_FACE:
+    {
+        std::vector<double> box = rd.nums(6);
+        int64_t fi = rd.idx(0, 5);
+        SweepArgs a = read_sweep_args(rd);
+        if (rd.at != rd.n)
+            throw Bad();
+        Owned own;
+        SmBrep* b = NULL;
+        if (SmApiCreateBox(v3(box.data()), box[3], box[4], box[5], b) != SM_SUCCESS || b == NULL)
+            throw Bad();
+        own.breps.push_back(b);
+        SmTArray<SmFace*> all;
+        b->GetFaces(all);
+        if ((ULONG)fi >= all.GetSize())
+            throw Bad();
+        SmTArray<SmFace*> faces;
+        faces.Add(all[(ULONG)fi]);
+        SmBSplineCurve* path = own.add_bspline(a.path);
+        SmBSplineCurve* sref = own.add_bspline(a.scale_ref);
+        SmBSplineCurve* scl = own.add_bspline(a.scale);
+        SmSweepOptions opts = options_of(a);
+        SmBrep* res = NULL;
+        SmTArray<SmFace*> s, sd, e;
+        SmApiStatus stat = SmApiCreateCurveSweepFromFaces(faces, path, sref, scl,
+                                                          a.has_options ? &opts : NULL, res, &s, &sd, &e);
+        // The volume first: put_sweep deletes the result.
+        double volume = 0.0;
+        SmApiStatus volume_status = SM_SUCCESS;
+        if (stat == SM_SUCCESS && res)
+            volume_status = SmApiBrepComputeVolume(res, 1e-6, volume);
+        put_sweep(o, stat, res, s, sd, e);
+        if (stat == SM_SUCCESS && res)
+        {
+            o.push_back(st(volume_status));
+            o.push_back(volume_status == SM_SUCCESS ? volume : 0.0);
+        }
         break;
     }
     default: throw Bad();
