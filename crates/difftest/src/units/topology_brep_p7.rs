@@ -12,6 +12,10 @@
 //! intervals, endpoint vertices, curve types, natural intervals, point samples and
 //! each edge use's UV trim type, interval and samples when present.
 //! The raw-knot plane fixtures construct their B-reps independently on each side.
+//! For `glue`, `copy` and `merge_self` the C++ side builds the fixture B-rep and the Rust
+//! side makes the same source itself ([`own_brep`]: the Rust kernel's build, or the Rust
+//! reader for an `.smb` file, renumbered into the shim's walk order), resolving the
+//! selectors against its own counts; no C++ export reaches the Rust side.
 //! Both sides produce one record (`out`) laid out as in the ffi module; statuses are `SmStatus` values (a Rust
 //! `InvalidInput` is `SM_ERR_INVALID_INPUT`, `1007`).
 //!
@@ -470,6 +474,72 @@ fn resolve(i: &Inputs) -> Result<Result<(Inputs, Option<Rc<Vec<f64>>>), Output>,
         _ => {}
     }
     Ok(Ok((r, Some(ex))))
+}
+
+/// The Rust side's fixture B-rep: the source built by the Rust kernel as the shim
+/// builds it ([`crate::own_builder::build_as`]), or its `.smb` file read by the Rust
+/// reader ([`crate::own_builder::read_with`]), renumbered into the shim's walk order under
+/// `Conventions::TOPOLOGY_FIXTURE` (a face's surface owned by `(SmFace_TYPE, 1 + index)`,
+/// the face identity [`key_of`] and [`this_face`] name). A failed build is its output as
+/// the C++ side reports the shim's (`-1` and the status), or the deferral of an unported
+/// callee.
+fn own_brep(k: &mut Kernel, brep: &BrepIn) -> Result<Result<Brep, Output>, HarnessError> {
+    use crate::own_builder::{build_as, build_status, read_with, Built, Conventions};
+    let conv = &Conventions::TOPOLOGY_FIXTURE;
+    let built = match brep {
+        BrepIn::File { rebuild, .. } => {
+            read_with(k, &shared::path_of(brep)?, *rebuild, false, false, conv)?
+        }
+        other => build_as(k, other, false, false, conv)?
+            .ok_or_else(|| harness("B-rep source not built"))?,
+    };
+    Ok(match built {
+        Built::Brep(b) => Ok(*b),
+        Built::Failed(e) => Err(Output::unported(&e)
+            .unwrap_or_else(|| Output::new().values("out", vec![-1.0, build_status(&e)]))),
+    })
+}
+
+/// The Rust side's case and B-rep: for `glue`, `copy` and `merge_self` (but a raw-knot
+/// merge, which builds its plane face itself) the source made by [`own_brep`] and the
+/// selectors resolved against its own counts, as [`resolve`] resolves them against the
+/// shim's export for the C++ side.
+fn rust_inputs(
+    k: &mut Kernel,
+    i: &Inputs,
+) -> Result<Result<(Inputs, Option<Brep>), Output>, HarnessError> {
+    let (Inputs::Glue { brep, .. } | Inputs::Copy { brep, .. } | Inputs::MergeSelf { brep, .. }) =
+        i
+    else {
+        return Ok(Ok((i.clone(), None)));
+    };
+    if let Inputs::MergeSelf { curves, .. } = i {
+        if curves.iter().any(|c| c.raw_knots) {
+            // (its checks only: no export is made for a raw-knot merge)
+            return Ok(resolve(i)?.map(|(r, _)| (r, None)));
+        }
+    }
+    let b = match own_brep(k, brep)? {
+        Ok(b) => b,
+        Err(o) => return Ok(Err(o)),
+    };
+    let c = crate::own_builder::counts(&b);
+    let (n_f, n_e) = (c[3], c[7]);
+    let mut r = i.clone();
+    match &mut r {
+        Inputs::Glue { e1, e2, .. } => {
+            *e1 = shared::sel(*e1, n_e);
+            *e2 = shared::sel(*e2, n_e);
+        }
+        Inputs::MergeSelf { face, .. } => {
+            if n_f == 0 {
+                return Ok(Err(Output::err("no_face")));
+            }
+            *face = shared::sel((*face).max(0), n_f);
+        }
+        _ => {}
+    }
+    Ok(Ok((r, Some(b))))
 }
 
 // ---- C++ side ---------------------------------------------------------------------------
@@ -933,7 +1003,7 @@ fn new_face_record(b: &Brep, r: &Result<p7::NewFace, SolidError>) -> Record {
 }
 
 #[allow(clippy::too_many_lines)] // one record per op
-fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
+fn rust_record(k: &mut Kernel, i: &Inputs, built: Option<Brep>) -> Record {
     match i {
         Inputs::Read {
             file,
@@ -1191,8 +1261,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
             nesting,
             ..
         } => {
-            let ex = ex.ok_or_else(|| hfail("no export"))?;
-            let (mut b, _) = shared::import(ex)?;
+            let mut b = built.ok_or_else(|| hfail("no B-rep"))?;
             let eid = |x: i64| (x >= 0).then(|| EdgeId::from_index(x as u32));
             // the shim's guard: upstream dereferences a null edge curve
             // (CurveMaxDistanceBetween) when gluing two distinct non-wire edges with
@@ -1244,8 +1313,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
         Inputs::Copy {
             n, merge, repeat, ..
         } => {
-            let ex = ex.ok_or_else(|| hfail("no export"))?;
-            let (mut b, _) = shared::import(ex)?;
+            let mut b = built.ok_or_else(|| hfail("no B-rep"))?;
             let faces: Vec<FaceId> = b.faces().ids().take(*n as usize).collect();
             let (mut dest, _) = native_brep()?;
             let mut o = vec![0.0];
@@ -1324,8 +1392,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                 .map_err(hfail)?;
                 (b, f)
             } else {
-                let ex = ex.ok_or_else(|| hfail("no export"))?;
-                let (b, _) = shared::import(ex)?;
+                let b = built.ok_or_else(|| hfail("no B-rep"))?;
                 (b, FaceId::from_index(*face as u32))
             };
             if b.face(f).map_err(hfail)?.surface.is_none() {
@@ -1424,12 +1491,12 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
             return Ok(Output::err("guard"));
         }
     }
-    let (r, ex) = match resolve(i)? {
+    let mut k = Kernel::default();
+    let (r, built) = match rust_inputs(&mut k, i)? {
         Ok(x) => x,
         Err(o) => return Ok(o),
     };
-    let mut k = Kernel::default();
-    match rust_record(&mut k, &r, ex.as_deref().map(Vec::as_slice)) {
+    match rust_record(&mut k, &r, built) {
         Ok(v) => Ok(Output::new().values("out", v)),
         Err(Fail::Deferred(o)) => Ok(*o),
         Err(Fail::Harness(h)) => Err(h),
