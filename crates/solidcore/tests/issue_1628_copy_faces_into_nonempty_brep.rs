@@ -16,44 +16,39 @@ use solidcore::topology::brep::p3::new_brep;
 use solidcore::topology::brep::p5::{stitch_and_orient, StitchAndOrientOptions};
 use solidcore::topology::brep::p7::copy_faces;
 use solidcore::topology::Brep;
-use solidcore::{EntityRef, Kernel};
+use solidcore::{EntityRef, FaceId, Kernel, Result};
 
 /// The four sides of the 10 x 10 square at height `z`.
-fn square(z: f64) -> Vec<Curve> {
+fn square(z: f64) -> Result<Vec<Curve>> {
     let p = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]];
-    (0..4)
-        .map(|i| {
-            let (a, b) = (p[i], p[(i + 1) % 4]);
-            Curve::from(
-                Line::create_line_segment(
-                    3,
-                    Vec3::new(a[0], a[1], z),
-                    Vec3::new(b[0], b[1], z),
-                    None,
-                )
-                .unwrap(),
-            )
+    p.iter()
+        .zip(p.iter().cycle().skip(1))
+        .map(|(a, b)| {
+            let line = Line::create_line_segment(
+                3,
+                Vec3::new(a[0], a[1], z),
+                Vec3::new(b[0], b[1], z),
+                None,
+            )?;
+            Ok(Curve::from(line))
         })
         .collect()
 }
 
 /// Copies the walls of a 10 x 10 x 10 open tube based at `z` into `dest`, with the
-/// notification environment `PrimitiveModel::copy_faces_into` builds.
-fn copy_tube(k: &mut Kernel, dest: &mut Brep, z: f64) {
-    let s = square(z);
+/// notification environment `PrimitiveModel::copy_faces_into` builds; the result of
+/// the copy.
+fn copy_tube(k: &mut Kernel, dest: &mut Brep, z: f64) -> Result<(Vec<FaceId>, bool)> {
+    let s = square(z)?;
     let refs: Vec<Option<&Curve>> = s.iter().map(Some).collect();
-    let mut piece = create_linear_sweep(k, &refs, Vec3::new(0.0, 0.0, 1.0), 10.0, false).unwrap();
-    let faces = bp1::faces(&piece, None).unwrap();
+    let mut piece = create_linear_sweep(k, &refs, Vec3::new(0.0, 0.0, 1.0), 10.0, false)?;
+    let faces = bp1::faces(&piece, None)?;
     let mut state = ArenaNotifyState::new(dest);
     state.seed(&piece);
     let mut env = state.env(None);
     let key_of = env.key_of;
     let this_face = |f| key_of(EntityRef::Face(f));
-    let r = copy_faces(k, &mut piece, &faces, dest, false, &this_face, &mut env);
-    assert!(
-        matches!(r, Ok((ref made, true)) if made.len() == 4),
-        "z = {z}: {r:?}"
-    );
+    copy_faces(k, &mut piece, &faces, dest, false, &this_face, &mut env)
 }
 
 #[test]
@@ -61,7 +56,11 @@ fn copy_faces_twice_into_one_brep() {
     let mut k = Kernel::default();
     let mut dest = new_brep(&mut k, USE_DEFAULT, USE_DEFAULT).unwrap();
     for z in [0.0, 10.0] {
-        copy_tube(&mut k, &mut dest, z);
+        let r = copy_tube(&mut k, &mut dest, z);
+        assert!(
+            matches!(r, Ok((ref made, true)) if made.len() == 4),
+            "z = {z}: {r:?}"
+        );
     }
     assert_eq!(bp1::faces(&dest, None).unwrap().len(), 8);
 
@@ -80,7 +79,11 @@ fn copy_faces_three_times_into_one_brep() {
     let mut k = Kernel::default();
     let mut dest = new_brep(&mut k, USE_DEFAULT, USE_DEFAULT).unwrap();
     for z in [0.0, 10.0, 20.0] {
-        copy_tube(&mut k, &mut dest, z);
+        let r = copy_tube(&mut k, &mut dest, z);
+        assert!(
+            matches!(r, Ok((ref made, true)) if made.len() == 4),
+            "z = {z}: {r:?}"
+        );
     }
     assert_eq!(bp1::faces(&dest, None).unwrap().len(), 12);
 
