@@ -29,11 +29,13 @@
 //! | [`vertices`], [`vertexuses`], [`edgeuses`], [`AttributeFilter`] | `SmEdge::GetVertices(SmTArray&, ULONG*)`, `GetVertexuses`, `GetEdgeuses` |
 //! | [`max_gap_3d`], [`max_up_dim_gap_3d`], [`max_down_dim_gap_3d`], [`EdgeGap`], [`MaxGap`] | `SmEdge::GetMaxGap3d`, `GetMaxUpDimGap3d`, `GetMaxDownDimGap3d` |
 //! | [`number_face_occurances`]              | `SmEdge::GetNumberFaceOccurances`                 |
+//! | [`edge_form`] (submodule)               | `SmEdge::IsOnFaceEdgeForm`, `sm_AssertTestEdge13` |
 //! | [`add_oriented_eu_pair`]                | `SmEdge::AddOrientedEUPair`                       |
 //! | [`vertex`], [`start_vertex`], [`end_vertex`], [`other_vertex`], [`start_end_vertices`] | `SmEdge::GetVertex`, `GetStartVertex`, `GetEndVertex`, `GetOtherVertex`, `GetVertices(SmVertex*&, SmVertex*&)` |
 //! | [`insert_manifold_edge_end`]            | `SmEdge::InsertManifoldEdgeEnd`                   |
 //! | [`is_lamina`], [`is_manifold`], [`is_spine`] | `SmEdge::IsLamina`, `IsManifold`, `IsSpine`  |
 //! | [`is_seam`], [`is_seam_of_surface`]     | the two `SmEdge::IsSeam`                          |
+//! | [`is_embedded`]                         | `SmEdge::IsEmbedded`                              |
 //! | `cover_other_coincident_face` (private) | `sm_CoverOtherCoincidentFace` (static)            |
 //! | [`is_topological`], [`Topological`]     | `SmEdge::IsTopological`                           |
 //! | [`is_tangent_edge`]                     | `SmEdge::IsTangentEdge`                           |
@@ -107,6 +109,8 @@
 //!   `surface.surface_p5` (and its `CoverCoincidentSurface` to `surface.surface_p3`); the
 //!   two face surfaces are moved out of their faces for the call and back, so the
 //!   covering surface keeps any expansion, as upstream.
+
+pub mod edge_form;
 
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{ignore_status, EntityRef, Result, SolidError};
@@ -1594,6 +1598,48 @@ pub fn is_spine(b: &Brep, e: EdgeId) -> Result<bool> {
     }
 }
 
+/// `IsEmbedded(pOptFace, bFaceHasSeam)`: the edge has four edge uses on `face` (on any
+/// of its faces when `None`): an edge embedded within a single face, e.g. a crack. A
+/// seam is not embedded; with `face_has_seam` false the (expensive) seam test is
+/// skipped. An embedded edge can connect to other faces.
+///
+/// # Errors
+///
+/// Those of [`faces`], [`edgeuses`], the edge uses' faces and [`is_seam`].
+pub fn is_embedded(
+    k: &Kernel,
+    b: &mut Brep,
+    e: EdgeId,
+    face: Option<FaceId>,
+    face_has_seam: bool,
+) -> Result<bool> {
+    // search face or all faces connected to this edge when face is None
+    let tgt_faces = match face {
+        None => faces(b, e, None)?,
+        Some(f) => vec![f],
+    };
+    let uses = edgeuses(b, e, None, None)?;
+
+    // for every face
+    for tgt in tgt_faces {
+        // count the edgeuses that connect to this face
+        let mut count = 0usize;
+        for &eu in &uses {
+            if eu1::face(b, eu)? == Some(tgt) {
+                count += 1;
+            }
+        }
+
+        // when we found a face being embedded
+        if count == 4 && (!face_has_seam || !is_seam(k, b, e)?) {
+            return Ok(true);
+        }
+    }
+
+    // else - edge is not embedded
+    Ok(false)
+}
+
 /// `IsSeam()`: the edge is a seam of the surface of any of its faces
 /// ([`is_seam_of_surface`]).
 pub fn is_seam(k: &Kernel, b: &mut Brep, e: EdgeId) -> Result<bool> {
@@ -2129,7 +2175,9 @@ pub fn set_orientation(b: &mut Brep, e: EdgeId, orientation: OrientType) -> Resu
 /// By default a failed curve reversal's status is ignored, as upstream: the edge
 /// gets the default interval and its uses are still flipped. With the opt-in
 /// [`crate::kernel::UpstreamFixes::edge_reversal_keeps_failed_edge`] (WR-260) a
-/// failed reversal returns before changing the interval or edge uses.
+/// failed reversal returns before changing the interval or edge uses, and an edge
+/// without curve keeps its interval (upstream installs the default one; fork
+/// tangency-labs/smlib 47507b6).
 ///
 /// # Errors
 ///
@@ -2148,6 +2196,9 @@ pub fn reverse_orientation(k: &Kernel, b: &mut Brep, e: EdgeId) -> Result<()> {
             Err(err) if k.fixes.edge_reversal_keeps_failed_edge => return Err(err),
             Err(err) => failed(err)?,
         }
+    } else if k.fixes.edge_reversal_keeps_failed_edge {
+        // nothing reversed the interval: the edge keeps it (WR-260 addendum)
+        new_ivl = old_ivl;
     }
     b.edge_mut(e)?.interval = new_ivl;
 
@@ -2809,13 +2860,17 @@ pub fn blend_edgeuse(k: &Kernel, b: &mut Brep, e: EdgeId) -> Result<Option<Edgeu
     // set max nonTangent angle to 88 degrees
     let max_dot = (88.0 * PI / 180.0).cos();
 
-    // the faces are tangent and can't be filleted
+    // the faces are tangent and can't be filleted. With `fillet_knife_edge_rounds`
+    // (WR-570, fork b7ec55b) only when their binormals point away from each other (the
+    // faces continue each other): binormals pointing the same way are a cusp (a knife
+    // edge), whose ball lies back from the edge, filleted like any other edge
+    let cusp = k.fixes.fillet_knife_edge_rounds && bin_vec.dot(bin_vec2) > 0.0;
     let dot1 = bin_vec2.dot(fu_normal);
-    if dot1.abs() < max_dot {
+    if !cusp && dot1.abs() < max_dot {
         return Ok(None); // Tangent: unable to fillet
     }
     let dot2 = bin_vec.dot(fu_normal2);
-    if dot2.abs() < max_dot {
+    if !cusp && dot2.abs() < max_dot {
         return Ok(None); // Tangent: unable to fillet
     }
 
@@ -3432,6 +3487,26 @@ mod tests {
         for eu in eus {
             assert!(b.edgeuse(eu).unwrap().uv_trim_curve.is_none());
         }
+    }
+
+    /// WR-260 addendum (fork tangency-labs/smlib 47507b6): reversing an edge without
+    /// curve installs the default interval upstream; with
+    /// `edge_reversal_keeps_failed_edge` the edge keeps its own.
+    #[test]
+    fn reversing_an_edge_without_curve_keeps_its_interval_with_the_opt_in() {
+        let mut k = Kernel::default();
+        let (mut b, e, _, _) = wire();
+        b.edge_mut(e).unwrap().curve = None;
+        let ivl = b.edge(e).unwrap().interval;
+        assert_ne!(ivl, Extent1d::new());
+        reverse_orientation(&k, &mut b, e).unwrap();
+        assert_eq!(b.edge(e).unwrap().interval, Extent1d::new());
+
+        k.fixes.edge_reversal_keeps_failed_edge = true;
+        let (mut b, e, _, _) = wire();
+        b.edge_mut(e).unwrap().curve = None;
+        reverse_orientation(&k, &mut b, e).unwrap();
+        assert_eq!(b.edge(e).unwrap().interval, ivl);
     }
 
     #[test]

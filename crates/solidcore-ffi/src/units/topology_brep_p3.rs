@@ -6,9 +6,9 @@
 //! Except for `Construct` and `ApiCopyNull`, every input is a B-rep block of
 //! [`super::topology_vertexuse`] (kinds `0..=3`), then `editing` (`-1` keep, `0` / `1`
 //! set `m_bEditingEnabled`), then the op's parameters: the head of
-//! [`super::topology_brep_p2`], whose shim builds (and normalises) the same B-rep, so
-//! its `Export` / `Extras` describe the B-rep these ops run on. Indices name entities
-//! in that export's order. Every output starts with `0`, or `-1 status` when the B-rep
+//! [`super::topology_brep_p2`], whose shim builds the same B-rep, so its `Export`
+//! gives the entity counts of the B-rep these ops run on (on its real geometry,
+//! analytic kinds included). Indices name entities in that export's order. Every output starts with `0`, or `-1 status` when the B-rep
 //! could not be built. `counts` is `faces edges vertices regions` of the B-rep after
 //! the op (a fresh walk), then per region (list order) `void infinite nshells` and per
 //! shell of it `type size has_head` (`m_tShellType`, `GetSize`, `m_pList != NULL`),
@@ -25,6 +25,7 @@
 //! | `Construct`     | `mse lsr` (no B-rep block) | `0 0 tol mse lsr editing infinite_void counts` (`SmBrep(mse, lsr)` in a context of its own) |
 //! | `Copy`          | `analytics api` | `status tol editing counts` of the copy (`api`: `SmApiBrepCopy`, else the copy constructor with `analytics`) |
 //! | `Merge`         | `analytics` | `status counts` (`MergeBrep` of the B-rep into a second build of it) |
+//! | `AttributedCopy` | `behavior` (`SmAttributeBehaviorType`, 0 to 4) | `status tol editing counts`, then the attribute rows of the copy and of the source (`SmApiBrepCopy` after every face, `GetFaces` order, and edge, `GetEdges` order, got a long attribute, id = value = `10007 + 500 kind + index`; per face then per edge, sorted: `n` and per attribute `id behavior value users`, users counted within that B-rep) |
 //! | `CopyVertices`  | `n v*` | `status new counts`, then four `n xyz*` snapshots (source/destination before, source/existing destination after), then `n (destination_walk_index xyz)*` in returned order (`CopyVertices` into a second build) |
 //! | `DeleteFace`    | `face delete_ev nesting keep_region` (`-1` null) | `status deleted counts tracker` |
 //! | `Wire`          | `which region v1 v2 curve t0 t1 orient end(3)` (`0` `MakeWireEdge`, `1` `MakeWireEdgeVertex`; region `-1` null) | `status counts tracker` |
@@ -71,6 +72,7 @@ pub enum Op {
     TurnNurbs = 10,
     ApiCopyNull = 11,
     TurnNurbsOffset = 12,
+    AttributedCopy = 13,
 }
 
 mod sys {
@@ -141,6 +143,9 @@ fn args(op: Op, rd: &mut Reader<'_>, c: &[usize; 10], has_infinite: bool) -> Res
         }
         Op::Merge => {
             rd.flag()?;
+        }
+        Op::AttributedCopy => {
+            int(rd, 0, 4)?;
         }
         Op::CopyVertices => {
             let n = rd.index(MAX_LIST)?;

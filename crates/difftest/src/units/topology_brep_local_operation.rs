@@ -10,11 +10,15 @@
 //! samples of every edge curve, every edge use's UV trim curve and every face surface
 //! (type code, natural domain, evaluated points). Inputs the native reader cannot build,
 //! and replacements the shim cannot make, are `rejected`, not failed.
+//!
+//! Generated cases: `genNNNN` on every solid but `Solids/nurb_fillet.smb` and
+//! `cone.smb`, and `fcNNNN` on those two, their own seed stream
+//! (`<unit>:fillet_cone`, [`FILLET_CONE_CASES`]), so adding them moved no `gen` case.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use solidcore::error::EntityRef;
-use solidcore::geom::attribute::{AttributeStore, ObjectKey};
+use solidcore::geom::attribute::{Attribute, AttributeStore, Behavior, ObjectKey};
 use solidcore::geom::object::ObjectRef;
 use solidcore::kernel::Kernel;
 use solidcore::math::{Point3, Vec3};
@@ -31,15 +35,20 @@ use solidcore::Result as SolidResult;
 use solidcore_ffi::units::topology_brep_local_operation::{self as ffi, Replacement};
 use solidcore_ffi::FfiError;
 
-use super::boolean_merge_p1::graph;
-use super::topology_brep_mirror::{
-    bind_owners, geometry, herr, normalize_face_shells, set_native_lists, status, FILES,
-};
-use super::topology_vertexuse::{import, import_raw, path_of, BrepIn};
+use super::boolean_merge_p1::{graph_owned, OwnerSource};
+use super::topology_brep_mirror::{geometry, herr, normalize_face_shells, status, FILES};
+use super::topology_vertexuse::{import_raw_with_owners, path_of, BrepIn};
 use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 
 /// The runner of `SmBrep::LocalOperation`.
 pub struct Runner;
+
+/// The solids of the `fcNNNN` cases (left out of the `gen` stream, which predates their
+/// fixes).
+const FILLET_CONE: [&str; 2] = ["Solids/nurb_fillet.smb", "cone.smb"];
+
+/// Generated `fcNNNN` cases per run, whatever `--seeds` says (it can only raise this).
+const FILLET_CONE_CASES: usize = 32;
 
 /// One replaced face (see the module doc).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +70,9 @@ struct Inputs {
     rebuild: bool,
     /// The faces to give new surfaces.
     replaced: Vec<Rep>,
+    /// Every face and edge first tagged with its own attribute, and the attributes of
+    /// the result's faces and edges recorded (shim op 3; issue #1462).
+    attributed: bool,
 }
 
 impl Default for Inputs {
@@ -73,6 +85,7 @@ impl Default for Inputs {
                 offset: 0.5,
                 tilt: [0.; 3],
             }],
+            attributed: false,
         }
     }
 }
@@ -134,7 +147,8 @@ fn planes(
         let uv = b.face(face)?.uv_domain.evaluate(0.5, 0.5);
         let (Ok(p), Ok(n)) = (
             surface.evaluate_point(k, uv),
-            surface.evaluate_normal(k, uv, Side::Right, Side::Right),
+            // (the shim's `EvaluateNormal(uv, TRUE, TRUE, ..)`: from the left)
+            surface.evaluate_normal(k, uv, Side::Left, Side::Left),
         ) else {
             return Ok(None);
         };
@@ -239,39 +253,45 @@ impl UnitDiff for Runner {
 
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
-        let raw = match native(&i, 1)? {
+        let raw = match native(&i, if i.attributed { 3 } else { 1 })? {
             Ok(raw) => raw,
             Err(refused) => return Ok(refused),
         };
         let n = *raw.first().ok_or_else(|| herr("short record"))? as usize;
         let record = raw.get(1..=n).ok_or_else(|| herr("short record"))?.to_vec();
-        let (mut b, _) = import_raw(raw.get(n + 1..).ok_or_else(|| herr("short graph"))?)?;
+        let (mut b, owners) =
+            import_raw_with_owners(raw.get(n + 1..).ok_or_else(|| herr("short graph"))?)?;
         strip_unrecorded(&mut b).map_err(herr)?;
         normalize_face_shells(&mut b).map_err(herr)?;
-        Ok(graph(&b, record))
+        graph_owned(&b, record, OwnerSource::Native(&owners))
     }
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
-        // the native side rejects the case: nothing is compared
-        let Ok(raw) = native(&i, 0)? else {
-            return Ok(Output::new());
-        };
-        let (mut b, _) = import(&raw)?;
-        // the native face and vertex list orders (the import orders them by the walk)
-        let lists = native(&i, 2)?.map_err(|_| herr("native lists"))?;
-        set_native_lists(&mut b, &lists)?;
         let mut k = Kernel::default();
-        bind_owners(&mut k, &mut b).map_err(herr)?;
+        // the Rust reader's B-rep of the same file, its geometry owners named by the
+        // Rust reader (no C++ export or owner reaches the Rust side)
+        let mut b = match crate::own_reader::read_file_rebuild(&mut k, &path(&i)?, i.rebuild)? {
+            Ok(b) => b,
+            Err(e) => {
+                return Output::unported(&e).ok_or_else(|| herr(format!("rust read: {e}")));
+            }
+        };
         let mut run = || -> SolidResult<Option<Vec<f64>>> {
             let Some((faces, surfaces)) = planes(&k, &b, &i)? else {
                 return Ok(None);
             };
+            if i.attributed {
+                tag(&mut b)?;
+            }
             let st = status(with_notifications(&mut b, |b, notes| {
                 local_operation(&mut k, b, &faces, surfaces, notes)
             }))?;
             let mut record = vec![st];
-            record.extend(geometry(&k, &b, false)?);
+            record.extend(geometry(&k, &b, true)?);
+            if i.attributed {
+                put_tags(&mut record, &b)?;
+            }
             Ok(Some(record))
         };
         match run() {
@@ -279,73 +299,144 @@ impl UnitDiff for Runner {
             Ok(Some(record)) => {
                 strip_unrecorded(&mut b).map_err(herr)?;
                 normalize_face_shells(&mut b).map_err(herr)?;
-                Ok(graph(&b, record))
+                // (the serial whose topology keys name the edit's new geometry)
+                let serial = solidcore::topology::brep::p3::notify_serial(&mut k.context, &mut b)
+                    .map_err(herr)?;
+                graph_owned(&b, record, OwnerSource::Rust { serial: Some(serial) })
             }
             Err(e) => Output::unported(&e).ok_or_else(|| herr(e)),
         }
     }
 
     fn generate(&self, rng: &mut Rng) -> Option<Value> {
-        // `Solids/nurb_fillet.smb` and `cone.smb` are covered by named fixtures, which are known
-        // mismatches (plan/findings/topology.brep_local_operation--*.md)
-        let solids: Vec<_> = FILES
-            .iter()
-            .filter(|f| !matches!(**f, "Solids/nurb_fillet.smb" | "cone.smb"))
-            .collect();
-        let file = solids.get(rng.below(solids.len() as u64) as usize)?;
-        let faces = match **file {
-            "Solids/sphere.smb" | "plane_circ.smb" => 1,
-            "disk.smb" => 2,
-            "Solids/cylinder.smb" => 3,
-            _ => 5,
-        };
-        let count = 1 + rng.below(3) as usize;
-        let mut replaced = Vec::new();
-        for _ in 0..count {
-            // an index past the solid's faces is rejected
-            let face = rng.below(faces) as u32;
-            let offset = match rng.below(4) {
-                0 => 0.0,
-                _ => rng.uniform(-1.5, 1.5),
-            };
-            let tilt = if rng.below(3) == 0 {
-                [
-                    rng.uniform(-0.3, 0.3),
-                    rng.uniform(-0.3, 0.3),
-                    rng.uniform(-0.3, 0.3),
-                ]
-            } else {
-                [0.; 3]
-            };
-            replaced.push(Rep { face, offset, tilt });
-        }
-        serde_json::to_value(Inputs {
-            file: (**file).into(),
-            rebuild: false,
-            replaced,
-        })
-        .ok()
+        // `Solids/nurb_fillet.smb` and `cone.smb` have their own stream (`fcNNNN`)
+        let solids: Vec<_> = FILES.iter().filter(|f| !FILLET_CONE.contains(*f)).collect();
+        generate_on(rng, &solids)
     }
 
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
-        let mut ctx = ctx.clone();
-        ctx.seeds = ctx.seeds.max(96);
-        crate::runner::default_cases(self, &ctx)
+        let mut main = ctx.clone();
+        main.seeds = main.seeds.max(96);
+        let mut v = crate::runner::default_cases(self, &main)?;
+        // nurb_fillet and cone: their own seed stream (the `gen` cases are unchanged),
+        // named `fcNNNN`
+        let fc = CaseContext {
+            seeds: ctx.seeds.max(FILLET_CONE_CASES),
+            ..ctx.clone()
+        };
+        let solids: Vec<_> = FILLET_CONE.iter().collect();
+        for mut c in fc.generated_cases("topology.brep_local_operation:fillet_cone", |rng| {
+            generate_on(rng, &solids)
+        }) {
+            c.name = c.name.replacen("gen", "fc", 1);
+            c.unit = self.id().to_string();
+            v.push(c);
+        }
+        Ok(v)
     }
 }
 
-/// Drops what the comparison does not record: the edge uses' UV trim curves (lazily made
-/// caches; the Rust merge copy leaves them on the edge uses of one face where the native
-/// copy leaves none, see the unit's notes) and the faces' `loops` lists (Rust-only logical
-/// records the native export walk never has, so the import leaves them empty).
-fn strip_unrecorded(b: &mut Brep) -> SolidResult<()> {
-    let uses: Vec<_> = b.edgeuses().ids().collect();
-    for id in uses {
-        b.edgeuse_mut(id)?.uv_trim_curve = None;
+/// A generated case on one of `solids`: one to three faces replaced by planes offset
+/// along and tilted from their surface normals.
+fn generate_on(rng: &mut Rng, solids: &[&&str]) -> Option<Value> {
+    let file = solids.get(rng.below(solids.len() as u64) as usize)?;
+    let faces = match **file {
+        // (cone.smb and Solids/nurb_fillet.smb: their files' "Faces In Brep" counts)
+        "Solids/sphere.smb" | "plane_circ.smb" | "cone.smb" => 1,
+        "disk.smb" => 2,
+        "Solids/cylinder.smb" => 3,
+        "Solids/nurb_fillet.smb" => 20,
+        _ => 5,
+    };
+    let count = 1 + rng.below(3) as usize;
+    let mut replaced = Vec::new();
+    for _ in 0..count {
+        // an index past the solid's faces is rejected
+        let face = rng.below(faces) as u32;
+        let offset = match rng.below(4) {
+            0 => 0.0,
+            _ => rng.uniform(-1.5, 1.5),
+        };
+        let tilt = if rng.below(3) == 0 {
+            [
+                rng.uniform(-0.3, 0.3),
+                rng.uniform(-0.3, 0.3),
+                rng.uniform(-0.3, 0.3),
+            ]
+        } else {
+            [0.; 3]
+        };
+        replaced.push(Rep { face, offset, tilt });
     }
+    serde_json::to_value(Inputs {
+        file: (**file).into(),
+        rebuild: false,
+        replaced,
+        attributed: false,
+    })
+    .ok()
+}
+
+/// The shim's op 3 tags: every face (`GetFaces` order) and edge (`GetEdges` order) its
+/// own copy attribute `10007 + 500 kind + index` (kind 0 face, 1 edge).
+fn tag(b: &mut Brep) -> SolidResult<()> {
+    for (i, f) in bp1::faces(b, None)?.into_iter().enumerate() {
+        let id = 10007 + i as u64;
+        b.add_attribute(
+            EntityRef::Face(f),
+            Attribute::long(id, id as i64, Behavior::Copy),
+        )?;
+    }
+    for (i, e) in bp1::edges(b, None)?.into_iter().enumerate() {
+        let id = 10507 + i as u64;
+        b.add_attribute(
+            EntityRef::Edge(e),
+            Attribute::long(id, id as i64, Behavior::Copy),
+        )?;
+    }
+    Ok(())
+}
+
+/// The shim's op 3 tail: `nf (n id*)* ne (n id*)*`, the ascending attribute ids of every
+/// face and edge in list order.
+fn put_tags(o: &mut Vec<f64>, b: &Brep) -> SolidResult<()> {
+    let ids = |o: &mut Vec<f64>, e: EntityRef| {
+        let mut v: Vec<u64> = b
+            .entity_attributes(e)
+            .into_iter()
+            .map(|(_, a)| a.attribute_id())
+            .collect();
+        v.sort_unstable();
+        o.push(v.len() as f64);
+        o.extend(v.into_iter().map(|x| x as f64));
+    };
+    let faces = bp1::faces(b, None)?;
+    o.push(faces.len() as f64);
+    for f in faces {
+        ids(o, EntityRef::Face(f));
+    }
+    let edges = bp1::edges(b, None)?;
+    o.push(edges.len() as f64);
+    for e in edges {
+        ids(o, EntityRef::Edge(e));
+    }
+    Ok(())
+}
+
+/// Drops what the comparison does not record: the faces' `loops` and the loops' `edges`
+/// lists (Rust-only logical records the native export walk never has, so the import
+/// leaves them empty; `local_operation` refreshes them before it returns, as
+/// `topology.brep_mirror`'s `clear_logical_lists` clears both). The edge uses' UV trim
+/// curves are compared through the geometry record (sampled on both sides as stored,
+/// `m_pUVTrimCurve`; nothing is made).
+fn strip_unrecorded(b: &mut Brep) -> SolidResult<()> {
     let faces: Vec<_> = b.faces().ids().collect();
     for id in faces {
         b.face_mut(id)?.loops.clear();
+    }
+    let loops: Vec<_> = b.loops().ids().collect();
+    for id in loops {
+        b.loop_mut(id)?.edges.clear();
     }
     Ok(())
 }

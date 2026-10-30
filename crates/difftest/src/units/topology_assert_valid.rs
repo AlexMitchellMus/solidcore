@@ -42,6 +42,7 @@ enum Src {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // independent serde case flags
 struct Inputs {
     brep: Src,
     #[serde(default)]
@@ -51,6 +52,21 @@ struct Inputs {
     /// Run the capi sequence instead of `AssertValid` alone.
     #[serde(default)]
     capi: bool,
+    /// Run the level-2 tests one by one (shim op 2) instead of `AssertValid`.
+    #[serde(default)]
+    tests: bool,
+    /// Run the capi sequence on the body's `SmApiBrepCopy` (shim op 3; Rust
+    /// `api_brep_copy` under caller keys, then `check_brep` by the copy's naming),
+    /// without mutation (#1584). Only the check's outcome is compared
+    /// ([`copy_summary`]): the copy's report identities are its caller keys.
+    #[serde(default)]
+    copy: bool,
+    /// With `copy`: check the result of an operation on the copy instead (shim op 4,
+    /// `copy_operation`; #1631): 1 union with a 10 mm box at `value` on each axis, 2
+    /// the same with that box's copy, 3 `fillet_edges` of edge `index` with radius
+    /// `value`, 4 a shell of distance `value` with face `index` open.
+    #[serde(default)]
+    copy_op: u8,
     #[serde(default)]
     mutation: u8,
     #[serde(default)]
@@ -104,6 +120,9 @@ fn key(e: EntityRef) -> ObjectRef {
 fn own_face_owner(f: FaceId) -> ObjectRef {
     key(EntityRef::Face(f))
 }
+fn own_edgeuse_owner(eu: EdgeuseId) -> ObjectRef {
+    key(EntityRef::Edgeuse(eu))
+}
 fn own_edge_owner(e: EdgeId) -> (ObjectRef, ObjectRef) {
     (
         key(EntityRef::Edge(e)),
@@ -118,6 +137,7 @@ const CONVENTIONS: crate::own_builder::Conventions<'static> = crate::own_builder
     skip_edge_list: false,
     face_owner: &own_face_owner,
     edge_owner: &own_edge_owner,
+    edgeuse_owner: &own_edgeuse_owner,
 };
 fn block(src: &Src) -> Result<(String, Vec<f64>), HarnessError> {
     Ok(match src {
@@ -160,7 +180,11 @@ fn args(i: &Inputs) -> [f64; 5] {
     [
         f64::from(i.level),
         f64::from(i.walk),
-        f64::from(i.mutation),
+        f64::from(if i.copy && i.copy_op != 0 {
+            i.copy_op
+        } else {
+            i.mutation
+        }),
         i.index as f64,
         i.value,
     ]
@@ -207,6 +231,16 @@ fn own_brep(k: &mut Kernel, src: &Src) -> Result<Result<Brep, Output>, HarnessEr
         Built::Brep(b) => {
             let mut b = *b;
             b.set_naming(NamingScheme::Notify);
+            // the copy keeps each UV trim curve's owner from the B-rep it was built in;
+            // upstream's `SmEdgeuse::AssertValid` test 6 expects the edge use holding it
+            // (`GetOwner() == this`), here under the same identities as the walk's
+            let uses: Vec<_> = b.edgeuses().ids().collect();
+            for eu in uses {
+                let edgeuse = b.edgeuse_mut(eu).map_err(|e| herr(e.to_string()))?;
+                if let Some(trim) = edgeuse.uv_trim_curve.as_mut() {
+                    let _ = trim.set_owner(Some(key(EntityRef::Edgeuse(eu))), None);
+                }
+            }
             Ok(b)
         }
         Built::Failed(e) => Err(Output::unported(&e)
@@ -446,15 +480,276 @@ fn output(protocol: &[f64], capi: bool) -> Result<Output, HarnessError> {
     }
     Ok(o)
 }
+/// The level-2 test results (shim op 2): per face tests 32, 33, 38 (`-1` without
+/// surface), per edge test 13 and its max gap, per vertex test 1, its max gap and the
+/// face of that gap (index, `-1` for none).
+fn tests_output(protocol: &[f64]) -> Result<Output, HarnessError> {
+    let mut rd = Reader {
+        data: protocol,
+        pos: 0,
+    };
+    if rd.num()? != 0.0 {
+        return Ok(Output::rejected("native fixture construction failed"));
+    }
+    let (nf, ne, nv) = (rd.count()?, rd.count()?, rd.count()?);
+    let faces: Vec<i64> = rd.slice(3 * nf)?.iter().map(|&x| x as i64).collect();
+    let edges = rd.slice(2 * ne)?.to_vec();
+    let vertices = rd.slice(3 * nv)?.to_vec();
+    if rd.pos != protocol.len() {
+        return Err(herr("trailing level-2 test output"));
+    }
+    let flags = |v: &[f64]| v.iter().step_by(2).map(|&x| x as i64).collect::<Vec<_>>();
+    let gaps = |v: &[f64]| v.iter().skip(1).step_by(2).copied().collect::<Vec<_>>();
+    Ok(Output::new()
+        .ints("face_tests_32_33_38", faces)
+        .ints("edge_test13", flags(&edges))
+        .values("edge_test13_max_gap", gaps(&edges))
+        .ints("vertex_test1", vertices.iter().step_by(3).map(|&x| x as i64).collect::<Vec<_>>())
+        .values("vertex_test1_max_gap_3d", vertices.iter().skip(1).step_by(3).copied().collect::<Vec<_>>())
+        .ints("vertex_test1_max_gap_face", vertices.iter().skip(2).step_by(3).map(|&x| x as i64).collect::<Vec<_>>()))
+}
+
+/// The Rust side of shim op 2, in its order (faces, then edges, then vertices: the UV
+/// trim curves test 38 builds stay for the later tests on both sides).
+fn level2_tests(k: &mut Kernel, b: &mut Brep) -> solidcore::Result<Vec<f64>> {
+    use solidcore::topology::face::assert_tests as fa;
+    let faces: Vec<FaceId> = b.faces().ids().collect();
+    let edges: Vec<EdgeId> = b.edges().ids().collect();
+    let vertices: Vec<VertexId> = b.vertices().ids().collect();
+    let mut out = vec![0.0, faces.len() as f64, edges.len() as f64, vertices.len() as f64];
+    let flag = |v: bool| if v { 1.0 } else { 0.0 };
+    for f in faces {
+        out.push(flag(fa::assert_test_face32(b, f)?));
+        out.push(flag(fa::assert_test_face33(k, b, f)?));
+        out.push(if b.face(f)?.surface.is_some() {
+            flag(fa::assert_test_face38(k, b, f)?)
+        } else {
+            -1.0
+        });
+    }
+    for e in edges {
+        let (ok, gap) = solidcore::topology::edge::edge_form::assert_test_edge13(k, b, e)?;
+        out.push(flag(ok));
+        out.push(gap);
+    }
+    for v in vertices {
+        let (ok, gap, face) = solidcore::topology::vertex::corner::assert_test_vertex1(k, b, v)?;
+        out.push(flag(ok));
+        out.push(gap);
+        out.push(face.map_or(-1.0, |f| f64::from(f.index())));
+    }
+    Ok(out)
+}
+
+/// Why op 2 refuses mutations 8-10 (null face surface, edge curve, edge use link): the
+/// level-2 tests dereference them unguarded in C++.
+/// The capi check level of a case (levels 0 to 2).
+fn capi_level(i: &Inputs) -> Result<validation::CheckLevel, HarnessError> {
+    Ok(match i.level {
+        0 => validation::CheckLevel::Level0,
+        1 => validation::CheckLevel::Level1,
+        2 => validation::CheckLevel::Level2,
+        _ => return Err(herr("the capi check takes levels 0 to 2")),
+    })
+}
+/// The shim's capi protocol of a Rust `check_brep` result, decoded as [`output`].
+fn capi_output(check: solidcore::Result<validation::BrepCheck>) -> Result<Output, HarnessError> {
+    let check = match check {
+        Ok(c) => c,
+        Err(e) => return Ok(Output::unported(&e).unwrap_or_else(|| Output::err(e.to_string()))),
+    };
+    let mut out = vec![0.0];
+    out.push(f64::from(check.pointers_status));
+    put_reports(&mut out, &check.pointer_reports);
+    out.push(match check.assert_valid {
+        None => -1.0,
+        Some(v) => f64::from(v),
+    });
+    put_reports(&mut out, &check.reports);
+    let o = output(&out, true)?;
+    // the API's own lines must be the capi lines decoded above
+    let lines = check.lines().join("\n");
+    if o.ints.get("lines").map(Vec::as_slice) != Some(bytes(&lines).as_slice()) {
+        return Ok(o.int("api_lines_differ", 1));
+    }
+    Ok(o)
+}
+/// The outcome of a copy case's capi check: statuses, the failure lines and the report
+/// counts, without the reports' identities (the copy's are its caller keys).
+fn copy_summary(o: Output) -> Output {
+    let mut s = Output::new();
+    s.error = o.error;
+    s.deferred = o.deferred;
+    s.rejected = o.rejected;
+    for name in ["pointers_status", "assert_valid", "failure_count", "lines", "api_lines_differ"] {
+        if let Some(v) = o.ints.get(name) {
+            s = s.ints(name, v.clone());
+        }
+    }
+    for name in ["pointer_reports", "reports"] {
+        if let Some(&n) = o.ints.get(name).and_then(|v| v.first()) {
+            s = s.int(&format!("{name}_count"), n);
+        }
+    }
+    s
+}
+/// A copy case on the Rust side: `api_brep_copy` of `src` (named by the shim's [`key`])
+/// under caller keys, then [`validation::check_brep`] by the copy's naming.
+fn copy_check(k: &mut Kernel, src: &Brep, i: &Inputs) -> Result<Output, HarnessError> {
+    if i.mutation != 0 || i.tests {
+        return Err(herr("a copy case takes no mutation or level-2 test run"));
+    }
+    let level = capi_level(i)?;
+    let copy_key = |e: EntityRef| {
+        let r = key(e);
+        ObjectRef {
+            type_code: r.type_code,
+            key: ObjectKey(r.key.0 | (1 << 40)),
+        }
+    };
+    let mut state = solidcore::topology::brep::p2::ArenaNotifyState::new(&Brep::new());
+    let mut env = state.env(None);
+    env.key_of = &copy_key;
+    let copy =
+        match solidcore::topology::brep::p3::api_brep_copy(k, &mut env, Some(src), &key) {
+            Ok(c) => c,
+            Err(e) => {
+                return Ok(copy_summary(
+                    Output::unported(&e).unwrap_or_else(|| Output::err(e.to_string())),
+                ))
+            }
+        };
+    let mut result = match copy_operation(k, copy, i) {
+        Ok(Ok(b)) => b,
+        Ok(Err(e)) => {
+            return Ok(copy_summary(
+                Output::unported(&e).unwrap_or_else(|| Output::err(e.to_string())),
+            ))
+        }
+        Err(e) => return Err(e),
+    };
+    capi_output(validation::check_brep(k, &mut result, level)).map(copy_summary)
+}
+/// The operation of a copy case on the copy (`copy_operation` of the shim, through the
+/// Rust API): the copy itself without one; the operation's error inside.
+fn copy_operation(
+    k: &mut Kernel,
+    mut copy: Brep,
+    i: &Inputs,
+) -> Result<solidcore::Result<Brep>, HarnessError> {
+    use solidcore::boolean::api_brep::boolean_union;
+    use solidcore::primitive::api_primitives::create_box;
+    let v = i.value;
+    Ok(match i.copy_op {
+        0 => Ok(copy),
+        1 | 2 => (|| {
+            let mut other = create_box(k, Vec3::new(v, v, v), 10.0, 10.0, 10.0)?;
+            if i.copy_op == 2 {
+                let other_key = |e: EntityRef| {
+                    let r = key(e);
+                    ObjectRef {
+                        type_code: r.type_code,
+                        key: ObjectKey(r.key.0 | (2 << 40)),
+                    }
+                };
+                let mut state =
+                    solidcore::topology::brep::p2::ArenaNotifyState::new(&Brep::new());
+                let mut env = state.env(None);
+                env.key_of = &other_key;
+                other = solidcore::topology::brep::p3::api_brep_copy(k, &mut env, Some(&other), &key)?;
+            }
+            boolean_union(k, copy, other)
+        })(),
+        3 => (|| {
+            let edges = copy.edge_list().to_vec();
+            let edge = *edges
+                .get(i.index % edges.len().max(1))
+                .ok_or_else(|| solidcore::SolidError::invalid_input("difftest", "no edge"))?;
+            solidcore::blend::fillet_executive::api::fillet_edges(k, &mut copy, &[edge], v, 1, 1, 1.0)?;
+            Ok(copy)
+        })(),
+        4 => shell_copy(k, copy, i),
+        _ => return Err(herr("copy_op takes 0 to 4")),
+    })
+}
+/// `SmApiShellBrepFull` of a copy case: the copy shelled by `value` (extended convex
+/// edges, merged results, no offset solid) with face `index` of its face list open.
+fn shell_copy(k: &mut Kernel, mut copy: Brep, i: &Inputs) -> solidcore::Result<Brep> {
+    use super::offset_offset_executive_p2 as off;
+    use solidcore::geom::attribute::AttributeStore;
+    use solidcore::offset::offset_executive::p1::OffsetExecutive;
+    use solidcore::offset::offset_executive::p2::{OffsetNotifications, OffsetOptions, ShellOptions};
+    let faces = copy.face_list().to_vec();
+    let open = *faces
+        .get(i.index % faces.len().max(1))
+        .ok_or_else(|| solidcore::SolidError::invalid_input("difftest", "no face"))?;
+    let mut records = solidcore::topology::topology::NotifyRecords::new();
+    let mut attributes = AttributeStore::default();
+    off::register_notification_brep(&mut records, &mut copy, off::NAMESPACE_SOURCE);
+    let result_brep =
+        off::result_notification_key(EntityRef::Brep(solidcore::topology::BrepId::from_index(0)));
+    records.insert(result_brep.key, solidcore::topology::topology::Topology::new());
+    let mut notifications = OffsetNotifications {
+        records: &mut records,
+        attributes: &mut attributes,
+        original_key_of: &off::original_notification_key,
+        result_key_of: &off::result_notification_key,
+        original_curve_ref: &off::original_curve_key,
+        result_curve_ref: &off::result_curve_key,
+        boolean_source_lists: &off::boolean_source_lists,
+        result_brep,
+        merge_identities: Some(&off::MergeBodies),
+    };
+    OffsetExecutive::shell_brep(
+        k,
+        copy,
+        ShellOptions {
+            offset: OffsetOptions {
+                distance: i.value,
+                extend_convex_edges: true,
+                merge_results: true,
+            },
+            create_offset_solid: false,
+            merge_sheet_side_walls: false,
+        },
+        &[open],
+        &mut notifications,
+    )
+    .result
+    .map(|mut b| {
+        // as `api_shell_brep_full` does for its caller: the port's cached topology fields
+        b.refresh_cached_topology();
+        b
+    })
+}
+const NULL_LINK_TESTS: &str = "the level-2 tests dereference the nulled link (crash in C++)";
+
 impl UnitDiff for Runner {
     fn id(&self) -> &'static str {
         "topology.assert_valid"
     }
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
+        if i.tests && i.mutation >= 8 {
+            return Ok(Output::rejected(NULL_LINK_TESTS));
+        }
         let (path, block) = block(&i.brep)?;
-        let out = ffi::eval(u8::from(i.capi), &path, &block, args(&i))
-            .map_err(|e| herr(e.to_string()))?;
+        let op = if i.tests {
+            2
+        } else if i.copy && i.copy_op != 0 {
+            4
+        } else if i.copy {
+            3
+        } else {
+            u8::from(i.capi)
+        };
+        let out = ffi::eval(op, &path, &block, args(&i)).map_err(|e| herr(e.to_string()))?;
+        if i.tests {
+            return tests_output(&out);
+        }
+        if i.copy {
+            return output(&out, true).map(copy_summary);
+        }
         output(&out, i.capi)
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
@@ -464,36 +759,21 @@ impl UnitDiff for Runner {
             Ok(b) => b,
             Err(o) => return Ok(o),
         };
-        mutate(&mut b, &i)?;
-        let mut out = vec![0.0];
-        if i.capi {
-            let level = match i.level {
-                0 => validation::CheckLevel::Level0,
-                1 => validation::CheckLevel::Level1,
-                2 => validation::CheckLevel::Level2,
-                _ => return Err(herr("the capi check takes levels 0 to 2")),
-            };
-            let check = match validation::check_brep_with_keys(&mut k, &mut b, level, &key) {
-                Ok(c) => c,
-                Err(e) => {
-                    return Ok(Output::unported(&e).unwrap_or_else(|| Output::err(e.to_string())))
-                }
-            };
-            out.push(f64::from(check.pointers_status));
-            put_reports(&mut out, &check.pointer_reports);
-            out.push(match check.assert_valid {
-                None => -1.0,
-                Some(v) => f64::from(v),
-            });
-            put_reports(&mut out, &check.reports);
-            let o = output(&out, true)?;
-            // the API's own lines must be the capi lines decoded above
-            let lines = check.lines().join("\n");
-            if o.ints.get("lines").map(Vec::as_slice) != Some(bytes(&lines).as_slice()) {
-                return Ok(o.int("api_lines_differ", 1));
-            }
-            return Ok(o);
+        if i.copy {
+            return copy_check(&mut k, &b, &i);
         }
+        mutate(&mut b, &i)?;
+        if i.tests {
+            return match level2_tests(&mut k, &mut b) {
+                Ok(out) => tests_output(&out),
+                Err(e) => Ok(Output::unported(&e).unwrap_or_else(|| Output::err(e.to_string()))),
+            };
+        }
+        if i.capi {
+            let level = capi_level(&i)?;
+            return capi_output(validation::check_brep_with_keys(&mut k, &mut b, level, &key));
+        }
+        let mut out = vec![0.0];
         let mut reports = AssertArray::new();
         let rtn = match validation::assert_valid(
             &mut k,
@@ -574,6 +854,9 @@ impl UnitDiff for Runner {
             },
             walk: rng.below(4) != 0,
             capi,
+            tests: false,
+            copy: false,
+            copy_op: 0,
             mutation,
             index: rng.below(100) as usize,
             value,

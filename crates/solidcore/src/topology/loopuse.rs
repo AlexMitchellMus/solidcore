@@ -970,8 +970,10 @@ pub fn loop_edgeuses(b: &Brep, l: LoopId) -> Result<Vec<EdgeuseId>> {
 }
 
 /// The identity a topology entity is notified under by [`face_notify_edit`]: its type
-/// code and arena index (the B-rep keeps no attributes for it to select).
-pub(crate) fn notify_ref(e: EntityRef) -> ObjectRef {
+/// code and arena index (the B-rep keeps no attributes for it to select). Public so a
+/// caller that builds bodies itself (an importer) names their entities exactly as
+/// solidcore's Euler operators and primitives do (#1766).
+pub fn notify_ref(e: EntityRef) -> ObjectRef {
     let (type_code, kind, index) = match e {
         EntityRef::Brep(x) => (16011, 0u64, x.index()),
         EntityRef::Region(x) => (16012, 1, x.index()),
@@ -996,8 +998,8 @@ pub(crate) fn notify_ref(e: EntityRef) -> ObjectRef {
 /// [`notify_ref`], as [`ArenaNotifyState`](crate::topology::brep::p2::ArenaNotifyState)
 /// does; a change of that scheme changes this decoder with it. (The heal path's
 /// tracker now decodes kernel identities, `topology::brep::p3::topology_entity`, since
-/// part 5's plain edits run under them; this inverse stays for the arena scheme's tests.)
-#[cfg(test)]
+/// part 5's plain edits run under them; this inverse also names the B-rep-owned
+/// attribute store's keys, [`Brep::attributed_entities`](crate::topology::Brep::attributed_entities).)
 pub(crate) fn entity_of_notify_key(key: ObjectKey) -> Option<EntityRef> {
     let raw = key.0.checked_sub(1)?;
     let kind = raw >> 32;

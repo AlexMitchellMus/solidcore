@@ -46,7 +46,7 @@ nice -n 10 cargo test -p difftest --features cpp                     # harness s
 | `--fuzz-out D` | where `--fuzz` writes failing inputs (default `bin/fuzz/`; files go to `D/<unit>/`) |
 | `--ssi-corpus [--tol T] [--jobs N] [glob]` | score the engines against the SSI corpus (see [below](#--ssi-corpus-exact-ground-truth-ssi-corpus)); not a gate; without the `cpp` feature, the `ssi` engine alone |
 | `--solidcraft-cases [glob]` | score the Rust port on SolidCraft's whole-operation regression cases (see [below](#--solidcraft-cases-solidcraft-regression-cases)); not a gate, no `cpp` feature needed |
-| `--step-corpus [--jobs N] [glob]` | import STEP Tools' AP203/AP214 sample files and build every B-rep body on both kernels from the same intermediate (see [below](#--step-corpus-real-world-step-files)); not a gate; without `cpp`, the Rust side alone |
+| `--step-corpus [--constructor] [--jobs N] [glob]` | import STEP Tools' AP203/AP214 sample files and build every B-rep body on both kernels from the same intermediate (`--constructor`: through `SmBrepConstructor`) (see [below](#--step-corpus-real-world-step-files)); not a gate; without `cpp`, the Rust side alone |
 
 Exit status: `0` no failures (deferred cases are not failures), `1` any
 failure, `2` usage or setup error. Output: one summary line per unit,
@@ -798,6 +798,7 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<f
   that step failing with that error defers the case on the issue; any other error stays
   an `ERROR`, and the deferral keeps the full error text (for example
   `324-*/round_4_over_hole`, tangency-labs/solidcore#422).
+  An empty or whitespace-only `error` never matches: the step failure stays an `ERROR`.
 * **Expectations** (`expect`): `lumps` (bounded regions; `0` = nothing left), `volume`
   (`value`, absolute `tol`, the `formula` it came from), `cylinder_faces_max`,
   `sheet_corner` (signed end distances and flat-pattern invariants).
@@ -820,6 +821,8 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<f
 
   and `reports/solidcraft-cases.json` (`reports/solidcraft-cases_<glob>.json` for a
   glob): per case its source links, verdict, deferral, measured values and checks.
+  With no matching cases, the report still contains an empty case list and zero
+  verdict counts, replacing any earlier report at that path. `--no-report` writes nothing.
 * `cargo test -p difftest --lib solidcraft` checks that every case file loads, every
   case runs to a verdict, and every deferral names a plan unit.
 * **Adding cases:** add a new `fixtures/solidcraft/<issue>-<slug>.json`. Files load in
@@ -874,6 +877,7 @@ and copied only for informational, non-commercial use: they are never committed.
 scripts/fetch-steptools-corpus.sh                                   # corpus/steptools/, SHA-256 pinned
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --step-corpus --jobs 4
 nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --step-corpus 'ap203/block*'
+nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --step-corpus --constructor --jobs 4
 ```
 
 * **Import.** `crates/step-import` (clean room, from the public ISO 10303-21 syntax and
@@ -891,11 +895,22 @@ nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --step-cor
   edges, vertices), `SmApiBrepIsManifoldSolid`, `SmApiBrepComputeArea` and
   `SmApiBrepComputeVolume` (accuracy `1e-6`), `SmApiHealBrep`, and counts, manifold
   test and volume again. Face orientation is left to the stitch.
+* **`--constructor`.** The body is built instead the way a B-rep importer builds it,
+  through `SmBrepConstructor` (unit `topology.brep_constructor`): the constructor
+  script `step_import::script::from_body` (a region and shell per solid shell, void
+  regions for `BREP_WITH_VOIDS`, the face's outward face use from the file's face and
+  shell orientations, outer loop first, every edge made once and joined by the next
+  face that uses it, limits from the vertex points) runs on both kernels
+  (`harness/cpp/shim/topology_brep_constructor.cpp`, `crates/difftest/src/constructor.rs`).
+  No stitch: the `construct` stage (calls, failed calls, the first failure, a C++ crash,
+  geometry failures, B-rep made, `IsManifold`) replaces `faces` and `stitch`; the stages
+  after it are the same. The child gets `--constructor` as a fifth argument.
 * **Verdicts** (per body): `MATCH` (every stage agrees: statuses and counts equal,
   values within `1e-9` relative), `HEAL-DIFF` (every build stage agrees, the heal or a
   later stage differs), `DIFF` (a build stage differs), `DEFERRED` (the Rust side
   reached unported code; the unit is shown), `CRASH` (a child crashed, timed out or
-  the shim rejected the input), `SKIPPED` (no B-rep body in the file).
+  the shim rejected the input), `SKIPPED` (no B-rep body in the file), `RUST-ONLY` (a
+  build without `cpp`: the Rust side built the body, nothing was compared).
 * Each (body, kernel) runs in its own child process (`--step-case <file> <body>
   <cpp|rust> <out.json>`). Output: one line per body, a `STEP-CORPUS` summary line, and
   `bin/step-corpus/report.json` (per body: source counts, both sides' stages, verdict).

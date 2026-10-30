@@ -2,7 +2,9 @@
 // Native pinned SmBrep::AssertValid (#1419) and the capi smlib_brep_check sequence
 // (ValidatePointers, then AssertValid when it reported no failure).
 #include "sc_edgeuse_graph.h"
+#include <SmApiBrep.h>
 #include <SmApiPrimitives.h>
+#include <SmApiQueries.h>
 #include <SmAssertArray.h>
 #include <SmEllipse.h>
 #include <SmPlane.h>
@@ -13,6 +15,14 @@
 
 // Defined (not declared) in SmAssertArray.cpp.
 TCHAR const* SM_GetObjTypeString(SM_TYPE lExeClassType);
+// The level-2 AssertValid tests, defined (not declared) in SmFace.cpp, SmEdge.cpp and
+// SmVertex.cpp (their default arguments are NULL).
+SmBoolean sm_AssertTestFace32(const SmFace*, SmTArray<SmVertex*>*, SmTArray<SmVertex*>*);
+SmBoolean sm_AssertTestFace33(const SmFace*, SmTArray<SmEdge*>*, SmTArray<SmEdge*>*, SmTArray<SmVertex*>*,
+                              SmTArray<SmVertex*>*);
+SmBoolean sm_AssertTestFace38(const SmFace*);
+SmBoolean sm_AssertTestEdge13(const SmEdge*, double*);
+SmBoolean sm_AssertTestVertex1(const SmVertex*, double*, SmFace**, SmBoolean*, double*, SmPoint3d*);
 
 namespace {
 using Id = std::array<int64_t, 2>;
@@ -144,13 +154,73 @@ SmBrep* primitive(const double* in, int64_t n, SmStatus& status) {
     if (s != SM_SUCCESS) { delete b; return nullptr; }
     return b;
 }
+// Op 4's operation on the SmApiBrepCopy `copy` (taken): 1 SmApiBooleanUnion with
+// SmApiCreateBox(v, v, v; 10, 10, 10), 2 the same with that box's SmApiBrepCopy, 3
+// SmApiFilletEdges of edge `index` (GetEdges order, modulo the count) radius v (circular,
+// G1, thumbweight 1), 4 SmApiShellBrepFull distance v (extended, merged, no offset solid)
+// with face `index` (GetFaces order, modulo the count) open. The result, or NULL with
+// `status` on failure.
+SmBrep* copy_operation(SmBrep* copy, int kind, size_t index, double v, SmStatus& status) {
+    SmBrep* result = nullptr;
+    if (kind == 1 || kind == 2) {
+        SmBrep* box = nullptr;
+        status = (SmStatus)SmApiCreateBox(SmVector3d(v, v, v), 10, 10, 10, box);
+        if (status == SM_SUCCESS && kind == 2) {
+            SmBrep* boxcopy = nullptr;
+            status = (SmStatus)SmApiBrepCopy(box, boxcopy);
+            delete box;
+            box = boxcopy;
+        }
+        if (status != SM_SUCCESS || !box) { delete box; delete copy; return nullptr; }
+        status = (SmStatus)SmApiBooleanUnion(copy, box, result);
+        if (status != SM_SUCCESS) {
+            if (result && result != copy && result != box) delete result;
+            delete box;
+            delete copy;
+            return nullptr;
+        }
+        return result;
+    }
+    if (kind == 3) {
+        SmTArray<SmEdge*> edges, selected;
+        copy->GetEdges(edges);
+        if (edges.GetSize() == 0) { status = SM_ERR; delete copy; return nullptr; }
+        selected.Add(edges[(ULONG)(index % edges.GetSize())]);
+        status = (SmStatus)SmApiFilletEdges(copy, selected, v, 1, 1, 1.0);
+        if (status != SM_SUCCESS) { delete copy; return nullptr; }
+        return copy;
+    }
+    if (kind == 4) {
+        SmTArray<SmFace*> faces;
+        copy->GetFaces(faces);
+        if (faces.GetSize() == 0) { status = SM_ERR; delete copy; return nullptr; }
+        SmTArray<const SmFace*> open;
+        open.Add(faces[(ULONG)(index % faces.GetSize())]);
+        status = (SmStatus)SmApiShellBrepFull(copy, v, TRUE, TRUE, FALSE, open, result);
+        delete copy;
+        if (status != SM_SUCCESS) { delete result; return nullptr; }
+        return result;
+    }
+    status = SM_ERR;
+    delete copy;
+    return nullptr;
+}
 } // namespace
 
 // op 0: AssertValid(&reports, level, walk); op 1: the capi sequence at `level` with
-// the walk. args: level, walk, mutation kind, index, value.
+// the walk; op 2: the level-2 tests one by one, as SmFace/SmEdge/SmVertex::AssertValid
+// call them: per face sm_AssertTestFace32, 33 and 38 (-1 without surface), then per
+// edge sm_AssertTestEdge13 (passed, max gap), then per vertex sm_AssertTestVertex1
+// (passed, max gap 3d, max gap face index or -1), after the three counts; op 3: the capi
+// sequence of op 1 on the body's SmApiBrepCopy (no mutation), as a caller checks a copy
+// (#1584); op 4: the capi sequence of op 1 on the result of an operation on the body's
+// SmApiBrepCopy (`copy_operation`; args[2] is its kind, no mutation), as a caller checks
+// an edit of a copy (#1631). args: level, walk, mutation kind, index, value.
 SC_EXPORT int32_t sc_topology_assert_valid_eval(int32_t op, const char* path, const double* input, int64_t n,
                                                const double* args, int64_t na, double* out, int64_t cap, int64_t* len) {
-    if (op < 0 || op > 1 || !input || n < 1 || !args || na != 5) return SC_ERR_ARG;
+    if (op < 0 || op > 4 || !input || n < 1 || !args || na != 5) return SC_ERR_ARG;
+    if (op == 4 && (args[2] < 1 || args[2] > 4)) return SC_ERR_ARG;
+    if (op == 3 && args[2] != 0) return SC_ERR_ARG;
     SC_TRY
     Rd rd{input, 0};
     SmStatus status = SM_SUCCESS;
@@ -158,6 +228,23 @@ SC_EXPORT int32_t sc_topology_assert_valid_eval(int32_t op, const char* path, co
     const bool prim = input[0] >= 200.0 && input[0] <= 203.0;
     built.brep = prim ? primitive(input, n, status) : build(rd, path, status);
     std::vector<double> values;
+    if (built.brep && op == 3) {
+        SmBrep* copy = nullptr;
+        status = (SmStatus)SmApiBrepCopy(built.brep, copy);
+        delete built.brep;
+        built.brep = status == SM_SUCCESS ? copy : nullptr;
+        if (!built.brep) delete copy;
+    }
+    if (built.brep && op == 4) {
+        SmBrep* copy = nullptr;
+        status = (SmStatus)SmApiBrepCopy(built.brep, copy);
+        delete built.brep;
+        built.brep = nullptr;
+        if (status == SM_SUCCESS && copy)
+            built.brep = copy_operation(copy, (int)args[2], (size_t)args[3], args[4], status);
+        else
+            delete copy;
+    }
     if (!built.brep) {
         values = {-1, (double)status};
         return sc_copy_out(values.data(), (int64_t)values.size(), out, cap, len);
@@ -166,9 +253,31 @@ SC_EXPORT int32_t sc_topology_assert_valid_eval(int32_t op, const char* path, co
     walk(built.brep, g);
     values.push_back(0);
     {
-        Mutation mutation(g, (int)args[2], (size_t)args[3], args[4]);
+        Mutation mutation(g, op == 4 ? 0 : (int)args[2], (size_t)args[3], args[4]);
         const SmAssertTestLevel level = (SmAssertTestLevel)(int)args[0];
-        if (op == 0) {
+        if (op == 2) {
+            values.insert(values.end(), {(double)g.faces.size(), (double)g.edges.size(), (double)g.vertices.size()});
+            for (SmFace* f : g.faces) {
+                values.push_back(flg(sm_AssertTestFace32(f, NULL, NULL)));
+                values.push_back(flg(sm_AssertTestFace33(f, NULL, NULL, NULL, NULL)));
+                values.push_back(f->GetSurface() ? flg(sm_AssertTestFace38(f)) : -1.0);
+            }
+            for (SmEdge* e : g.edges) {
+                double gap = 0.0;
+                values.push_back(flg(sm_AssertTestEdge13(e, &gap)));
+                values.push_back(gap);
+            }
+            for (SmVertex* v : g.vertices) {
+                double gap = 0.0;
+                SmFace* face = NULL;
+                values.push_back(flg(sm_AssertTestVertex1(v, &gap, &face, NULL, NULL, NULL)));
+                values.push_back(gap);
+                double at = -1;
+                for (size_t i = 0; i < g.faces.size(); i++)
+                    if (g.faces[i] == face) at = (double)i;
+                values.push_back(at);
+            }
+        } else if (op == 0) {
             SmAssertArray reports;
             values.push_back(flg(built.brep->AssertValid(&reports, level, args[1] != 0 ? SM_WALK : SM_NO_WALK)));
             put_reports(values, g, built.brep, reports);

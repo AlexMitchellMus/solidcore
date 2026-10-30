@@ -52,6 +52,7 @@
 #include "support/topology_fixture.h"
 #include "support/ellipse_face_fixture.h"
 #include "support/edge_loop_face_fixture.h"
+#include "support/hermite_sheet_fixture.h"
 
 
 #include "StdAfx.h"
@@ -676,6 +677,8 @@ void export_graph(SmBrep* brep, Graph& g, std::vector<double>& o)
             v.push_back(g.find(6, t));
         put_list(o, v);
         sc_exact_curve_export::put_export_curve(o, p->GetCurve(), the_context(), put_curve);
+        // the curve's owner: the export index of the owning edge (-1 none, -3 any other object)
+        o.push_back(p->GetCurve() ? (double)g.find(7, p->GetCurve()->GetOwner()) : -1.0);
     }
     for (SmVertexuse* p : g.vertexuses)
     {
@@ -790,6 +793,10 @@ SmBrep* build(Rd& rd, const char* path, SmStatus& status)
     else if (kind == 9)
     {
         status = sc_topology_fixture::ellipse_face(brep, rd, ctx);
+    }
+    else if (kind == 15)
+    {
+        status = sc_topology_fixture::hermite_sheet_face(brep, rd, ctx);
     }
     else if (kind == 1)
     {

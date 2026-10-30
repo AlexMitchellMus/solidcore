@@ -2234,23 +2234,29 @@ fn glue_key_of(e: EntityRef) -> ObjectRef {
     }
 }
 
-/// Gives the imported B-rep in operand `slot` the geometry owners a native B-rep has
-/// (each curve its edge and the B-rep, each surface its face), under the identities the
-/// B-rep cache is built with ([`query_key`]): the cache indexes only owned geometry.
+/// Relabels the geometry the build owns in operand `slot` (each owned curve to its edge
+/// and the B-rep, each owned surface to its face) under the identities the B-rep cache
+/// is built with ([`query_key`]): the cache indexes only owned geometry, as upstream's by
+/// pointer. Geometry the build left without owner stays unowned (no owner is taken from
+/// the holder).
 fn own_geometry(b: &mut Brep, slot: usize) {
     let edges: Vec<_> = b.edges().ids().collect();
     for e in edges {
         if let Some(curve) = b.edge_mut(e).ok().and_then(|x| x.curve.as_mut()) {
-            let _ = curve.set_owner(
-                Some(query_key(slot, CacheObject::Edge(e))),
-                Some(query_key(slot, CacheObject::Brep)),
-            );
+            if curve.owner().is_some() {
+                let _ = curve.set_owner(
+                    Some(query_key(slot, CacheObject::Edge(e))),
+                    Some(query_key(slot, CacheObject::Brep)),
+                );
+            }
         }
     }
     let faces: Vec<_> = b.faces().ids().collect();
     for f in faces {
         if let Some(surface) = b.face_mut(f).ok().and_then(|x| x.surface.as_mut()) {
-            let _ = surface.set_owner(Some(query_key(slot, CacheObject::Face(f))));
+            if surface.owner().is_some() {
+                let _ = surface.set_owner(Some(query_key(slot, CacheObject::Face(f))));
+            }
         }
         let _ = b.sync_face_surface_tolerance(f);
     }
@@ -3579,7 +3585,7 @@ fn status<T>(r: Result<T, SolidError>, o: &mut Vec<f64>) -> Result<Option<T>, Fa
             o.push(f64::from(code));
             Ok(None)
         }
-        Err(SolidError::InvalidInput { .. }) => {
+        Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => {
             o.push(NULL_DEREF);
             Ok(None)
         }
@@ -3868,7 +3874,7 @@ fn run_rust_script(i: &Inputs, p: Prepared) -> Result<(Vec<f64>, Vec<usize>), Fa
                 }
                 match ti::find_first_lowest_dimension_sol(&sols) {
                     Ok(idx) => o.push(idx as f64),
-                    Err(SolidError::InvalidInput { .. }) => o.push(NULL_DEREF),
+                    Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => o.push(NULL_DEREF),
                     Err(e) => return Err(e.into()),
                 }
             }
@@ -4294,7 +4300,7 @@ fn run_part2_op(
                 // (without the maps, a definition with both finals is the port's
                 // InvalidInput, which the shim refuses with -2 alone)
                 let r = ti.set_relationships(k, two);
-                if matches!(r, Err(SolidError::InvalidInput { .. })) {
+                if matches!(r, Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. })) {
                     o.push(NULL_DEREF);
                     return Ok(());
                 }
