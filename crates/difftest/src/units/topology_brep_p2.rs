@@ -845,15 +845,16 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
             let tol = tol::zone_tol3d(k, arg(6)?);
             let limit = (arg(7)? != 0.0).then_some(arg(8)?);
             // the cache SmBrep::RayFire's solve builds (CacheMakeOrValidate), over the
-            // geometry owners of a native B-rep
-            crate::util::own_arena_geometry(b);
+            // geometry owners the build gave: faces and edges own their surfaces and
+            // curves under this runner's identities ([`CONVENTIONS`], [`key_of`]); no
+            // owner is added to geometry the build left without one
             let kk: &Kernel = k;
             let cache = must(solidcore::topology::brep_cache::make_brep_cache(
                 kk,
                 solidcore::topology::brep_cache::CacheSource::Brep(&*b),
-                &solidcore::topology::brep_cache::arena_identity,
+                &cache_identity,
             ))?;
-            let keys = |o: CacheObject| solidcore::topology::brep_cache::arena_identity(o);
+            let keys = |o: CacheObject| cache_identity(o);
             let owners = |_: ObjectRef| None;
             let (s, r) = status(bp2::ray_fire(
                 kk,
@@ -923,6 +924,18 @@ fn surface_arg(a: &[f64], at: usize) -> Result<Surface, Fail> {
         v,
     };
     Ok(rust_surface(&SrfIn::Bspline(b))?)
+}
+
+/// The B-rep cache identity of an object of the Rust B-rep: this runner's [`key_of`]
+/// names, under which the build owns the faces' surfaces and the edges' curves
+/// ([`CONVENTIONS`]), where `brep_cache::arena_identity` would name them by arena index.
+fn cache_identity(o: CacheObject) -> ObjectRef {
+    match o {
+        CacheObject::Edge(e) | CacheObject::Curve(e) => key_of(EntityRef::Edge(e)),
+        CacheObject::Face(f) | CacheObject::Surface(f) => key_of(EntityRef::Face(f)),
+        CacheObject::Vertex(v) => key_of(EntityRef::Vertex(v)),
+        _ => key_of(EntityRef::Brep(BrepId::from_index(0))),
+    }
 }
 
 /// The surface and curve owners of the `topology.brep_p2` Rust B-rep: this runner's
