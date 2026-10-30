@@ -1907,10 +1907,23 @@ fn gen_tessellate(rng: &mut Rng) -> Inputs {
         1 => 90.0,
         _ => rng.uniform(0.5, 30.0),
     };
-    let drop_curves = if rng.chance(0.2) {
+    let drop_curves: Vec<u64> = if rng.chance(0.2) {
         (0..=rng.below(3)).map(|_| rng.below(4)).collect()
     } else {
         Vec::new()
+    };
+    // only edges the operand has: a torus or a sphere has fewer than four, and an index
+    // past `GetEdges` is a harness error on both sides, not an API answer (the draws
+    // above are kept, so the rest of the stream is unchanged)
+    let drop_curves = if drop_curves.is_empty() {
+        drop_curves
+    } else {
+        let mut k = Kernel::default();
+        let num_edges = build(&mut k, &brep)
+            .ok()
+            .and_then(|b| brep_p1::edges(&b, None).ok())
+            .map_or(0, |edges| edges.len() as u64);
+        drop_curves.into_iter().filter(|&d| d < num_edges).collect()
     };
     Inputs::TessellateBoundaries {
         brep,
