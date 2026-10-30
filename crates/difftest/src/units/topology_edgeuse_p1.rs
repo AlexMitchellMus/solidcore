@@ -735,6 +735,9 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
     let path = path_of(i.brep.as_ref())?;
     let out = ffi::eval(code, &path, &input).map_err(|e| harness(format!("c++: {e}")))?;
     let body = out.get(1..).ok_or_else(|| harness("c++: empty output"))?;
+    if file_sourced(i) && matches!(op, OpIn::SetUv { .. }) {
+        return Ok(brep_output(&op, &strip_eu_owners(body)));
+    }
     Ok(brep_output(&op, body))
 }
 
@@ -1210,13 +1213,8 @@ pub(crate) fn import_raw_with_types(ex: &[f64]) -> Result<(Brep, ImportTypes), H
         let ccw = opt(rd.idx()?, EdgeuseId::from_index)?;
         let vertexuse = opt(rd.idx()?, VertexuseId::from_index)?;
         let orientation = orient_of(rd.idx()?)?;
-        let mut uv_trim_curve = read_curve(&mut rd, true)?;
-        // the curve's owner (`g.find`: an edge use index, `-1` none, `-3` outside the
-        // graph), under the builders' edge-use naming
-        let curve_owner = rd.idx()?;
-        if let Some(c) = uv_trim_curve.as_mut() {
-            let _ = c.set_owner(owner_key(curve_owner)?, None);
-        }
+        let uv_trim_curve = read_curve(&mut rd, true)?;
+        rd.idx()?; // the curve's owner: not compared for a file's B-rep ([`strip_eu_owners`])
         let has_fail = rd.num()? != 0.0;
         let fail_status = rd.idx()?;
         let fail_brep = rd.num()? != 0.0;
@@ -1536,7 +1534,7 @@ fn run_rust(k: &mut Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     if let Some(o) = inexact_geometry(&b, &types, &op) {
         return Ok(o);
     }
-    match run_rust_brep(k, &mut b, &op) {
+    match run_rust_brep(k, &mut b, &op, file_sourced(i)) {
         Ok(o) => Ok(o),
         Err(Fail::Solid(e)) => rust_err(&e),
         Err(Fail::Harness(h)) => Err(h),
@@ -1647,26 +1645,9 @@ fn eid(i: i64) -> EdgeuseId {
     EdgeuseId::from_index(i as u32)
 }
 
-/// The UV trim curve owner key of the shim's owner index `i` (`g.find`): edge use `i`
-/// under the builders' naming ([`crate::own_builder::notify_edgeuse_owner`]), `None` for
-/// `-1`, a key no edge use has for `-3` (an owner outside the graph).
-fn owner_key(i: i64) -> Result<Option<ObjectRef>, HarnessError> {
-    Ok(match i {
-        -1 => None,
-        -3 => Some(ObjectRef {
-            type_code: EDGEUSE_TYPE,
-            key: ObjectKey(u64::MAX),
-        }),
-        _ => {
-            let i = u32::try_from(i).map_err(|_| harness("export: curve owner index"))?;
-            let eu = EdgeuseId::from_index(i);
-            Some(crate::own_builder::notify_edgeuse_owner(eu))
-        }
-    })
-}
-
 /// The shim's `g.find(6, uv->GetOwner())` of a UV trim curve owner: the index of the
-/// edge use named `owner` ([`owner_key`]), `-1` for none, `-3` for one no edge use has.
+/// edge use named `owner` (`own_builder::notify_edgeuse_owner`), `-1` for none, `-3`
+/// for one no edge use has.
 fn owner_index(b: &Brep, owner: Option<ObjectRef>) -> f64 {
     let Some(owner) = owner else {
         return -1.0;
@@ -1675,6 +1656,51 @@ fn owner_index(b: &Brep, owner: Option<ObjectRef>) -> f64 {
         .ids()
         .find(|&x| crate::own_builder::notify_edgeuse_owner(x) == owner)
         .map_or(-3.0, |x| f64::from(x.index()))
+}
+
+/// A `SetUv` state record (`status`, then two `put_eu_state` blocks, then the edge
+/// tolerance and the drop record's B-rep flag) without the UV trim curve owner of each
+/// block. A B-rep read from a file is the C++ export imported, so its owners would be
+/// C++'s (no C++ state reaches the Rust side): both sides drop them there, and the
+/// owners are compared only where the Rust side builds its own B-rep.
+fn strip_eu_owners(state: &[f64]) -> Vec<f64> {
+    let mut out = Vec::with_capacity(state.len());
+    let Some((&status, rest)) = state.split_first() else {
+        return out;
+    };
+    out.push(status);
+    if status != 0.0 {
+        out.extend_from_slice(rest);
+        return out;
+    }
+    let mut at = 0;
+    for _ in 0..2 {
+        // present: -1 for none, else 1 and the block
+        let Some(&present) = rest.get(at) else { break };
+        out.push(present);
+        at += 1;
+        if present < 0.0 {
+            continue;
+        }
+        // the curve fingerprint: -1, or 1 t0 t1 and three points
+        let curve = if rest.get(at).copied() == Some(-1.0) {
+            1
+        } else {
+            12
+        };
+        out.extend(rest.iter().skip(at).take(curve));
+        // then the owner, dropped; then the drop record (3) and the vertex/face gap flag
+        at += curve + 1;
+        out.extend(rest.iter().skip(at).take(4));
+        at += 4;
+    }
+    out.extend(rest.iter().skip(at));
+    out
+}
+
+/// Whether case `i`'s B-rep is read from an `.smb` file (the C++ export imported).
+fn file_sourced(i: &Inputs) -> bool {
+    matches!(i.brep, Some(BrepIn::File { .. }))
 }
 
 /// The state of an edge use after `SetUVTrimCurve`, as the shim's `put_eu_state`.
@@ -1720,7 +1746,10 @@ fn status_of(e: &SolidError) -> f64 {
     }
 }
 
-fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
+/// The Rust side of B-rep op `op` on `b`; `file` drops the UV trim curve owners from a
+/// `SetUv` state, as [`run_cpp`] does for a B-rep read from a file
+/// ([`strip_eu_owners`]).
+fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn, file: bool) -> Result<Output, Fail> {
     match op {
         OpIn::EuQuery { eu, vertex } => {
             let e = eid(*eu);
@@ -1928,6 +1957,7 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
             out.push(flag(
                 *kind != 4 && arg_fail.as_ref().is_some_and(|f| f.brep.is_some()),
             ));
+            let out = if file { strip_eu_owners(&out) } else { out };
             Ok(Output::new().values("state", out))
         }
         OpIn::Gaps {

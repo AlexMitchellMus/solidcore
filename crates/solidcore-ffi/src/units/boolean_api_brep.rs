@@ -43,7 +43,8 @@
 //! | `RotationalSweep` | 16 | brep `P[3] A[3] angle stitch merge region` sel | brep (also on `SM_ERR_INVALID_INPUT`)  |
 //! | `Attributed`    | 17 | brep brep `operation` `behavior`       | two-B-rep record, then the attribute rows       |
 //! | `TessellateBoundaries` | 18 | brep `angle_tol_deg` `nd`, `nd` edge indices | (also after `SM_ERR`) `ne` edge indices, `nc` counts, `np` points `x y z` |
-//! | `Checked`       | 19 | brep brep `operation` `level`          | two-B-rep record, then the result's check       |
+//! | `AttributedList` | 19 | `behavior`, a `MergeBreps` / `Lists` / `Trees` call | its record, then the attribute rows |
+//! | `Checked`       | 20 | brep brep `operation` `level`          | two-B-rep record, then the result's check       |
 //!
 //! The two-B-rep record is `has [is_first kept brep [brep]]` (the second B-rep when
 //! upstream keeps it); a B-rep is `faces edges vertices regions manifold_solid`, then per
@@ -89,6 +90,10 @@
 //! measure is the face's `SmApiFaceComputeArea` at [`AREA_ACCURACY`] or the edge's
 //! `SmApiEdgeComputeLength` at [`LENGTH_ACCURACY`] (minus the status on failure); rows are
 //! sorted by their attribute part, then by measure ([`sort_rows`]).
+//! `AttributedList` tags every B-rep `i` of a `MergeBreps`, `Lists` or `Trees` call's
+//! lists (in input order, `breps1` then `breps2`) as operand `i`, runs the call, and ends a
+//! successful record with the `faces rows... edges rows...` of each output B-rep (the
+//! result; each list output; each non-null tree slot), then the number of those values.
 //!
 //! `Checked` runs `SmApiBoolean`, then on success the capi check sequence on the result at
 //! `level` (`SmAssertTestLevel`, 0 to 2): `SmBrep::ValidatePointers` (its default
@@ -551,6 +556,14 @@ pub enum Call {
         angle_tol_deg: f64,
         /// `GetEdges` indices of the edges whose curve is taken away.
         drop_curves: Vec<u64>,
+    },
+    /// A [`Call::MergeBreps`], [`Call::Lists`] or [`Call::Trees`] whose input B-reps are
+    /// tagged, followed by the attribute rows of the B-reps it returns.
+    AttributedList {
+        /// The list call.
+        call: Box<Call>,
+        /// `SmAttributeBehaviorType` value of the tags (0 to 4).
+        behavior: u8,
     },
     /// `SmApiBoolean`, followed by the capi check (`ValidatePointers`, then
     /// `AssertValid`) of its result.
@@ -1021,6 +1034,20 @@ fn encode(call: &Call) -> Result<Vec<f64>, FfiError> {
             o.push(drop_curves.len() as f64);
             o.extend(drop_curves.iter().map(|&d| d as f64));
         }
+        Call::AttributedList { call, behavior } => {
+            if *behavior > 4 {
+                return Err(bad("behavior is not an SmAttributeBehaviorType value"));
+            }
+            if !matches!(
+                **call,
+                Call::MergeBreps { .. } | Call::Lists { .. } | Call::Trees { .. }
+            ) {
+                return Err(bad("attributed list call is not MergeBreps, Lists or Trees"));
+            }
+            o.push(19.0);
+            o.push(f64::from(*behavior));
+            o.extend(encode(call)?);
+        }
         Call::Checked {
             a,
             b,
@@ -1031,7 +1058,7 @@ fn encode(call: &Call) -> Result<Vec<f64>, FfiError> {
             if *level > 2 {
                 return Err(bad("level is not an SmAssertTestLevel value (0 to 2)"));
             }
-            o.push(19.0);
+            o.push(20.0);
             push_spec(&mut o, a)?;
             push_spec(&mut o, b)?;
             o.push(f64::from(*operation));
