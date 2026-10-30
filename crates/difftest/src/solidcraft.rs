@@ -1439,6 +1439,7 @@ fn enable_fix(k: &mut Kernel, name: &str) -> Result<(), String> {
         "stitch_solid_nests_cavities" => &mut k.fixes.stitch_solid_nests_cavities,
         "sphere_small_circle_not_touching" => &mut k.fixes.sphere_small_circle_not_touching,
         "curve_tight_box_interval_knots" => &mut k.fixes.curve_tight_box_interval_knots,
+        "fillet_rails_meet_at_one_end_point" => &mut k.fixes.fillet_rails_meet_at_one_end_point,
         _ => return Err(format!("unknown `fixes` entry `{name}`")),
     };
     *field = true;
