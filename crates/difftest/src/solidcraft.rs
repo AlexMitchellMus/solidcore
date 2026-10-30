@@ -1427,6 +1427,7 @@ fn enable_fix(k: &mut Kernel, name: &str) -> Result<(), String> {
         "fillet_refuse_non_manifold_result" => &mut k.fixes.fillet_refuse_non_manifold_result,
         "fillet_refuse_crossing_rails" => &mut k.fixes.fillet_refuse_crossing_rails,
         "fillet_refuse_ball_not_fitting" => &mut k.fixes.fillet_refuse_ball_not_fitting,
+        "fillet_torus_rail_on_axis" => &mut k.fixes.fillet_torus_rail_on_axis,
         "cone_parallel_line_midpoint" => &mut k.fixes.cone_parallel_line_midpoint,
         "analytic_copy_keeps_parameterization" => &mut k.fixes.analytic_copy_keeps_parameterization,
         "precise_properties_body_length_scale" => &mut k.fixes.precise_properties_body_length_scale,
@@ -1438,6 +1439,7 @@ fn enable_fix(k: &mut Kernel, name: &str) -> Result<(), String> {
             &mut k.fixes.precise_properties_split_at_surface_knots
         }
         "precise_properties_trim_base_v" => &mut k.fixes.precise_properties_trim_base_v,
+        "loops_go_on_round_the_vertex" => &mut k.fixes.loops_go_on_round_the_vertex,
         "revolve_nested_shells_as_cavities" => &mut k.fixes.revolve_nested_shells_as_cavities,
         "stitch_solid_nests_cavities" => &mut k.fixes.stitch_solid_nests_cavities,
         "sphere_small_circle_not_touching" => &mut k.fixes.sphere_small_circle_not_touching,
