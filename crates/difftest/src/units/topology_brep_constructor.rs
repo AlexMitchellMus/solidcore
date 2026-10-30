@@ -238,6 +238,7 @@ fn body(kind: BodyKind, faces: Vec<Face>, edges: Vec<Edge>, vertices: Vec<P3>, c
     let n = faces.len();
     Body {
         step_id: 0,
+        name: None,
         kind,
         unit_mm: 1.0,
         uncertainty_mm: None,
