@@ -217,8 +217,8 @@ fn volume_assert_valid(
     contained_key: &mut dyn FnMut() -> Result<ObjectKey>,
     depth: usize,
 ) -> Result<bool> {
-    let mut list = list;
     const C: i64 = VOLUME_TYPE;
+    let mut list = list;
     let s = v.class_string();
 
     // check base class validity
