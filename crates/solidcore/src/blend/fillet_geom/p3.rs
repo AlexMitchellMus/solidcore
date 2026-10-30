@@ -2149,6 +2149,19 @@ mod tests {
     #[test]
     fn fillet_int_fillet_trims_with_the_holding_edges_zone_tolerance() {
         use crate::nurbs::math::NOZ;
+        // the C++ reference's trimmed 3D curve: degree 1, three control points
+        const CPP_KNOTS: [f64; 5] = [
+            -1.104_513_452_122_645_8,
+            -1.104_513_452_122_645_8,
+            1.201_280_111_256_772_8,
+            1.222_877_848_654_892_6,
+            1.222_877_848_654_892_6,
+        ];
+        const CPP_LAST_CPT: [f64; 3] = [
+            0.000_338_501_802_028_413_25,
+            0.000_078_518_153_924_537_57,
+            -0.000_248_006_678_376_056_8,
+        ];
         let k = Kernel::default();
         let mut fb = FilletBrep::new();
         let mut processed = |p: Point3| {
@@ -2355,19 +2368,6 @@ mod tests {
         )
         .unwrap();
 
-        // the C++ reference's trimmed 3D curve: degree 1, three control points
-        const CPP_KNOTS: [f64; 5] = [
-            -1.104_513_452_122_645_8,
-            -1.104_513_452_122_645_8,
-            1.201_280_111_256_772_8,
-            1.222_877_848_654_892_6,
-            1.222_877_848_654_892_6,
-        ];
-        const CPP_LAST_CPT: [f64; 3] = [
-            0.000_338_501_802_028_413_25,
-            0.000_078_518_153_924_537_57,
-            -0.000_248_006_678_376_056_8,
-        ];
         let curve = fb.brep().edge(e).unwrap().curve.as_ref().unwrap();
         let nurb = match curve.kind() {
             CurveKind::BSpline(bs) => bs.gw_nurb().unwrap(),
