@@ -89,7 +89,7 @@ fn kinds(b: &Brep) -> Vec<&'static str> {
 /// meridian independently of the mass properties: the cylinder up to where the meridian
 /// starts, then the discs `pi r(z)^2 dz` up the meridian (trapezoids over 20000 steps).
 fn volume_under(k: &Kernel, dome: &Surface) -> f64 {
-    let d = dome.natural_uv_domain();
+    let d = dome.natural_uv_domain_with_nurb(k).unwrap();
     let (lo, hi) = (d.min(), d.max());
     let at = |u: f64, v: f64| dome.evaluate_point(k, Point2::new(u, v)).unwrap();
     let radius = |p: Point3| p.x.hypot(p.y);
