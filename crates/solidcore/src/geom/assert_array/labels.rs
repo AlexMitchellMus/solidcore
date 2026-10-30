@@ -593,6 +593,13 @@ pub const TORUS: &[AssertReportLabel] = &[
         "Overlapping Domain",
         Some("Analytic V Direction Domain too large: Tori can't overlap themselves"),
     ),
+    // not upstream (WR-539, the fork's tangency-labs/smlib@daba678): reported only with
+    // `Kernel::fixes.torus_check_spindle_apex`
+    l(
+        AssertType::Geometric,
+        "Self Intersection",
+        Some("Spindle torus: Analytic V Direction Domain runs through an apex on the axis"),
+    ),
 ];
 
 /// `sAssertSurfOfRevolution_list` (`source/SMLib/src/SmSurfOfRevolution.cpp`).
