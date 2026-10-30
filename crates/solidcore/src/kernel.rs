@@ -322,6 +322,8 @@ pub struct UpstreamFixes {
     pub boolean_vertex_by_best_crossing: bool,
     /// `SmProtoTopologyManager::UpdateEdges` splits a coincident edge definition on a split edge that runs across the split point (away from both its ends, on its curve) there, with its proto edge (`SmProtoEdge::Split`), and classifies each part to the piece it lies on; upstream re-points the whole definition to the piece under its midpoint, whose vertices are not its ends, and the imprint finds no vertex for them (`SM_ERR_NULL_POINTER`, 1006) (WR-533; the fork's tangency-labs/smlib@f11d0ac).
     pub boolean_splits_definition_across_split: bool,
+    /// `SmProtoEdge::Resolve` splits a proto edge from a proto vertex back to itself whose curve ends find two of its vertex definitions at each other definition of that proto vertex lying on the curve (`DropPoint` within the larger of the two tolerances, farther than twice it from both ends), then resolves the proto vertex; upstream keeps the edge whole past that third vertex, a vertex of its own face, and the merge fails (`SM_ERR`; two equal tubes a hair apart end to end) (WR-579, #1517; the fork's tangency-labs/smlib@9eec159).
+    pub proto_edge_splits_at_captured_vertices: bool,
     /// `SmMerge::BooleanPostProcess` also checks the merged face's edges that a face merge left with that face on both sides (slits), not only the intersection edges (WR-304, #1120).
     pub boolean_cleanup_removes_slits: bool,
     /// `SmFace::CurveOnClassify` classifies an interval whose two ends lie on one face edge (or its vertices) and whose midpoint is within the intersection tolerance of it as on that edge (the fork's `ClassifyEdgeInterval`, WR-305, #1057).
@@ -428,6 +430,8 @@ pub struct UpstreamFixes {
     pub curve_tight_box_interval_knots: bool,
     /// `SmTopologyIntersector::IntersectTopology` skips a face pair whose face boxes lie farther apart than the intersection tolerance (a box that cannot be computed, or holds nothing, rules nothing out), and `SmBrep::MakeEdgeInFaceWithVU`, on a plane, leaves in place without classifying an inner loop whose test point lies outside the box of the new face's outer loop (grown by the edges' tolerances, at the retry tolerance). Upstream pairs every face of one sheet with every face of the other through whole-surface checks and classifies every inner loop against each imprinted face, so a 2D boolean of a sheet with n holes takes time in n^2 (WR-527, #1526/#1527; the fork's tangency-labs/smlib@60b1c6a).
     pub boolean_skips_faces_apart: bool,
+    /// `SmStitch::StitchIntoSolid`, when its stitch leaves no lamina edge and more than one region, makes the B-rep a nested solid model (`FindAndSetInfiniteRegion(NULL, SM_VS_NESTEDSOLID)`, with editing disabled): material inside the outer shell, a void inside a shell within it, and so on, each region's outer shell first. Upstream's stitch only finds the infinite region (`SM_VS_INFINITEREGION_SWAP`), so the region inside a closed shell nested in another stays solid and the shells stay where the gluing put them: a holed profile swept round a closed path measures as if it had no hole, and twisted a half turn fails the check (Test #12, an inner shell not inside its region's outer shell) (WR-569; the fork's tangency-labs/smlib@351c57c).
+    pub stitch_solid_nests_cavities: bool,
 }
 
 /// Options for [`Kernel::new`].
