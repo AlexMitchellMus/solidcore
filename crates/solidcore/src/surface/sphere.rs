@@ -77,7 +77,10 @@
 //!   `RebuildSTEPFromNURBParameters` returns `FALSE` (`SM_SUCCESS`) when the
 //!   constant-u iso curves are not circles; that is `Ok(())` with nothing changed.
 //!   `IsNurbSurfaceSphere` returns the status of a failed `SER` call as a `TRUE`
-//!   result without sphere; that is the error.
+//!   result without sphere; that is the error. The degenerate-curve branches of
+//!   `IntersectWithSphere` and `IntersectWithCone` ignore `EvaluatePoint`'s status as
+//!   upstream: a failure leaves the default-constructed `SmPoint3d`
+//!   ([`Vec3::UNDEF`], assuming the failing call does not write it).
 //! - **`GlobalSurfaceIntersect`.** The special cases switch on the other surface's
 //!   kind (plane, cone, sphere, surface of revolution); the fallback
 //!   `SmSurface::GlobalSurfaceIntersect` runs on the [`Surface`] holding the sphere
@@ -690,6 +693,31 @@ impl Sphere {
     /// `SM_ERR` for orders above 3; `InvalidInput` for unequal orders (upstream asserts
     /// and then indexes as if they were equal).
     pub fn evaluate_step(&self, uv: Point2, hu: usize, hv: usize) -> Result<Vec<Vec3>> {
+        // (an order above the limit is refused before the array is read)
+        let n = if hu <= 5 && hv <= 5 {
+            (hu + 1) * (hv + 1)
+        } else {
+            0
+        };
+        let mut d = vec![Vec3::ZERO; n];
+        self.evaluate_step_into(uv, hu, hv, &mut d)?;
+        Ok(d)
+    }
+
+    /// [`Self::evaluate_step`] into the caller's array `d` (`(hu + 1) * (hv + 1)` entries):
+    /// the entries upstream does not write keep the caller's values, as upstream's
+    /// `aDerivatives` does (a fresh `SmVector3d` array holds `SM_UNDEF_DOUBLE`).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::evaluate_step`]; `InvalidInput` when `d` is too short.
+    pub(crate) fn evaluate_step_into(
+        &self,
+        uv: Point2,
+        hu: usize,
+        hv: usize,
+        d: &mut [Vec3],
+    ) -> Result<()> {
         // check input
         if hu > 3 || hv > 3 {
             return Err(SolidError::sm_err(OP_EVAL_STEP));
@@ -724,7 +752,9 @@ impl Sphere {
         let sin_v = (uv.y * PI / 180.0).sin();
 
         let n = (hu + 1) * (hv + 1);
-        let mut d = vec![Vec3::ZERO; n];
+        let d = d
+            .get_mut(..n)
+            .ok_or_else(|| SolidError::invalid_input(OP_EVAL_STEP, "derivative array too short"))?;
         let mut set = |i: usize, v: Vec3| {
             if let Some(slot) = d.get_mut(i) {
                 *slot = v;
@@ -783,8 +813,8 @@ impl Sphere {
         }
 
         // The formulas above are per radian; STEP parameters are in degrees.
-        scale_step_angular_derivatives(&mut d, hu, hv, true, true)?;
-        Ok(d)
+        scale_step_angular_derivatives(d, hu, hv, true, true)?;
+        Ok(())
     }
 
     /// The point at the STEP parameters `uv` (`EvaluateSTEPPoint`:
@@ -918,41 +948,90 @@ impl Sphere {
         uv_domain: &Extent2d,
         other: &Surface,
         other_uv_domain: &Extent2d,
+        use_surface_edges: [bool; 2],
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
+        general: impl FnOnce(&Kernel) -> Result<SurfaceIntersection>,
+    ) -> Result<SurfaceIntersection> {
+        let mut out = SurfaceIntersection::default();
+        self.global_surface_intersect_with_into(
+            k,
+            uv_domain,
+            other,
+            other_uv_domain,
+            use_surface_edges,
+            approx_tol_3d,
+            ang_tol_rad,
+            |k, out| {
+                *out = general(k)?;
+                Ok(())
+            },
+            &mut out,
+        )?;
+        Ok(out)
+    }
+
+    /// [`Self::global_surface_intersect_with`] into `out`, with `general` filling it.
+    /// On an error `out` keeps what the failing special case appended before it, as
+    /// upstream leaves its output arrays.
+    #[allow(clippy::too_many_arguments)] // upstream's argument list
+    pub(crate) fn global_surface_intersect_with_into(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        other: &Surface,
+        other_uv_domain: &Extent2d,
         _use_surface_edges: [bool; 2],
         approx_tol_3d: Option<f64>,
         _ang_tol_rad: Option<f64>,
-        general: impl FnOnce(&Kernel) -> Result<SurfaceIntersection>,
-    ) -> Result<SurfaceIntersection> {
+        general: impl FnOnce(&Kernel, &mut SurfaceIntersection) -> Result<()>,
+        out: &mut SurfaceIntersection,
+    ) -> Result<()> {
         // check for special cases
         let mut need_nurb_intersection = true;
-        let mut out = SurfaceIntersection::default();
+        // (each special case resets the outputs on entry)
+        *out = SurfaceIntersection::default();
         match other.kind_with_nurb(k)? {
             SurfaceKind::Plane(p) => {
                 let (more, found) =
                     self.intersect_with_plane(k, uv_domain, p, other_uv_domain, approx_tol_3d)?;
                 need_nurb_intersection = more;
-                out = found;
+                *out = found;
             }
             // (an SmCylinder is not SmCone_TYPE: the default branch)
             SurfaceKind::Cone(c) if c.type_code() == crate::surface::surface::p2::CONE_TYPE => {
-                let (more, found) =
-                    self.intersect_with_cone(k, uv_domain, c, other_uv_domain, approx_tol_3d)?;
-                need_nurb_intersection = more;
-                out = found;
+                need_nurb_intersection = self.intersect_with_cone_into(
+                    k,
+                    uv_domain,
+                    c,
+                    other_uv_domain,
+                    approx_tol_3d,
+                    out,
+                )?;
             }
             SurfaceKind::Sphere(o) => {
-                let (more, found) =
-                    self.intersect_with_sphere(k, uv_domain, o, other_uv_domain, approx_tol_3d)?;
-                need_nurb_intersection = more;
-                out = found;
+                need_nurb_intersection = self.intersect_with_sphere_into(
+                    k,
+                    uv_domain,
+                    o,
+                    other_uv_domain,
+                    approx_tol_3d,
+                    out,
+                )?;
             }
             SurfaceKind::SurfOfRevolution(o) => {
-                let (more, mut found) =
-                    o.intersect_with_sphere(k, other_uv_domain, self, uv_domain, approx_tol_3d)?;
-                // the surface of revolution's first surface is the other one
-                core::mem::swap(&mut found.surface1_uv_curves, &mut found.surface2_uv_curves);
-                need_nurb_intersection = more;
-                out = found;
+                // the surface of revolution's first surface is the other one (its UV
+                // curves are swapped, also in a partial output)
+                let more = o.intersect_with_sphere_into(
+                    k,
+                    other_uv_domain,
+                    self,
+                    uv_domain,
+                    approx_tol_3d,
+                    out,
+                );
+                core::mem::swap(&mut out.surface1_uv_curves, &mut out.surface2_uv_curves);
+                need_nurb_intersection = more?;
             }
             SurfaceKind::BSpline(_)
             | SurfaceKind::Cone(_)
@@ -967,9 +1046,9 @@ impl Sphere {
         // arrive here with bNeedNurbIntersection == TRUE, then analytic intersections
         // were not found
         if need_nurb_intersection {
-            return general(k);
+            return general(k, out);
         }
-        Ok(out)
+        Ok(())
     }
 
     /// The associated outputs of every 3D curve of `out`: no UV curves, a touching
@@ -1154,8 +1233,31 @@ impl Sphere {
         other_uv_domain: &Extent2d,
         approx_tol_3d: Option<f64>,
     ) -> Result<(bool, SurfaceIntersection)> {
-        // init output
         let mut out = SurfaceIntersection::default();
+        let more = self.intersect_with_sphere_into(
+            k,
+            uv_domain,
+            other,
+            other_uv_domain,
+            approx_tol_3d,
+            &mut out,
+        )?;
+        Ok((more, out))
+    }
+
+    /// [`Self::intersect_with_sphere`] into `out` (reset first). On an error `out` keeps
+    /// what was appended before it, as upstream leaves its output arrays.
+    pub(crate) fn intersect_with_sphere_into(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        other: &Self,
+        other_uv_domain: &Extent2d,
+        approx_tol_3d: Option<f64>,
+        out: &mut SurfaceIntersection,
+    ) -> Result<bool> {
+        // init output
+        *out = SurfaceIntersection::default();
 
         // select working tolerance
         let tol = approx_tol_3d.unwrap_or(EFF_ZERO_SQRT);
@@ -1172,7 +1274,7 @@ impl Sphere {
 
         // Check for no intersections - outside or inside one another
         if dist - tol > radius + other_radius || dist + tol < (radius - other_radius).abs() {
-            return Ok((false, out));
+            return Ok(false);
         }
 
         // check bounding boxes to eliminate candidate intersections
@@ -1182,7 +1284,7 @@ impl Sphere {
 
         // when bounding boxes don't intersect - no intersection
         if bbox1.are_disjoint(&bbox2, 0.0) {
-            return Ok((false, out));
+            return Ok(false);
         }
 
         // check for coincident CenterPoints
@@ -1190,10 +1292,10 @@ impl Sphere {
             if (radius - other_radius).abs() < tol {
                 // Coincident sphere case. - need 1 sphere surface for every overlapping
                 // bit of domain
-                return Ok((true, out));
+                return Ok(true);
             }
             // concentric spheres: no intersection case
-            return Ok((false, out));
+            return Ok(false);
         }
 
         // Take care of touching situations
@@ -1245,7 +1347,7 @@ impl Sphere {
             out.deviations.push(distance);
 
             // all done
-            return Ok((false, out));
+            return Ok(false);
         }
 
         // arrive here - there may be a circular intersection
@@ -1290,7 +1392,11 @@ impl Sphere {
                 // curve is degenerate
                 _ => {
                     // see if degenerateCurvePoint is inside of other surface
-                    let test_point = curve.evaluate_point(k, curve.natural_interval().min())?;
+                    // (EvaluatePoint's status is ignored: a failure leaves the
+                    // default-constructed point)
+                    let test_point =
+                        ignored(curve.evaluate_point(k, curve.natural_interval().min()))?
+                            .unwrap_or(Vec3::UNDEF);
                     let location = if other.is_closed_u() && other.is_closed_v() {
                         // Every point is interior.
                         LocationType::Interior
@@ -1309,10 +1415,10 @@ impl Sphere {
         }
 
         // set output
-        Self::associate_outputs(k, &mut out)?;
+        Self::associate_outputs(k, out)?;
 
         // all done
-        Ok((false, out))
+        Ok(false)
     }
 
     /// The trimmed circular arcs of the circle through `circle_center` with axes
@@ -1715,8 +1821,31 @@ impl Sphere {
         other_uv_domain: &Extent2d,
         approx_tol_3d: Option<f64>,
     ) -> Result<(bool, SurfaceIntersection)> {
-        // init output
         let mut out = SurfaceIntersection::default();
+        let more = self.intersect_with_cone_into(
+            k,
+            uv_domain,
+            cone,
+            other_uv_domain,
+            approx_tol_3d,
+            &mut out,
+        )?;
+        Ok((more, out))
+    }
+
+    /// [`Self::intersect_with_cone`] into `out` (reset first). On an error `out` keeps
+    /// what was appended before it, as upstream leaves its output arrays.
+    pub(crate) fn intersect_with_cone_into(
+        &self,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        cone: &Cone,
+        other_uv_domain: &Extent2d,
+        approx_tol_3d: Option<f64>,
+        out: &mut SurfaceIntersection,
+    ) -> Result<bool> {
+        // init output
+        *out = SurfaceIntersection::default();
 
         // local tolerance
         let tol = approx_tol_3d.unwrap_or(EFF_ZERO_SQRT);
@@ -1736,18 +1865,18 @@ impl Sphere {
         // Is Sphere too far away for intersetions
         if dist - tol > self.radius + max2(cone.bot_radius(), cone.top_radius()) {
             // Sphere is too far away from cone
-            return Ok((false, out));
+            return Ok(false);
         }
 
         // Is sphere inside of cone and no intersections
         if dist + tol + self.radius < min2(cone.bot_radius(), cone.top_radius()) {
-            return Ok((false, out));
+            return Ok(false);
         }
 
         // If the sphere center is not on the axis of the cone then just use the
         // traditional intersector.
         if dist > tol {
-            return Ok((true, out));
+            return Ok(true);
         }
 
         // eliminate intersections using bounding boxes.
@@ -1765,7 +1894,7 @@ impl Sphere {
             .ok_or(SolidError::null_pointer(OP_CONE))?;
         bbox2.expand_absolute(tol);
         if bbox1.are_disjoint(&bbox2, 0.0) {
-            return Ok((false, out));
+            return Ok(false);
         }
 
         // arrive here the sphere is on the center of the axis of the cylinder.  We can
@@ -1857,7 +1986,9 @@ impl Sphere {
                 }
                 // curve is degenerate
                 _ => {
-                    let point = curve.evaluate_point(k, 0.0)?;
+                    // (EvaluatePoint's status is ignored: a failure leaves the
+                    // default-constructed point)
+                    let point = ignored(curve.evaluate_point(k, 0.0))?.unwrap_or(Vec3::UNDEF);
                     let scaled_zero = EFF_ZERO * (1.0 + point.max_dimension());
 
                     // get UV point for Sphere
@@ -1874,10 +2005,10 @@ impl Sphere {
         }
 
         // set associated output for each trimmed intersection curve
-        Self::associate_outputs(k, &mut out)?;
+        Self::associate_outputs(k, out)?;
 
         // all done
-        Ok((false, out))
+        Ok(false)
     }
 
     // ---- recognition ----------------------------------------------------------------

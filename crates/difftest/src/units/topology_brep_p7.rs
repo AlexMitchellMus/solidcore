@@ -12,6 +12,10 @@
 //! intervals, endpoint vertices, curve types, natural intervals, point samples and
 //! each edge use's UV trim type, interval and samples when present.
 //! The raw-knot plane fixtures construct their B-reps independently on each side.
+//! For `glue`, `copy` and `merge_self` the C++ side builds the fixture B-rep and the Rust
+//! side makes the same source itself ([`own_brep`]: the Rust kernel's build, or the Rust
+//! reader for an `.smb` file, renumbered into the shim's walk order), resolving the
+//! selectors against its own counts; no C++ export reaches the Rust side.
 //! Both sides produce one record (`out`) laid out as in the ffi module; statuses are `SmStatus` values (a Rust
 //! `InvalidInput` is `SM_ERR_INVALID_INPUT`, `1007`).
 //!
@@ -203,6 +207,10 @@ enum Inputs {
         brep: BrepIn,
         n: u64,
         merge: bool,
+        /// How many times the faces are copied into the same destination (#1628: the
+        /// copies after the first go into a B-rep that already has faces).
+        #[serde(default = "one_copy")]
+        repeat: u64,
     },
     MergeSelf {
         brep: BrepIn,
@@ -211,6 +219,11 @@ enum Inputs {
         #[serde(default)]
         curves: Vec<SelfCurveIn>,
     },
+}
+
+/// One copy (cases written before `repeat` existed).
+fn one_copy() -> u64 {
+    1
 }
 
 /// One self-intersection curve of `merge_self`: its 3D curve and its (2D) UV curves on
@@ -463,6 +476,97 @@ fn resolve(i: &Inputs) -> Result<Result<(Inputs, Option<Rc<Vec<f64>>>), Output>,
     Ok(Ok((r, Some(ex))))
 }
 
+fn own_face_owner(f: FaceId) -> ObjectRef {
+    key_of(EntityRef::Face(f))
+}
+
+fn own_edge_owner(e: EdgeId) -> (ObjectRef, ObjectRef) {
+    (
+        key_of(EntityRef::Edge(e)),
+        key_of(EntityRef::Brep(solidcore::topology::BrepId::from_index(0))),
+    )
+}
+
+fn own_edgeuse_owner(eu: solidcore::topology::EdgeuseId) -> ObjectRef {
+    key_of(EntityRef::Edgeuse(eu))
+}
+
+/// The shim's build conventions (`sc_topology_fixture.h`), with the geometry owned under
+/// this runner's [`key_of`] identities: the names its notification environments give the
+/// library, so the B-rep caches the operations build (`brep_p2::caller_cache_key` of
+/// `env.key_of`, as `TestClosureSplitRegion`'s) find each edge and face from its
+/// geometry's owner, as upstream finds it by pointer.
+const CONVENTIONS: crate::own_builder::Conventions<'static> = crate::own_builder::Conventions {
+    face_owner: &own_face_owner,
+    edge_owner: &own_edge_owner,
+    edgeuse_owner: &own_edgeuse_owner,
+    ..crate::own_builder::Conventions::TOPOLOGY_FIXTURE
+};
+
+/// The Rust side's fixture B-rep: the source built by the Rust kernel as the shim
+/// builds it ([`crate::own_builder::build_as`]), or its `.smb` file read by the Rust
+/// reader ([`crate::own_builder::read_with`]), renumbered into the shim's walk order under
+/// [`CONVENTIONS`]. A failed build is its output as the C++ side reports the shim's (`-1`
+/// and the status), or the deferral of an unported callee.
+fn own_brep(k: &mut Kernel, brep: &BrepIn) -> Result<Result<Brep, Output>, HarnessError> {
+    use crate::own_builder::{build_as, build_status, read_with, Built};
+    let conv = &CONVENTIONS;
+    let built = match brep {
+        BrepIn::File { rebuild, .. } => {
+            read_with(k, &shared::path_of(brep)?, *rebuild, false, false, conv)?
+        }
+        other => build_as(k, other, false, false, conv)?
+            .ok_or_else(|| harness("B-rep source not built"))?,
+    };
+    Ok(match built {
+        Built::Brep(b) => Ok(*b),
+        Built::Failed(e) => Err(Output::unported(&e)
+            .unwrap_or_else(|| Output::new().values("out", vec![-1.0, build_status(&e)]))),
+    })
+}
+
+/// The Rust side's case and B-rep: for `glue`, `copy` and `merge_self` (but a raw-knot
+/// merge, which builds its plane face itself) the source made by [`own_brep`] and the
+/// selectors resolved against its own counts, as [`resolve`] resolves them against the
+/// shim's export for the C++ side.
+fn rust_inputs(
+    k: &mut Kernel,
+    i: &Inputs,
+) -> Result<Result<(Inputs, Option<Brep>), Output>, HarnessError> {
+    let (Inputs::Glue { brep, .. } | Inputs::Copy { brep, .. } | Inputs::MergeSelf { brep, .. }) =
+        i
+    else {
+        return Ok(Ok((i.clone(), None)));
+    };
+    if let Inputs::MergeSelf { curves, .. } = i {
+        if curves.iter().any(|c| c.raw_knots) {
+            // (its checks only: no export is made for a raw-knot merge)
+            return Ok(resolve(i)?.map(|(r, _)| (r, None)));
+        }
+    }
+    let b = match own_brep(k, brep)? {
+        Ok(b) => b,
+        Err(o) => return Ok(Err(o)),
+    };
+    let c = crate::own_builder::counts(&b);
+    let (n_f, n_e) = (c[3], c[7]);
+    let mut r = i.clone();
+    match &mut r {
+        Inputs::Glue { e1, e2, .. } => {
+            *e1 = shared::sel(*e1, n_e);
+            *e2 = shared::sel(*e2, n_e);
+        }
+        Inputs::MergeSelf { face, .. } => {
+            if n_f == 0 {
+                return Ok(Err(Output::err("no_face")));
+            }
+            *face = shared::sel((*face).max(0), n_f);
+        }
+        _ => {}
+    }
+    Ok(Ok((r, Some(b))))
+}
+
 // ---- C++ side ---------------------------------------------------------------------------
 
 fn encode(i: &Inputs) -> Result<(Op, String, Vec<f64>), HarnessError> {
@@ -556,8 +660,13 @@ fn encode(i: &Inputs) -> Result<(Op, String, Vec<f64>), HarnessError> {
             path = shared::path_of(brep)?;
             Op::Glue
         }
-        Inputs::Copy { brep, n, merge } => {
-            v.extend([*n as f64, flag(*merge)]);
+        Inputs::Copy {
+            brep,
+            n,
+            merge,
+            repeat,
+        } => {
+            v.extend([*n as f64, flag(*merge), *repeat as f64]);
             v.extend(brep_block(brep)?);
             path = shared::path_of(brep)?;
             Op::Copy
@@ -684,7 +793,7 @@ fn status<T>(r: &Result<T, SolidError>) -> Result<f64, Fail> {
     match r {
         Ok(_) => Ok(0.0),
         Err(SolidError::Upstream { code, .. }) => Ok(f64::from(*code)),
-        Err(SolidError::InvalidInput { .. }) => Ok(SM_ERR_INVALID_INPUT),
+        Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => Ok(SM_ERR_INVALID_INPUT),
         Err(e) => Err(match Output::unported(e) {
             Some(o) => Fail::Deferred(Box::new(o)),
             None => hfail(format!("rust: {e}")),
@@ -919,7 +1028,7 @@ fn new_face_record(b: &Brep, r: &Result<p7::NewFace, SolidError>) -> Record {
 }
 
 #[allow(clippy::too_many_lines)] // one record per op
-fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
+fn rust_record(k: &mut Kernel, i: &Inputs, built: Option<Brep>) -> Record {
     match i {
         Inputs::Read {
             file,
@@ -1177,8 +1286,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
             nesting,
             ..
         } => {
-            let ex = ex.ok_or_else(|| hfail("no export"))?;
-            let (mut b, _) = shared::import(ex)?;
+            let mut b = built.ok_or_else(|| hfail("no B-rep"))?;
             let eid = |x: i64| (x >= 0).then(|| EdgeId::from_index(x as u32));
             // the shim's guard: upstream dereferences a null edge curve
             // (CurveMaxDistanceBetween) when gluing two distinct non-wire edges with
@@ -1227,27 +1335,36 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
             o.extend(brep_tolerances(&b));
             Ok(o)
         }
-        Inputs::Copy { n, merge, .. } => {
-            let ex = ex.ok_or_else(|| hfail("no export"))?;
-            let (mut b, _) = shared::import(ex)?;
+        Inputs::Copy {
+            n, merge, repeat, ..
+        } => {
+            let mut b = built.ok_or_else(|| hfail("no B-rep"))?;
             let faces: Vec<FaceId> = b.faces().ids().take(*n as usize).collect();
             let (mut dest, _) = native_brep()?;
-            let mut records = solidcore::topology::topology::NotifyRecords::new();
-            let mut attrs = AttributeStore::default();
-            let mut env = ed::NotifyEnv {
-                records: &mut records,
-                attributes: &mut attrs,
-                context: None,
-                key_of: &key_of,
-            };
-            let r = p7::copy_faces(k, &mut b, &faces, &mut dest, *merge, &this_face, &mut env);
-            // (a face that could not be copied makes upstream's status SM_ERR; the copies
-            // made are kept)
-            let s = match &r {
-                Ok((_, false)) => f64::from(solidcore::error::SM_ERR),
-                _ => status(&r)?,
-            };
-            let mut o = vec![0.0, s, r.as_ref().map_or(0, |(f, _)| f.len()) as f64];
+            let mut o = vec![0.0];
+            let mut made = 0;
+            // (each copy notifies through records of its own, as a caller building a
+            // fresh environment per call does)
+            for _ in 0..*repeat {
+                let mut records = solidcore::topology::topology::NotifyRecords::new();
+                let mut attrs = AttributeStore::default();
+                let mut env = ed::NotifyEnv {
+                    records: &mut records,
+                    attributes: &mut attrs,
+                    context: None,
+                    key_of: &key_of,
+                };
+                let r = p7::copy_faces(k, &mut b, &faces, &mut dest, *merge, &this_face, &mut env);
+                // (a face that could not be copied makes upstream's status SM_ERR; the
+                // copies made are kept)
+                let s = match &r {
+                    Ok((_, false)) => f64::from(solidcore::error::SM_ERR),
+                    _ => status(&r)?,
+                };
+                o.push(s);
+                made += r.as_ref().map_or(0, |(f, _)| f.len());
+            }
+            o.push(made as f64);
             o.extend(brep_counts(&dest));
             Ok(o)
         }
@@ -1300,8 +1417,7 @@ fn rust_record(k: &mut Kernel, i: &Inputs, ex: Option<&[f64]>) -> Record {
                 .map_err(hfail)?;
                 (b, f)
             } else {
-                let ex = ex.ok_or_else(|| hfail("no export"))?;
-                let (b, _) = shared::import(ex)?;
+                let b = built.ok_or_else(|| hfail("no B-rep"))?;
                 (b, FaceId::from_index(*face as u32))
             };
             if b.face(f).map_err(hfail)?.surface.is_none() {
@@ -1400,12 +1516,12 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
             return Ok(Output::err("guard"));
         }
     }
-    let (r, ex) = match resolve(i)? {
+    let mut k = Kernel::default();
+    let (r, built) = match rust_inputs(&mut k, i)? {
         Ok(x) => x,
         Err(o) => return Ok(o),
     };
-    let mut k = Kernel::default();
-    match rust_record(&mut k, &r, ex.as_deref().map(Vec::as_slice)) {
+    match rust_record(&mut k, &r, built) {
         Ok(v) => Ok(Output::new().values("out", v)),
         Err(Fail::Deferred(o)) => Ok(*o),
         Err(Fail::Harness(h)) => Err(h),
@@ -1843,6 +1959,7 @@ fn gen_inputs(rng: &mut Rng) -> Inputs {
             brep: shared::gen_brep(rng),
             n: rng.below(8),
             merge: rng.chance(0.5),
+            repeat: 1,
         },
         _ => Inputs::MakeFace {
             kind: rng.below(2) as u8,
@@ -1961,6 +2078,25 @@ impl UnitDiff for Runner {
                         },
                         n: 2,
                         merge,
+                        repeat: 1,
+                    },
+                )?;
+            }
+        }
+        // #1628: copies into a destination that already has faces
+        for file in ["plane_square.smb", "disk.smb", "plane_circ.smb"] {
+            for repeat in [2, 3] {
+                push(
+                    &mut v,
+                    format!("copy_repeat{repeat}_{file}"),
+                    &Inputs::Copy {
+                        brep: BrepIn::File {
+                            file: file.to_string(),
+                            rebuild: false,
+                        },
+                        n: 2,
+                        merge: false,
+                        repeat,
                     },
                 )?;
             }

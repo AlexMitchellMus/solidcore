@@ -55,7 +55,10 @@
 //!   default, `Clone` (and [`Torus::copy`]) resets [`Torus::inside_out`] to `false`.
 //!   The constructor also leaves it `false` (its `bInsideOut` only orients the minor
 //!   circle); only [`Torus::rebuild_step_from_nurb_parameters`] and
-//!   [`Torus::read_from_db`] set it.
+//!   [`Torus::read_from_db`] set it. With the opt-in
+//!   `Kernel::fixes.torus_keeps_inside_out` (WR-500, #1490) the constructor sets it
+//!   from `bInsideOut` and a torus made, rebuilt or read that way keeps it in its
+//!   copies (`SmSurfOfRevolution` Test #11 compares it with the generator's).
 //! - **Arguments.** Out-params become return values; `SmContext` arguments and the
 //!   arguments upstream marks `NotUsed` (`EvaluateSTEP`'s side flags,
 //!   `CreateIsoParametricCurve`'s approximation tolerance, `ReadFromDB`'s type) are
@@ -165,17 +168,23 @@ pub struct Torus {
     pub(crate) minor_radius: f64,
     /// `m_bInsideOut`.
     pub(crate) inside_out: bool,
+    /// Not upstream (WR-500, #1490): made, rebuilt or read with
+    /// `Kernel::fixes.torus_keeps_inside_out`, so the copy keeps
+    /// [`Self::inside_out`].
+    pub(crate) keeps_inside_out: bool,
 }
 
 /// The copy constructor: copies the surface of revolution and the radii; the
-/// inside-out flag keeps its default (`false`), as upstream.
+/// inside-out flag keeps its default (`false`), as upstream, unless the torus keeps it
+/// (`Kernel::fixes.torus_keeps_inside_out`, WR-500).
 impl Clone for Torus {
     fn clone(&self) -> Self {
         Self {
             base: self.base.clone(),
             major_radius: self.major_radius,
             minor_radius: self.minor_radius,
-            inside_out: false,
+            inside_out: self.keeps_inside_out && self.inside_out,
+            keeps_inside_out: self.keeps_inside_out,
         }
     }
 }
@@ -212,6 +221,7 @@ impl Torus {
             major_radius: UNDEF_DOUBLE,
             minor_radius: UNDEF_DOUBLE,
             inside_out: false,
+            keeps_inside_out: false,
         }
     }
 
@@ -275,12 +285,15 @@ impl Torus {
         };
 
         // (the self-intersection test of a major radius below the minor radius only
-        // warns upstream)
+        // warns upstream); not upstream (WR-500, opt-in): the surface is inside out
+        // with its generator
+        let keeps_inside_out = k.fixes.torus_keeps_inside_out;
         Ok(Self {
             base,
             major_radius,
             minor_radius,
-            inside_out: false,
+            inside_out: keeps_inside_out && opts.inside_out,
+            keeps_inside_out,
         })
     }
 
@@ -443,6 +456,29 @@ impl Torus {
             other_uv_domain,
             approx_tol_3d,
             &|s, k, p, t| Ok(iso_curve(s, shape, k, p, t, None, false)?.curve),
+        )
+    }
+
+    /// [`Torus::intersect_with_plane_owned`] into `out` (reset first). On an error `out`
+    /// keeps what was appended before it, as upstream leaves its output arrays.
+    pub(crate) fn intersect_with_plane_owned_into(
+        &self,
+        k: &Kernel,
+        plane: &Plane,
+        plane_owner: PlaneOwner,
+        other_uv_domain: &Extent2d,
+        approx_tol_3d: Option<f64>,
+        out: &mut SurfaceIntersection,
+    ) -> Result<bool> {
+        let shape = self.shape();
+        self.base.intersect_with_plane_owned_using_into(
+            k,
+            plane,
+            plane_owner,
+            other_uv_domain,
+            approx_tol_3d,
+            &|s, k, p, t| Ok(iso_curve(s, shape, k, p, t, None, false)?.curve),
+            out,
         )
     }
 
@@ -743,6 +779,31 @@ impl Torus {
     /// `SM_ERR` for orders above 3; `InvalidInput` for unequal orders (upstream asserts
     /// and then indexes as if they were equal).
     pub fn evaluate_step(&self, uv: Point2, hu: usize, hv: usize) -> Result<Vec<Vec3>> {
+        // (an order above the limit is refused before the array is read)
+        let n = if hu <= 5 && hv <= 5 {
+            (hu + 1) * (hv + 1)
+        } else {
+            0
+        };
+        let mut d = vec![Vec3::ZERO; n];
+        self.evaluate_step_into(uv, hu, hv, &mut d)?;
+        Ok(d)
+    }
+
+    /// [`Self::evaluate_step`] into the caller's array `d` (`(hu + 1) * (hv + 1)` entries):
+    /// the entries upstream does not write keep the caller's values, as upstream's
+    /// `aDerivatives` does (a fresh `SmVector3d` array holds `SM_UNDEF_DOUBLE`).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::evaluate_step`]; `InvalidInput` when `d` is too short.
+    pub(crate) fn evaluate_step_into(
+        &self,
+        uv: Point2,
+        hu: usize,
+        hv: usize,
+        d: &mut [Vec3],
+    ) -> Result<()> {
         // check input
         if hu > 3 || hv > 3 {
             return Err(SolidError::sm_err(OP_EVAL_STEP));
@@ -776,7 +837,9 @@ impl Torus {
         let sin_v = (uv.y * PI / 180.0).sin();
 
         let n = (hu + 1) * (hv + 1);
-        let mut d = vec![Vec3::ZERO; n];
+        let d = d
+            .get_mut(..n)
+            .ok_or_else(|| SolidError::invalid_input(OP_EVAL_STEP, "derivative array too short"))?;
         let mut set = |i: usize, v: Vec3| {
             if let Some(slot) = d.get_mut(i) {
                 *slot = v;
@@ -847,8 +910,8 @@ impl Torus {
         }
 
         // The formulas above are per radian; STEP parameters are in degrees.
-        scale_step_angular_derivatives(&mut d, hu, hv, true, true)?;
-        Ok(d)
+        scale_step_angular_derivatives(d, hu, hv, true, true)?;
+        Ok(())
     }
 
     /// The point at the STEP parameters `uv` (`EvaluateSTEPPoint`:
@@ -1337,6 +1400,8 @@ impl Torus {
         self.major_radius = maj_rad;
         self.minor_radius = min_rad;
         self.inside_out = inside_out;
+        // not upstream (WR-500, opt-in): its copies keep the flag
+        self.keeps_inside_out |= k.fixes.torus_keeps_inside_out;
         self.base.planar_generator = true;
         self.base.position = ref_frame;
         self.base.swap_uv = swap_uv;
@@ -1412,6 +1477,8 @@ impl Torus {
     pub fn read_from_db(k: &Kernel, db: &mut DatabaseReader, version: u64) -> Result<Self> {
         // init output object
         let mut torus = Self::empty();
+        // not upstream (WR-500, opt-in): its copies keep the flag read
+        torus.keeps_inside_out = k.fixes.torus_keeps_inside_out;
 
         if db.file_type() == FileType::Ascii {
             if let Some(s) = db.in_stream_mut() {

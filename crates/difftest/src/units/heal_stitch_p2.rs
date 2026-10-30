@@ -482,12 +482,12 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
 fn status_of(e: &SolidError) -> f64 {
     match e {
         SolidError::Upstream { code, .. } => f64::from(*code),
-        SolidError::InvalidInput { operation, .. }
+        SolidError::InvalidInput { operation, .. } | SolidError::PortInvariant { operation, .. }
             if *operation == "heal::stitch::p1" || *operation == "heal::stitch::p2" =>
         {
             NULL_DEREF
         }
-        SolidError::InvalidInput { .. } => SM_ERR_INVALID_INPUT,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => SM_ERR_INVALID_INPUT,
         _ => -9.0,
     }
 }
@@ -542,6 +542,19 @@ fn digest(k: &mut Kernel, b: &Brep, o: &mut Vec<f64>) -> solidcore::Result<()> {
         o.extend([p.x, p.y, p.z, vertex::tolerance(b, v)?]);
     }
     super::heal_stitch_p1::topology_digest(k, b, o)
+}
+
+/// The regions after `StitchIntoSolid` (as the shim's `put_regions`): the count and the
+/// `IsVoid` flags, sorted.
+fn regions(b: &Brep, o: &mut Vec<f64>) -> solidcore::Result<()> {
+    let mut flags = Vec::new();
+    for r in bp1::regions(b, None)? {
+        flags.push(f64::from(b.region(r)?.is_void));
+    }
+    flags.sort_by(f64::total_cmp);
+    o.push(flags.len() as f64);
+    o.extend(flags);
+    Ok(())
 }
 
 fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result<Vec<f64>> {
@@ -614,6 +627,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                         r.max_edge_gap,
                     ];
                     digest(k, b, &mut o)?;
+                    regions(b, &mut o)?;
                     Ok(o)
                 }
                 Err(e) => failed(e),

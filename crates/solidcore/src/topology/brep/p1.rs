@@ -21,6 +21,7 @@
 //! | [`is_live_topology_member`]                       | `SmBrep::IsLiveTopologyMember`                |
 //! | [`regions`], [`faces`], [`edges`], [`vertices`]   | `SmBrep::GetRegions`, `GetFaces`, `GetEdges`, `GetVertices` |
 //! | [`shells`]                                        | `SmBrep::GetShells`                           |
+//! | [`tessellate_boundaries`], [`BoundaryTessellation`] | `SmBrep::TessellateBoundaries`              |
 //! | [`surfaces`], [`curves`]                          | `SmBrep::GetSurfaces`, `GetCurves`            |
 //! | [`wire_edges`], [`topological_edges`], [`topological_vertices`] | `SmBrep::GetWireEdges`, `GetTopologicalEdges`, `GetTopologicalVertices` |
 //! | [`is_degenerate`]                                 | `SmBrep::IsDegenerate`                        |
@@ -485,6 +486,71 @@ pub fn edges(b: &Brep, attribute: Option<&AttributeFilter<'_>>) -> Result<Vec<Ed
     ))
 }
 
+/// The polylines of a B-rep's edges ([`tessellate_boundaries`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BoundaryTessellation {
+    /// Every edge's points, edge after edge (`rPoints`).
+    pub points: Vec<Point3>,
+    /// The number of points of each edge, `0` for one that failed (`rVertexCounts`).
+    pub vertex_counts: Vec<usize>,
+    /// The edges, in [`edges`] order (`rEdges`).
+    pub edges: Vec<EdgeId>,
+    /// Every edge was tessellated (`SM_SUCCESS`); `false` is upstream's `SM_ERR`, which
+    /// comes with the other edges' points.
+    pub complete: bool,
+}
+
+/// `TessellateBoundaries`: each edge's curve over the edge's interval as points
+/// ([`Curve::tessellate`] with no chord height, `angle_tol_deg`, at least one segment),
+/// in [`edges`] order. An edge without curve, whose tessellation fails or gives no
+/// point, has no points and makes the result incomplete.
+///
+/// # Errors
+///
+/// `InvalidInput` for an angle tolerance that is not finite and positive (upstream:
+/// `SM_ERR_INVALID_INPUT` with empty outputs); [`SolidError::Unported`] from a
+/// tessellation.
+pub fn tessellate_boundaries(
+    k: &Kernel,
+    b: &Brep,
+    angle_tol_deg: f64,
+) -> Result<BoundaryTessellation> {
+    const OP: &str = "topology::brep::p1::tessellate_boundaries";
+    if !angle_tol_deg.is_finite() || angle_tol_deg <= 0.0 {
+        return Err(SolidError::invalid_input(
+            OP,
+            "angle tolerance must be finite and positive",
+        ));
+    }
+
+    let mut out = BoundaryTessellation {
+        edges: edges(b, None)?,
+        complete: true,
+        ..BoundaryTessellation::default()
+    };
+    for &e in &out.edges {
+        let edge = b.edge(e)?;
+        let points = match edge.curve.as_ref() {
+            None => None,
+            Some(curve) => match curve.tessellate(k, &edge.interval, 0.0, angle_tol_deg, 1) {
+                Ok(t) if !t.points.is_empty() => Some(t.points),
+                Err(
+                    err @ (SolidError::Unported { .. } | SolidError::PreparationRequired { .. }),
+                ) => return Err(err),
+                Ok(_) | Err(_) => None,
+            },
+        };
+        if let Some(points) = points {
+            out.vertex_counts.push(points.len());
+            out.points.extend(points);
+        } else {
+            out.complete = false;
+            out.vertex_counts.push(0);
+        }
+    }
+    Ok(out)
+}
+
 /// `GetVertices`: every vertex in list order, those carrying `attribute` when given.
 ///
 /// # Errors
@@ -832,7 +898,9 @@ pub fn reset_infinite_region(
         SetRegionVoidType::NestedSolid => {
             // status ignored upstream; the port's null-dereference marker still propagates
             match set_region_is_void_flags_for_nested_solids(k, b) {
-                Err(e @ SolidError::InvalidInput { .. }) => return Err(e),
+                Err(e @ (SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. })) => {
+                    return Err(e)
+                }
                 r => ignore_status(r)?,
             }
         }
@@ -2617,8 +2685,37 @@ pub fn brep_intersect_mut(
     crv_angle_tolerance_deg: f64,
     want_points: bool,
 ) -> Result<(Vec<Curve>, Option<Vec<Point3>>)> {
-    let this_faces = faces(b, None)?;
-    let other_faces = faces(other, None)?;
+    let (curves, points, status) = brep_intersect_mut_with_partial(
+        k,
+        b,
+        other,
+        approx_tol_3d,
+        crv_angle_tolerance_deg,
+        want_points,
+    );
+    status?;
+    Ok((curves, points))
+}
+
+/// [`brep_intersect_mut`] for a caller that reads the outputs whatever the call returned
+/// (`SmApiIntersectBreps`): the curves and points with the status. On a failed face pair
+/// they are those the earlier pairs accumulated (duplicates not removed yet), as
+/// upstream's `SER` leaves them in the caller's arrays.
+pub fn brep_intersect_mut_with_partial(
+    k: &Kernel,
+    b: &mut Brep,
+    other: &mut Brep,
+    approx_tol_3d: f64,
+    crv_angle_tolerance_deg: f64,
+    want_points: bool,
+) -> (Vec<Curve>, Option<Vec<Point3>>, Result<()>) {
+    let faces_of = |b: &Brep, other: &Brep| -> Result<(Vec<FaceId>, Vec<FaceId>)> {
+        Ok((faces(b, None)?, faces(other, None)?))
+    };
+    let (this_faces, other_faces) = match faces_of(&*b, &*other) {
+        Ok(f) => f,
+        Err(e) => return (Vec::new(), want_points.then(Vec::new), Err(e)),
+    };
     brep_intersect_faces(
         k,
         &this_faces,
@@ -2661,7 +2758,25 @@ pub fn brep_intersect_self(
     crv_angle_tolerance_deg: f64,
     want_points: bool,
 ) -> Result<(Vec<Curve>, Option<Vec<Point3>>)> {
-    let this_faces = faces(b, None)?;
+    let (curves, points, status) =
+        brep_intersect_self_with_partial(k, b, approx_tol_3d, crv_angle_tolerance_deg, want_points);
+    status?;
+    Ok((curves, points))
+}
+
+/// [`brep_intersect_self`] with the partial outputs of a failed call, as
+/// [`brep_intersect_mut_with_partial`].
+pub fn brep_intersect_self_with_partial(
+    k: &Kernel,
+    b: &mut Brep,
+    approx_tol_3d: f64,
+    crv_angle_tolerance_deg: f64,
+    want_points: bool,
+) -> (Vec<Curve>, Option<Vec<Point3>>, Result<()>) {
+    let this_faces = match faces(b, None) {
+        Ok(f) => f,
+        Err(e) => return (Vec::new(), want_points.then(Vec::new), Err(e)),
+    };
     brep_intersect_faces(
         k,
         &this_faces,
@@ -2690,14 +2805,15 @@ pub fn brep_intersect_self(
 }
 
 /// The face-pair loop of `SmBrep::BrepIntersect`, with `face_pair` the
-/// `SmFace::FaceIntersect` of one pair.
+/// `SmFace::FaceIntersect` of one pair: the curves, the points (when `want_points`) and
+/// the status. A failed pair (`SER`) leaves the outputs of the pairs before it.
 fn brep_intersect_faces(
     k: &Kernel,
     this_faces: &[FaceId],
     other_faces: &[FaceId],
     want_points: bool,
     mut face_pair: impl FnMut(FaceId, FaceId) -> Result<(Vec<Option<Curve>>, Vec<Point3>)>,
-) -> Result<(Vec<Curve>, Option<Vec<Point3>>)> {
+) -> (Vec<Curve>, Option<Vec<Point3>>, Result<()>) {
     // init output
     let mut curves_3d: Vec<Option<Curve>> = Vec::new();
     let mut points: Option<Vec<Point3>> = want_points.then(Vec::new);
@@ -2708,7 +2824,10 @@ fn brep_intersect_faces(
         // for every otherBrep Face
         for &other_face in other_faces {
             // intersect the faces
-            let (mut curves, mut pts) = face_pair(this_face, other_face)?;
+            let (mut curves, mut pts) = match face_pair(this_face, other_face) {
+                Ok(out) => out,
+                Err(e) => return (curves_3d.into_iter().flatten().collect(), points, Err(e)),
+            };
 
             // accumulate the outputs
             curves_3d.append(&mut curves);
@@ -2718,8 +2837,8 @@ fn brep_intersect_faces(
         }
     }
 
-    crate::curve::curve::p5::remove_duplicate_curves(k, &mut curves_3d)?;
-    Ok((curves_3d.into_iter().flatten().collect(), points))
+    let status = crate::curve::curve::p5::remove_duplicate_curves(k, &mut curves_3d).map(|_| ());
+    (curves_3d.into_iter().flatten().collect(), points, status)
 }
 
 // ---- corner blends (SmBrep::CreateCornerBlend) ------------------------------------------
@@ -3268,7 +3387,7 @@ pub struct ParallelProjectionCurves {
 /// `CreateParallelProjectionCurves`: projects `curve` along `projection_vector` onto
 /// every face (or `subset_faces`) of the B-rep (`SmSurface::CreateParallelProjectionCurves`
 /// over the face's UV domain, then `SmFace::CreateCurvesByTrimming`), collecting the
-/// outputs asked for in `opts`.
+/// outputs asked for in `opts`. `curve` is one of the `SmBSplineCurve` classes.
 ///
 /// # Errors
 ///
@@ -3278,7 +3397,7 @@ pub struct ParallelProjectionCurves {
 pub fn create_parallel_projection_curves(
     k: &Kernel,
     b: &mut Brep,
-    curve: &BSplineCurve,
+    curve: &Curve,
     projection_vector: Vec3,
     opts: &ParallelProjectionOptions<'_>,
 ) -> Result<ParallelProjectionCurves> {
