@@ -27,3 +27,26 @@ off by about 1e-6 relative (e.g. C++ `-1.0000014427543823e1`, Rust
 the region. Whether the C++ first ray fails the same way is not known yet. The ray
 fires create UV trim curves, so a different ray history is the suspected cause of the
 reversed curve and the small graph differences.
+
+Narrowed (2026-10-30): the sequence was replayed step by step, `Transform(V)`, `Mirror(V)`,
+`Transform(Uᵀ)`, `Mirror(Uᵀ)`. Every curve, surface, UV trim and edge/face/vertex
+tolerance is bit-identical through `Transform(Uᵀ)`. After `Mirror(Uᵀ)` only the UV trims
+of edge uses on the flattened face differ (the `v` coordinate, about 1e-6 relative).
+Skipping `FindAndSetInfiniteRegion` does not change them, so they come from `Mirror`'s
+own `CreateUVTrimCurves`. For those edge uses all four `DropCurve`/`DropAndTrimCurve`
+attempts fail on both sides alike (the standalone drops agree bit for bit in
+`intersect.surface_drop_lib_p3`). The trims come from the 101-point brute-force drop in
+`SmEdgeuse::CreateUVTrimCurve`.
+
+Root: `SmSurface::GlobalPointSolve(domain, SM_SO_MINIMIZE, point, 1e-5, NULL,
+SM_SR_ALL)` on that face's B-spline surface. Standalone `surface.surface_p4` `gps`
+cases built from the brute-force inputs fail 88 of 202. For example, the first sample
+point: C++ uv `(-6.217248937900877e-15, -2.6622142923926617e-05)`, Rust
+`(-7.719268526242007e-15, -4.4668287143539916e-05)`. Both distances are about 1e-15:
+the surface is flat to rounding along `v` there, so both answers have converged, and the
+choice depends on the solver's iteration path. Normal evaluation on the same surface
+agrees bit for bit. A difference in operation order inside the shared global point
+solve (tree seeding, Newton or the stopping test) is therefore suspected. The generated
+`gps` cases in `surface.surface_p4` only cover unit-scale surfaces (`gps_ok`), so this
+regime is not exercised there. The reversed-curve values above were not re-checked
+after the narrowing.
