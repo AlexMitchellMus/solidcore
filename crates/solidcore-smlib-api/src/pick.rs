@@ -138,9 +138,9 @@ fn pick<T: Copy + PartialEq>(
 /// where the face classifies it as on the face (inside its trims or on their boundary),
 /// else the nearest point of the face's edges, the same minimum for a trimmed face. It
 /// stands in for solidcore's topology solve of the face's shape
-/// (`face_closest_point_in_shape`), which over a `LiveBrepObjects` view answers a vertex
-/// of the face instead (plan/findings/query.api_queries--face-closest-point-solve-answers-a-vertex.md). The
-/// classification may add the face's UV trim curves to `b`, as SMLib's solve does.
+/// (`face_closest_point_in_shape`) until this crate's call of that solve is fixed (the
+/// solve itself agrees with C++). The classification may add the face's UV trim curves
+/// to `b`, as SMLib's solve does.
 pub(crate) fn face_distance(
     k: &mut Kernel,
     b: &mut Brep,
