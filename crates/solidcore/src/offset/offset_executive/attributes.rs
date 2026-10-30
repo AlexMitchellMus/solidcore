@@ -166,7 +166,10 @@ pub(crate) fn record_result_owners(
         proven(result, EntityRef::Edge(id), owner);
     }
     for (id, face) in result.faces().iter() {
-        let owner = face.surface.as_ref().and_then(|s| s.owner());
+        let owner = face
+            .surface
+            .as_ref()
+            .and_then(crate::surface::surface::Surface::owner);
         proven(result, EntityRef::Face(id), owner);
     }
     for (id, eu) in result.edgeuses().iter() {
