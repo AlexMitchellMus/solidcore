@@ -90,8 +90,8 @@
 //!   method's pointer); here a copy is used for the solve.
 //! - **Arguments.** Out-params become return values; `SmContext` arguments and the
 //!   arguments upstream does not use (`EvaluateSTEP`'s side flags) are dropped.
-//!   `EvaluateSTEP` entries it does not write are [`Vec3::UNDEF`] (upstream leaves the
-//!   caller's default-constructed `SmVector3d`) and orders above 5 in either direction are `SM_ERR` (upstream only
+//!   `EvaluateSTEP` entries it does not write are `0` (upstream leaves the caller's
+//!   values) and orders above 5 in either direction are `SM_ERR` (upstream only
 //!   checks u; v sizes the caller's array). `DropPointFast` names the surface in its
 //!   solutions with the caller's `this` handle.
 //! - **Statuses.** Calls whose status upstream ignores keep upstream's values, except
@@ -1238,10 +1238,9 @@ impl SurfOfExtrusion {
 
     /// The point and derivatives at the STEP parameters `uv` (`EvaluateSTEP`):
     /// `(hu + 1) * (hv + 1)` vectors, entry `i * (hv + 1) + j` the derivative of order
-    /// `i` in u and `j` in v: the position, `Sv = E`, the pure u derivatives (the
+    /// `i` in u and `j` in v. Only the position, `Sv = E`, the pure u derivatives (the
     /// generator's STEP derivatives at `uv.x`, evaluated with the surface's
-    /// out-of-bounds flag), zero for the other partial-v terms of total order at most
-    /// `min(hu, hv)`, and [`Vec3::UNDEF`] (untouched) for the rest. `uv` is not clamped (upstream clamps a copy it
+    /// out-of-bounds flag) are non-zero. `uv` is not clamped (upstream clamps a copy it
     /// does not use).
     ///
     /// # Errors
@@ -1249,17 +1248,44 @@ impl SurfOfExtrusion {
     /// `SM_ERR` for an order above 5 (`MAXDER`); `SM_ERR_NULL_POINTER` without
     /// generator; those of the generator's evaluation.
     pub fn evaluate_step(&self, k: &Kernel, uv: Point2, hu: usize, hv: usize) -> Result<Vec<Vec3>> {
+        // (an order above the limit is refused before the array is read)
+        let n = if hu <= 5 && hv <= 5 {
+            (hu + 1) * (hv + 1)
+        } else {
+            0
+        };
+        let mut d = vec![Vec3::ZERO; n];
+        self.evaluate_step_into(k, uv, hu, hv, &mut d)?;
+        Ok(d)
+    }
+
+    /// [`Self::evaluate_step`] into the caller's array `d` (`(hu + 1) * (hv + 1)` entries):
+    /// the entries upstream does not write keep the caller's values, as upstream's
+    /// `aDerivatives` does (a fresh `SmVector3d` array holds `SM_UNDEF_DOUBLE`).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::evaluate_step`]; `InvalidInput` when `d` is too short.
+    pub(crate) fn evaluate_step_into(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        hu: usize,
+        hv: usize,
+        d: &mut [Vec3],
+    ) -> Result<()> {
         // check state:
         if hu > MAX_DERIV || hv > MAX_DERIV {
             return Err(SolidError::sm_err(OP_EVAL_STEP));
         }
 
-        // (unwritten entries: an untouched, default-constructed `SmVector3d`)
         let n = (hu + 1) * (hv + 1);
-        let mut d = vec![Vec3::UNDEF; n];
+        let d = d
+            .get_mut(..n)
+            .ok_or_else(|| SolidError::invalid_input(OP_EVAL_STEP, "derivative array too short"))?;
 
         // Set zero derivative values - anything with a partial V term (only those to
-        // be set: the rest of the array is left untouched, as advertised)
+        // be set: the rest of the caller's array is left untouched)
         for i in 0..=hu {
             for j in 0..=hv {
                 if j > 0 && i + j <= hu && i + j <= hv {
@@ -1299,7 +1325,7 @@ impl SurfOfExtrusion {
         for i in 1..=hu {
             set(i * (hv + 1), pv_at(i));
         }
-        Ok(d)
+        Ok(())
     }
 
     /// The point at the STEP parameters `uv` (`EvaluateSTEPPoint`): the generator's

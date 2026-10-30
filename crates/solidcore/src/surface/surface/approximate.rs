@@ -81,7 +81,6 @@ use crate::nurbs::srf_tool::p4::remove_knots_constrained;
 use super::p2::{Surface, SurfaceKind, B_SPLINE_SURFACE_TYPE, MAX_GEOMETRY_NESTING};
 
 const OP_APPROX: &str = "surface::surface::approximate::approximate_surface";
-const OP_BEZIER: &str = "surface::surface::approximate::compute_cubic_bezier_approx";
 const OP_ROOT: &str = "surface::surface::approximate::root_surface";
 const OP_ELEVATE: &str = "surface::surface::approximate::degree_elevate";
 const OP_INSERT: &str = "surface::surface::approximate::insert_knots";
@@ -498,7 +497,6 @@ impl Surface {
         k: &Kernel,
         uv_domain: &Extent2d,
     ) -> Result<CubicBezierSurface> {
-        const OP: &str = OP_BEZIER;
         // exact tangent values
         let flags = EvaluateFlags {
             u_side: Side::Left,
@@ -507,17 +505,15 @@ impl Surface {
             non_zero_tangents: false,
         };
         let size = uv_domain.size();
-        let corner = |uv: Point2| -> Result<[[Vec3; 2]; 2]> {
-            let m = self.evaluate(k, uv, 1, 1, flags)?;
-            let at = |i: usize, j: usize| -> Result<Vec3> {
-                m.get(i)
-                    .and_then(|row| row.get(j))
-                    .copied()
-                    .ok_or_else(|| SolidError::sm_err(OP))
-            };
-            // (an entry the evaluation does not write is `Vec3::UNDEF`, the untouched
-            // default of upstream's `SmVector3d sMat[2][2]`)
-            Ok([[at(0, 0)?, at(0, 1)?], [at(1, 0)?, at(1, 1)?]])
+        // `SmVector3d sMat[2][2]`: SM_UNDEF_DOUBLE at first (its members' default
+        // initializers), then what each corner's evaluation writes; an entry an
+        // evaluation does not write (the twist of an upper-half-only `EvaluateSTEP`)
+        // keeps its value
+        let mut s_mat = [Vec3::UNDEF; 4];
+        let mut corner = |uv: Point2| -> Result<[[Vec3; 2]; 2]> {
+            self.evaluate_into(k, uv, 1, 1, flags, &mut s_mat)?;
+            let [d00, d01, d10, d11] = s_mat;
+            Ok([[d00, d01], [d10, d11]])
         };
         let mut cb = CubicBezierSurface::default();
         let p = &mut cb.points;

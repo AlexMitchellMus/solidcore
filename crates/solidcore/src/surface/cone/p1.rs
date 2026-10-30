@@ -70,9 +70,8 @@
 //!   inversion in `CreateIsoCircleFromPoint`) is returned. `GetApex` of a cylinder and
 //!   `STEPInversion` of a point outside the sweep return `SM_ERR` upstream with their
 //!   outputs set (callers use them): here they return the outputs ([`Apex::is_cylinder`],
-//!   [`ConeStepInversion::inside`]). `Evaluate` entries upstream does not write are `0`;
-//!   `EvaluateSTEP` entries it does not write are [`Vec3::UNDEF`] (the caller's
-//!   default-constructed `SmVector3d`, untouched). `ConvertUVFromSTEPToNURBS` without polar curve (upstream
+//!   [`ConeStepInversion::inside`]). `Evaluate` and `EvaluateSTEP` entries upstream
+//!   does not write are `0`. `ConvertUVFromSTEPToNURBS` without polar curve (upstream
 //!   dereferences `NULL`) is `InvalidInput`. The unbounded constructor propagates an
 //!   error from `GetApex` (upstream ignores its status and then reads an
 //!   uninitialised `dApexParam`); a cylinder's apex is not an error here.
@@ -1481,14 +1480,38 @@ impl Cone {
     /// The point and triangular derivatives at the STEP parameters `uv` (degrees,
     /// height) (`EvaluateSTEP`): `uv` is clamped to the STEP domain unless
     /// out-of-bounds evaluation is enabled; the derivatives are per degree in u. The
-    /// result is laid out as [`Self::evaluate`]'s; entries upstream does not write (the
-    /// mixed derivatives of total order above `min(hu, hv)`)
+    /// result is laid out as [`Self::evaluate`]'s; entries upstream does not write
     /// are `0`.
     ///
     /// # Errors
     ///
     /// `SM_ERR` for orders above 3.
     pub fn evaluate_step(&self, uv: Point2, hu: usize, hv: usize) -> Result<Vec<Vec3>> {
+        // (an order above the limit is refused before the array is read)
+        let n = if hu <= 5 && hv <= 5 {
+            (hu + 1) * (hv + 1)
+        } else {
+            0
+        };
+        let mut d = vec![Vec3::ZERO; n];
+        self.evaluate_step_into(uv, hu, hv, &mut d)?;
+        Ok(d)
+    }
+
+    /// [`Self::evaluate_step`] into the caller's array `d` (`(hu + 1) * (hv + 1)` entries):
+    /// the entries upstream does not write keep the caller's values, as upstream's
+    /// `aDerivatives` does (a fresh `SmVector3d` array holds `SM_UNDEF_DOUBLE`).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::evaluate_step`]; `InvalidInput` when `d` is too short.
+    pub(crate) fn evaluate_step_into(
+        &self,
+        uv: Point2,
+        hu: usize,
+        hv: usize,
+        d: &mut [Vec3],
+    ) -> Result<()> {
         // check input
         if hu > 3 || hv > 3 {
             return Err(SolidError::sm_err(OP_EVAL_STEP)); // Not implemented
@@ -1518,8 +1541,9 @@ impl Cone {
         let sin_u = (uv.x * PI / 180.0).sin();
 
         let n = (hu + 1) * (hv + 1);
-        // (unwritten entries: an untouched, default-constructed `SmVector3d`)
-        let mut d = vec![Vec3::UNDEF; n];
+        let d = d
+            .get_mut(..n)
+            .ok_or_else(|| SolidError::invalid_input(OP_EVAL_STEP, "derivative array too short"))?;
         let mut set = |i: usize, val: Vec3| {
             if let Some(slot) = d.get_mut(i) {
                 *slot = val;
@@ -1569,8 +1593,8 @@ impl Cone {
         }
 
         // The formulas above are per radian; STEP U is in degrees.
-        scale_step_angular_derivatives(&mut d, hu, hv, true, false)?;
-        Ok(d)
+        scale_step_angular_derivatives(d, hu, hv, true, false)?;
+        Ok(())
     }
 
     /// The point at the STEP parameters `uv` (`EvaluateSTEPPoint`).
