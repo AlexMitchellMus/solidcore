@@ -14,11 +14,11 @@
 //! bench's circle starts, about Y onto the axis, and moved to the base, as the
 //! `boolean.api_brep` fixture `issue_1519_bench_tubes.json` does on both sides. The union
 //! is run with `proto_edge_splits_at_captured_vertices` (WR-579, #1517) set in both runs,
-//! as the fork had it; the default fixes' result (the C++ fixture's) is printed too.
+//! as the fork had it. At the default fixes (the C++ fixture's state, whose check record
+//! matches the C++ exactly) the union already succeeds with the coincident edges.
 //!
-//! Expected with `imprint_reuses_coincident_face_edge`: one manifold solid without
-//! coincident edges. The only check failure allowed is #1518's ellipse (`SmEllipse` test
-//! 2, a separate defect; see `wr579_near_coincident_tube_ends_join`).
+//! Expected with `imprint_reuses_coincident_face_edge`: one manifold solid whose level-2
+//! check reports nothing.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -86,7 +86,12 @@ fn coincident(lines: &[String]) -> bool {
 #[test]
 fn wr580_tube_joint_no_coincident_edges() {
     // the default fixes, which the boolean.api_brep fixture compares with the C++
-    println!("default fixes: {:?}", join(false, false));
+    let default = join(false, false).unwrap();
+    println!("default fixes: {default:?}");
+    assert!(
+        coincident(&default),
+        "upstream's union has no coincident edges at the default fixes: {default:?}"
+    );
 
     let unfixed = join(true, false).unwrap();
     println!("flag off: {unfixed:?}");
@@ -97,8 +102,6 @@ fn wr580_tube_joint_no_coincident_edges() {
 
     let fixed = join(true, true).unwrap();
     println!("flag on: {fixed:?}");
-    assert!(
-        fixed.iter().all(|l| l.starts_with("SmEllipse::Test #2 ")),
-        "the check fails: {fixed:?}"
-    );
+    // exactly nothing: no coincident edges and no other report
+    assert!(fixed.is_empty(), "the check fails: {fixed:?}");
 }
