@@ -260,6 +260,8 @@ pub struct UpstreamFixes {
     pub revolve_holed_profile_void: bool,
     /// A curve sweep caps from the side faces at the sweep's start and end (WR-404, #411).
     pub curve_sweep_caps_at_sweep_ends: bool,
+    /// `CreateLinearSweep` makes a circular arc short of a whole turn that is swept square to its plane an `SmCylinder` bounded 0..its sweep angle by 0..the distance, its frame turned to the arc's start (for a sweep against the arc's normal, to its end and then flipped), where upstream makes a cylinder only of a whole circle and an `SmSurfOfExtrusion` of any other arc; a sweep that is not square stays a surface of extrusion (WR-565, #1477; SolidCraft change, tangency-labs/smlib 12918e9).
+    pub linear_sweep_arc_is_cylinder: bool,
     /// Planar faces from curves join a loop touching another loop at a vertex into that loop (WR-405, #892).
     pub join_touching_loops: bool,
     /// The pointer check judges a UV trim's end turn on its face's surface (first fundamental form), not in raw (u, v) (WR-406, #891).
@@ -276,6 +278,8 @@ pub struct UpstreamFixes {
     pub local_operation_refuses_loose_tangent_edges: bool,
     /// A local operation that moves one of two tangent faces along its normal builds the step: `EdgeuseOffset` finds the two faces parallel but apart across the edge (`IsStepAcrossEdge`) and builds the ruled wall between their edges (`CreateStepWall`, rails of uniform weight made non-rational), kept out of the face extensions; `CloseLoopGaps` closes the gaps the wall leaves at its ends and the edges running past its corners are split; a vertex moved past an edge's other end is `SM_ERR_OFFSET_EDGE_VANISHES` (1043) (WR-530 addendum; tangency-labs/smlib 5d428ae, 90aabff, 34318f4).
     pub local_operation_step_walls: bool,
+    /// Every extended offset closes the loop gaps it leaves where two consecutive edges' offsets run parallel and never meet (`CloseLoopGaps`), before the merge; a vertex moved past an edge's other end is `SM_ERR_OFFSET_EDGE_VANISHES` (1043), and a shell whose offset of a solid is still no closed solid is refused (`SM_ERR`) instead of returned (WR-578; tangency-labs/smlib 7ff0a94, 34318f4, rig case shell/1494). Limit: tangency-labs/solidcore#1528's plate shells on a clean operand but is refused after a prior mass-properties query on it, which writes UV trims and gap caches the offset reads (upstream behaviour, WR-583).
+    pub offset_closes_loop_gaps: bool,
     /// With `local_operation_step_walls`: an edge whose vertex a local operation moves onto its other end, where its other vertex is, has closed to a point and is squeezed out of its offset face (`CloseLoopGap`); once every gap is closed the offset faces that closed to nothing (`SmFace::IsDegenerate`, a step's wall whose low top moved onto the high top's plane) are deleted and forgotten, and the merge joins the faces either side. A closed edge on no such face or across from one is still `SM_ERR_OFFSET_EDGE_VANISHES` (WR-566; tangency-labs/smlib ccbf77a).
     pub local_operation_closes_walls_to_nothing: bool,
     /// An inward shell mates the walls across rounds thinner than it (collapsed faces) (#397).
