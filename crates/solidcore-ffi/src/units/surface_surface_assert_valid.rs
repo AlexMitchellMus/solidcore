@@ -1,7 +1,7 @@
 //! Safe wrapper for unit `surface.surface_assert_valid`: the pinned virtual
 //! `SmSurface::AssertValid` on a real B-spline surface, plane, cylinder, cone, sphere,
-//! torus or surface of revolution built from plain data (block layout in
-//! `harness/cpp/shim/surface_surface_assert_valid.cpp`).
+//! torus, surface of revolution or surface of extrusion built from plain data (block
+//! layout in `harness/cpp/shim/surface_surface_assert_valid.cpp`).
 
 use crate::{call_with_buffer, FfiError};
 
@@ -176,12 +176,12 @@ fn internal_pole_indices(
 
 fn check(block: &[f64]) -> Result<(), FfiError> {
     let mut rd = Rd { v: block, at: 0 };
-    let kind = rd.int(0.0, 6.0)?;
+    let kind = rd.int(0.0, 7.0)?;
     let level = rd.int(0.0, 4.0)?;
     if level == 3 {
         return Err(bad("level"));
     }
-    rd.flag()?;
+    let make = rd.flag()?;
     if kind == 0 {
         let p = rd.int(1.0, 5.0)?;
         let q = rd.int(1.0, 5.0)?;
@@ -199,6 +199,38 @@ fn check(block: &[f64]) -> Result<(), FfiError> {
         iso_extraction(&ku, p)?;
         iso_extraction(&kv, q)?;
         points(&mut rd, nu * nv, rational)?;
+    } else if kind == 7 {
+        // extrusion: origin, extrusion vector, analytic U/V, swap, generator
+        let _origin = rd.vec()?;
+        let _extrusion = rd.vec()?;
+        let (u0, u1) = (rd.num()?, rd.num()?);
+        let (v0, v1) = (rd.num()?, rd.num()?);
+        if u0 > u1 || v0 > v1 {
+            return Err(bad("reversed extrusion domain"));
+        }
+        if make && (u0 == u1 || v0 == v1) {
+            // MakeNurb divides by the domain lengths; the C++ reference is undefined
+            // (and crashes) on a zero-length extrusion domain.
+            return Err(bad("zero extrusion domain with a NURB"));
+        }
+        rd.flag()?;
+        let p = rd.int(1.0, 5.0)?;
+        let n = rd.int(2.0, 64.0)?;
+        if n <= p {
+            return Err(bad("too few generator control points for the degree"));
+        }
+        let rational = rd.flag()?;
+        points(&mut rd, n, rational)?;
+        let k: Vec<f64> = (0..=n + p).map(|_| rd.num()).collect::<Result<_, _>>()?;
+        knots(&k)?;
+        let (Some(&first), Some(&last)) = (k.first(), k.last()) else {
+            return Err(bad("empty generator knots"));
+        };
+        if make && (u0 != first || u1 != last) {
+            // MakeNurb needs the generator's STEP interval; a mismatch leaves the C++
+            // NURB missing, so the base tests would not run on both sides.
+            return Err(bad("mismatched extrusion U domain with a NURB"));
+        }
     } else {
         rd.vec()?;
         let x = rd.vec()?;

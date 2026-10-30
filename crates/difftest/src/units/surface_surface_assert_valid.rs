@@ -1,6 +1,6 @@
 //! Runner for unit `surface.surface_assert_valid`: the virtual `SmSurface::AssertValid`
-//! on real B-spline surfaces, planes, cylinders, cones, spheres, tori and surfaces of
-//! revolution.
+//! on real B-spline surfaces, planes, cylinders, cones, spheres, tori, surfaces of
+//! revolution and surfaces of extrusion.
 //!
 //! C++: `solidcore_ffi::units::surface_surface_assert_valid` (shim
 //! `harness/cpp/shim/surface_surface_assert_valid.cpp`, which documents the block).
@@ -36,6 +36,7 @@ use solidcore::nurbs::srf_basic::Surface as NlSurface;
 use solidcore::surface::cone::Cone;
 use solidcore::surface::plane::Plane;
 use solidcore::surface::sphere::{Sphere, SphereOptions};
+use solidcore::surface::surf_of_extrusion::SurfOfExtrusion;
 use solidcore::surface::surf_of_revolution::SurfOfRevolution;
 use solidcore::surface::surface::{Surface, SurfaceKind};
 use solidcore::surface::torus::{Torus, TorusOptions};
@@ -124,6 +125,35 @@ fn build(k: &Kernel, rd: &mut Rd<'_>, kind: usize) -> Result<Surface, HarnessErr
         }
         let nurb = NlSurface::new(net, p, q, ku, kv).map_err(herr)?;
         return Ok(Surface::from(BSplineSurface::from_nurb(nurb, false)));
+    }
+    if kind == 7 {
+        let origin = rd.vec()?;
+        let extrusion = rd.vec()?;
+        let (u0, u1) = (rd.num()?, rd.num()?);
+        let (v0, v1) = (rd.num()?, rd.num()?);
+        let swap = rd.flag()?;
+        let (p, n) = (rd.int()?, rd.int()?);
+        let rational = rd.flag()?;
+        let pts = (0..n)
+            .map(|_| rd.point(rational))
+            .collect::<Result<Vec<_>, _>>()?;
+        let knots = (0..=n + p).map(|_| rd.num()).collect::<Result<Vec<_>, _>>()?;
+        let gen = Curve::from(BSplineCurve::from_nurb(
+            NlCurve::new(pts, p, knots).map_err(herr)?,
+            3,
+            false,
+        ));
+        return Ok(Surface::from(
+            SurfOfExtrusion::new(
+                k,
+                gen,
+                origin,
+                extrusion,
+                Extent2d::from_bounds(u0, v0, u1, v1),
+                swap,
+            )
+            .map_err(herr)?,
+        ));
     }
     let o = rd.vec()?;
     let x = rd.vec()?;
@@ -477,13 +507,66 @@ fn angles(rng: &mut Rng) -> (f64, f64) {
     }
 }
 
+fn gen_extrusion(rng: &mut Rng, b: &mut Vec<f64>, s: f64) {
+    let p = 2 + rng.below(2) as usize; // quadratic or cubic
+    let n = p + 1 + rng.below(2) as usize;
+    let knots = clamped(rng, n, p);
+    let rational = rng.chance(0.25);
+    let mut pts: Vec<[f64; 4]> = Vec::new();
+    for i in 0..n {
+        let t = i as f64 / (n - 1) as f64;
+        let x = s * (0.1 + 0.8 * t);
+        let y = s * (0.1 + 0.6 * (t * 3.0).sin().abs());
+        let w = if rational { rng.uniform(0.5, 2.0) } else { 1.0 };
+        pts.push([x * w, y * w, 0.0, w]);
+    }
+    // The first control point of a clamped curve is its start, so this origin is on the
+    // curve; sometimes move it off to exercise test 8.
+    let first = pts[0];
+    let w0 = if rational { first[3] } else { 1.0 };
+    let mut origin = [first[0] / w0, first[1] / w0, first[2] / w0];
+    if rng.chance(0.15) {
+        origin[0] += 0.1 * s;
+    }
+    let extrusion = match rng.below(5) {
+        0 => [0.0, 0.0, 0.0], // zero length (test 1)
+        1 => [s, 0.0, 0.0],
+        2 => [0.0, s, 0.0],
+        _ => [0.0, 0.0, s * rng.uniform(0.2, 2.0)],
+    };
+    let last = n + p;
+    let (u0, u1) = match rng.below(6) {
+        0 => (knots[0] + 0.1, knots[last] - 0.1), // mismatched STEP interval (test 7)
+        _ => (knots[0], knots[last]),
+    };
+    let (v0, v1) = match rng.below(6) {
+        0 => (0.0, 0.0), // zero V length (test 3)
+        _ => (0.0, s * rng.uniform(0.5, 2.0)),
+    };
+    b.extend(origin);
+    b.extend(extrusion);
+    b.extend([u0, u1, v0, v1, flag(rng, 0.5)]);
+    b.extend([p as f64, n as f64, f64::from(u8::from(rational))]);
+    for pt in &pts {
+        b.extend(*pt);
+    }
+    b.extend(knots);
+}
+
 fn gen_case(rng: &mut Rng) -> Inputs {
-    let kind = rng.below(7) as usize;
+    let kind = rng.below(8) as usize;
     let mut b = vec![kind as f64, level(rng)];
     b.push(if kind == 0 { 0.0 } else { flag(rng, 0.5) });
     let s = scale(rng);
     if kind == 0 {
         gen_bspline(rng, &mut b);
+        return Inputs { block: b };
+    }
+    if kind == 7 {
+        // Ordinary coordinates: the issue's test-8 scale defect is covered by the Rust
+        // regression test, not by a generated C++ case that would knowingly disagree.
+        let s = 0.5 + rng.uniform(0.0, 3.0);
+        gen_extrusion(rng, &mut b, s);
         return Inputs { block: b };
     }
     frame(rng, &mut b, s);
