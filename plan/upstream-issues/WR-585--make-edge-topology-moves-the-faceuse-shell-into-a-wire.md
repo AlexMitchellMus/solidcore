@@ -1,4 +1,4 @@
-#### WR-567. `MakeEdgeTopology` moves a whole faceuse shell into a wire shell for an edge joining them
+#### WR-585. `MakeEdgeTopology` moves a whole faceuse shell into a wire shell for an edge joining them
 - **Severity:** Performance (the size of the body for each such edge; the result's topology is the same)
 - **Area:** Booleans / topology (edge construction)
 - **Location:** `source/SMLib/src/SmBrep.cpp`, `SmBrep::MakeEdgeTopology`: when the edge's two vertices are in different shells of the region it calls `pEndShell->TransferChildrenTo(pStartShell, NULL)` and deletes the end shell.

@@ -1,4 +1,4 @@
-//! WR-567 (the fork's tangency-labs/smlib@be8ac73): `SmBrep::MakeEdgeTopology` joins
+//! WR-585 (the fork's tangency-labs/smlib@be8ac73): `SmBrep::MakeEdgeTopology` joins
 //! the shells of a new edge's two vertices by moving the end vertex's shell into the
 //! start vertex's. With a wire start shell and a faceuse end shell that moves every face
 //! use of the faceuse shell (and passes over every edge of the B-rep for its wires).
