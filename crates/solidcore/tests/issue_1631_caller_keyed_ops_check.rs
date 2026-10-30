@@ -22,13 +22,22 @@ use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::object::ObjectRef;
 use solidcore::mass::integrator::properties::{brep_volume, PropertyAttributes};
 use solidcore::math::{Point3, Vec3};
+use solidcore::nurbs::b_spline_curve::BSplineCurve;
 use solidcore::primitive::api_primitives::create_box;
 use solidcore::sweep::api_brep::create_linear_sweep;
+use solidcore::topology::brep::p10::{
+    make_topology_from_data, project_and_trim, MakeTopologyOptions, ProjectAndTrimOptions,
+    ProjectEnv, TopologyEnv, TrimType,
+};
 use solidcore::topology::brep::p2::ArenaNotifyState;
 use solidcore::topology::brep::p3::{api_brep_copy, topology_ref};
 use solidcore::topology::brep::p5::{stitch_and_orient, StitchAndOrientOptions};
 use solidcore::topology::brep::validation::{check_brep, CheckLevel};
-use solidcore::topology::{edge, vertex, Brep, EdgeId, NamingScheme};
+use solidcore::topology::brep_cache::CacheObject;
+use solidcore::topology::brep_data::BrepData;
+use solidcore::topology::database_io::FileType;
+use solidcore::topology::edge::NotifyEnv;
+use solidcore::topology::{edge, vertex, Brep, BrepId, EdgeId, NamingScheme};
 use solidcore::{EntityRef, Kernel};
 
 /// Each copy names its objects in its own key domain (as SolidCraft's copies do).
@@ -207,4 +216,112 @@ fn extrude_onto_keyed_copy_checks_valid() {
     let mut u = boolean_union(&mut k, c, boss).unwrap();
     assert_volume(&k, &mut u, 1080.0, "extrude onto copy");
     assert_checks_valid(&mut k, &mut u, "extrude onto copy");
+}
+
+/// The difftest runner's caller keys: kind and arena index.
+fn key_of(e: EntityRef) -> ObjectRef {
+    let (t, k, i) = match e {
+        EntityRef::Brep(x) => (16011, 0, x.index()),
+        EntityRef::Region(x) => (16012, 1, x.index()),
+        EntityRef::Shell(x) => (16013, 2, x.index()),
+        EntityRef::Faceuse(x) => (16022, 3, x.index()),
+        EntityRef::Face(x) => (16002, 4, x.index()),
+        EntityRef::Loopuse(x) => (16004, 5, x.index()),
+        EntityRef::Loop(x) => (16003, 6, x.index()),
+        EntityRef::Edgeuse(x) => (16005, 7, x.index()),
+        EntityRef::Edge(x) => (16016, 8, x.index()),
+        EntityRef::Vertexuse(x) => (16006, 9, x.index()),
+        EntityRef::Vertex(x) => (16021, 10, x.index()),
+    };
+    ObjectRef {
+        type_code: t,
+        key: ObjectKey((1u64 << 40) * (k + 1) + u64::from(i)),
+    }
+}
+/// An imported body names its objects by its caller's keys (`make_topology_from_data`);
+/// `ProjectAndTrim` splits edges, whose new edge uses get UV trims before their keys
+/// are recorded. They end up owned under their recorded keys, as in the C++ (the
+/// `topology.brep_p10` `project_*_Defeature_inset_cube` cases).
+#[test]
+fn project_and_trim_names_split_trims_by_caller_keys() {
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../upstream/TestFiles/pt_TestFiles/Defeature/inset_cube.smb"
+    ))
+    .unwrap();
+    let mut k = Kernel::default();
+    let mut data = BrepData::read_from_file(&k, bytes, FileType::Ascii).unwrap();
+    let mut b = Brep::new_with_infinite_region().unwrap();
+    let mut store = AttributeStore::new();
+    let mut records = solidcore::topology::topology::NotifyRecords::new();
+    let mut env = TopologyEnv {
+        all_attributes: &[],
+        attributes: &mut store,
+        key_of: &key_of,
+        records: &mut records,
+        next_key: 1u64 << 50,
+    };
+    let options = MakeTopologyOptions {
+        make_uv_trim_curves: true,
+        add_analytics: false,
+        force_same_tol: false,
+        check_uv_trim_curves: false,
+        always_heal: false,
+        healer_enabled: false,
+    };
+    make_topology_from_data(&mut k, &mut b, &mut data, &mut env, options).unwrap();
+    assert_eq!(b.naming(), NamingScheme::Caller);
+    let keys = |o: CacheObject| match o {
+        CacheObject::Edge(e) | CacheObject::Curve(e) => key_of(EntityRef::Edge(e)),
+        CacheObject::Face(f) | CacheObject::Surface(f) => key_of(EntityRef::Face(f)),
+        CacheObject::Vertex(x) => key_of(EntityRef::Vertex(x)),
+        CacheObject::Other(r) => r,
+        _ => key_of(EntityRef::Brep(BrepId::from_index(0))),
+    };
+    let owner_of = |_: ObjectRef| None;
+    let penv = ProjectEnv {
+        brep_id: BrepId::from_index(0),
+        keys: &keys,
+        owner_of: &owner_of,
+    };
+    let opts = ProjectAndTrimOptions {
+        approximation_tol_3d: None,
+        angle_tol_radians: None,
+        subset_faces: None,
+    };
+    let mut notify = NotifyEnv {
+        records: &mut records,
+        attributes: &mut store,
+        context: None,
+        key_of: &key_of,
+    };
+    let curve = BSplineCurve::create_line_segment(
+        3,
+        Vec3::new(-100.0, 0.5, 100.0),
+        Vec3::new(100.0, 0.5, 100.0),
+    )
+    .unwrap();
+    let r = project_and_trim(
+        &mut k,
+        &mut b,
+        &penv,
+        &mut notify,
+        &Curve::from(curve),
+        Vec3::new(0.0, 0.0, -1.0),
+        Vec3::new(0.0, 10.0, 100.0),
+        TrimType::KeepPoint,
+        &opts,
+    );
+    r.unwrap();
+    for (u, rec) in b.edgeuses().iter() {
+        if let Some(t) = rec.uv_trim_curve.as_ref() {
+            if t.owner() != Some(key_of(EntityRef::Edgeuse(u))) {
+                eprintln!(
+                    "BAD {u:?} owner={:?} identity={:?}",
+                    t.owner(),
+                    b.owner_identity(EntityRef::Edgeuse(u))
+                );
+            }
+        }
+    }
 }
