@@ -23,10 +23,12 @@ mod coincidence;
 mod pointers;
 pub(crate) mod spatial;
 
-pub use assert_valid::{assert_valid, check_brep, check_brep_with_keys, BrepCheck, CheckLevel};
+pub use assert_valid::{
+    assert_valid, check_brep, check_brep_with_keys, curve_assert_valid, BrepCheck, CheckLevel,
+};
 pub use coincidence::{contains_coincident_topology, CoincidenceResult};
-pub use pointers::validate_pointers;
 pub(crate) use pointers::validate_geometry;
+pub use pointers::validate_pointers;
 
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::assert_array::{AssertArray, AssertReport, ObjectKey, ReportSpec};
