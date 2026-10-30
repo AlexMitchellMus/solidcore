@@ -177,6 +177,14 @@ const FORK_RECORDS_WITHOUT_FIX: &[(&str, &str)] = &[
         "WR-582",
         "a change to the fork's C API (blends take exactly the given edges), not to SMLib",
     ),
+    (
+        "WR-594",
+        "the fork's fix (smlib 5fdefb9) is not on the fork's main yet; its field `fillet_rails_meet_at_one_end_point` is in `off` until it lands",
+    ),
+    (
+        "WR-598",
+        "the fork's fix (smlib 829b982) is not on the fork's main yet; its field `delete_vertex_joins_seam_iso_curve` is in `off` until it lands",
+    ),
 ];
 
 /// Whether `text` cites a fork commit: `tangency-labs/smlib` (or `fork`, `fork commit`)
