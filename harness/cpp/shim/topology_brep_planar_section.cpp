@@ -11,6 +11,7 @@
 #include <SmCurve.h>
 #include <SmFace.h>
 #include <SmBSplineCurve.h>
+#include <nurbs.h>
 #include <SmEdge.h>
 #include <SmLoop.h>
 #include <SmVertex.h>
@@ -112,6 +113,23 @@ void put_curve(std::vector<double>& o, SmCurve* c) {
 // A status as the Rust side records it: SM_SUCCESS is 0, an error its SmStatus code.
 double st(SmStatus s) { return s == SM_SUCCESS ? 0.0 : (double)s; }
 
+// The NURB of a B-spline curve: `n (x y z w)* nknots knot* mult*` (unique knots).
+void put_nurb(std::vector<double>& o, SmBSplineCurve* c) {
+    gw_CURVE* nurb = c ? c->GetGwNurbPointer() : nullptr;
+    if (!nurb || !nurb->pol) { o.push_back(-1.0); return; }
+    o.push_back((double)(nurb->pol->n + 1));
+    for (long i = 0; i <= (long)nurb->pol->n; ++i) {
+        o.push_back(nurb->pol->Pw[i].x); o.push_back(nurb->pol->Pw[i].y);
+        o.push_back(nurb->pol->Pw[i].z); o.push_back(nurb->pol->Pw[i].w);
+    }
+    SmTArray<double> knots;
+    SmTArray<ULONG> mults;
+    c->GetKnots(knots, &mults);
+    o.push_back((double)knots.GetSize());
+    for (ULONG i = 0; i < knots.GetSize(); ++i) o.push_back(knots[i]);
+    for (ULONG i = 0; i < mults.GetSize(); ++i) o.push_back((double)mults[i]);
+}
+
 void put_curves(std::vector<double>& o, SmTArray<SmCurve*>& curves) {
     o.push_back((double)curves.GetSize());
     for (ULONG i = 0; i < curves.GetSize(); ++i) put_curve(o, curves[i]);
@@ -124,6 +142,9 @@ void put_curves(std::vector<double>& o, SmTArray<SmCurve*>& curves) {
 // `Transform` of an SmAxis2Placement translated by the translation; with walk_n > 1 the
 // plane point is `CalculateBoundingBox(box).Evaluate(t, t, t)`, t = walk_i / (walk_n - 1)
 // (prog_test my_test_tsurf_section). Then strut point (3) for source kind 2.
+// Op 4: on every face, the forced-UV continuation's callees for each section curve
+// without UV curve -> `0 nfaces (status nforced (curve_nurb drop_status ndrops (drop
+// drop_nurb lift_status maxdist lifted)*)*)*`.
 // Op 3: SmSurface::CreatePlanarSectionCurves of every face's surface over the face's UV
 // domain (GetFaces order; tolerances from the args) -> `0 nfaces (status n3d curve* nuv
 // curve*)*`, a null UV curve being `-1`.
@@ -133,7 +154,7 @@ void put_curves(std::vector<double>& o, SmTArray<SmCurve*>& curves) {
 // returns `-999 status`.
 SC_EXPORT int32_t sc_topology_brep_planar_section_eval(int32_t op, const char* path,
         const double* a, int64_t na, double* out, int64_t cap, int64_t* out_len) {
-    if (op < 1 || op > 3 || !a || na != NARGS || !out_len) return SC_ERR_ARG;
+    if (op < 1 || op > 4 || !a || na != NARGS || !out_len) return SC_ERR_ARG;
     SC_TRY
     SmStatus status = SM_SUCCESS;
     std::unique_ptr<SmBrep> body(build_body(path, a, status));
@@ -174,6 +195,56 @@ SC_EXPORT int32_t sc_topology_brep_planar_section_eval(int32_t op, const char* p
     const SmContext& ctx = *SmApiGetOrCreateContext();
     SmApproxTol3d tol = a[12];
     double ang = a[14];
+    if (op == 4) {
+        // the forced-UV continuation's callees on every face: for each non-degenerate
+        // section curve without UV curve, DropAndTrimCurve(face UV domain, curve, its
+        // interval, face tol / 3, TRUE, TRUE) and LiftCurve of every drop (tol / 3, TRUE)
+        SmTArray<SmFace*> faces;
+        body->GetFaces(faces);
+        o.push_back(0.0);
+        o.push_back((double)faces.GetSize());
+        for (ULONG i = 0; i < faces.GetSize(); ++i) {
+            SmFace* face = faces[i];
+            SmSurface* surface = face->GetSurface();
+            double ftol = (double)face->GetTolerance();
+            SmTArray<SmCurve*> f3, fuv;
+            SmStatus fs = surface->CreatePlanarSectionCurves(ctx, face->GetUVDomain(), point,
+                normal, a[11] != 0.0 ? &tol : nullptr, a[13] != 0.0 ? &ang : nullptr, &f3, &fuv);
+            o.push_back(st(fs));
+            std::vector<double> forced;
+            ULONG nforced = 0;
+            for (ULONG j = 0; fs == SM_SUCCESS && j < f3.GetSize(); ++j) {
+                SmCurve* c = f3[j];
+                if ((j < fuv.GetSize() && fuv[j]) || c->IsDegenerate()) continue;
+                ++nforced;
+                put_nurb(forced, dynamic_cast<SmBSplineCurve*>(c));
+                double maxdrop = 0.0, dev = 0.0;
+                SmTArray<SmBSplineCurve*> drops;
+                SmStatus ds = surface->DropAndTrimCurve(ctx, face->GetUVDomain(), *c,
+                    c->GetNaturalInterval(), ftol / 3.0, maxdrop, dev, drops, TRUE, TRUE);
+                forced.push_back(st(ds));
+                forced.push_back((double)drops.GetSize());
+                for (ULONG k = 0; k < drops.GetSize(); ++k) {
+                    put_curve(forced, drops[k]);
+                    put_nurb(forced, drops[k]);
+                    double maxdist = 0.0;
+                    SmBSplineCurve* lifted = nullptr;
+                    SmStatus ls = surface->LiftCurve(ctx, face->GetUVDomain(), *drops[k],
+                        drops[k]->GetNaturalInterval(), ftol / 3.0, maxdist, lifted, TRUE);
+                    forced.push_back(st(ls));
+                    forced.push_back(maxdist);
+                    put_curve(forced, lifted);
+                    delete lifted;
+                    delete drops[k];
+                }
+            }
+            o.push_back((double)nforced);
+            o.insert(o.end(), forced.begin(), forced.end());
+            for (ULONG j = 0; j < f3.GetSize(); ++j) delete f3[j];
+            for (ULONG j = 0; j < fuv.GetSize(); ++j) delete fuv[j];
+        }
+        return sc_copy_out(o.data(), (int64_t)o.size(), out, cap, out_len);
+    }
     if (op == 3) {
         SmTArray<SmFace*> faces;
         body->GetFaces(faces);
