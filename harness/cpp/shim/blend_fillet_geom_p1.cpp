@@ -498,6 +498,17 @@ struct Model
             return targetEdges[(size_t)index]->GetPrimaryEdgeuse();
         if (kind == 3 && index >= 0 && (size_t)index < targetFaces.size())
             return targetFaces[(size_t)index];
+        if (kind == 5 && index >= 0 && (size_t)index < targetFaces.size())
+        {
+            // edge use `sub` of the first loop of target face `index`: an edge use with a face
+            SmTArray<SmLoop*> loops;
+            targetFaces[(size_t)index]->GetLoops(loops);
+            SmTArray<SmEdgeuse*> eus;
+            if (loops.GetSize() > 0)
+                loops[0]->GetEdgeuses(eus);
+            if (sub >= 0 && (ULONG)sub < eus.GetSize())
+                return eus[(ULONG)sub];
+        }
         return NULL;
     }
 
@@ -722,7 +733,13 @@ struct Model
             e->SetFilletEdgeType((SmFilletEdgeType)etype);
             e->SetStatus((SmFilStatus)status);
             if (rd.flag())
-                e->SetCurve(read_curve(rd, ctx), TRUE);
+            {
+                // as upstream's producers: SetCurve, then the curve's owner is the edge
+                SmCurve* c = read_curve(rd, ctx);
+                e->SetCurve(c, TRUE);
+                if (c != NULL)
+                    c->SetOwner(e);
+            }
             if (rd.flag())
             {
                 double t0 = rd.num();

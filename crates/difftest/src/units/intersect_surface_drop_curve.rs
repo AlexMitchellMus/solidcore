@@ -385,7 +385,7 @@ fn rust_curve(c: &CurveIn) -> Result<Curve, HarnessError> {
 /// cannot return.
 fn status(e: &SolidError) -> f64 {
     match e {
-        SolidError::InvalidInput { .. } => 1007.0,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007.0,
         SolidError::Upstream { code, .. } => f64::from(*code),
         _ => -1.0,
     }
@@ -693,7 +693,7 @@ fn run_op(
                 return Err(Fail::Harness(harness("surface cache build failed")));
             };
             let (tol, ang) = (t.base.approx_tol_3d, t.base.ang_tol_rad);
-            match st(t.drop_trace(k, &mut cache, Some(tol), Some(ang)))? {
+            match st(t.drop_trace(k, &mut cache, Some(tol), Some(ang), None))? {
                 Ok(out) => {
                     o.push(0.0);
                     put_acc(o, &out);

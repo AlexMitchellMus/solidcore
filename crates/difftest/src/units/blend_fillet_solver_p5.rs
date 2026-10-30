@@ -5,7 +5,6 @@
 //! multi-interval process path evaluates binormals on a wire, then compares the
 //! null-surface return. Post-call state,
 //! including caller-seeded duplicate adjusted corners, is compared on every pass.
-use super::topology_edgeuse_p1::import;
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -296,7 +295,11 @@ impl RolloverOwnership for Ownership {
             "unexpected new curve owner",
         ))
     }
-    fn owner_changed(&mut self, _: solidcore::curve::curve::p2::OwnerChange) -> SolidResult<()> {
+    fn owner_changed(
+        &mut self,
+        _: &mut Curve,
+        _: solidcore::curve::curve::p2::OwnerChange,
+    ) -> SolidResult<()> {
         Err(SolidError::invalid_input(
             "fixture",
             "unexpected owner notification",
@@ -314,7 +317,10 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
         FilletGeomType::from_code(i64::from(i.kind)).ok_or_else(|| harness("kind"))?,
     )
     .map_err(harness)?;
-    let mut target = import(&ffi::target().map_err(harness)?)?;
+    // the shim's `CreateRectangle(ctx, 1e-5, 1.0, 1.0, SmAxis2Placement())`, built by the
+    // Rust kernel in the shim's traversal order (no C++ state reaches the Rust side)
+    let mut target = super::blend_fillet_solver_p4::own_rectangle(1.0, 1.0, 1e-5, false)?
+        .map_err(harness)?;
     let face = target.faces().ids().next();
     let region = fb
         .brep_mut()
@@ -437,7 +443,8 @@ fn run(i: &Inputs) -> Result<Output, HarnessError> {
             &mut snapshot,
             &mut fb,
             id,
-            &|_| Ok(corner_type(i.corner)),
+            // the fixture names a corner type, not corner objects: an empty table
+            &mut FixedCornerType(corner_type(i.corner)),
             &mut adjusted,
             &mut Ownership,
         )
@@ -541,5 +548,30 @@ impl UnitDiff for Runner {
             rails,
         })
         .ok()
+    }
+}
+
+/// The fixture's corners: every corner has the case's type, no vertex has a corner
+/// and the corner table is empty.
+struct FixedCornerType(FilletCornerType);
+
+impl solidcore::blend::fillet_geom::p3::SplitCorners for FixedCornerType {
+    fn corner_of_vertex(
+        &self,
+        _: VertexId,
+    ) -> Option<FilletCornerId> {
+        None
+    }
+    fn lookup(&self) -> solidcore::blend::fillet_geom::p1::CornerLookup<'_> {
+        solidcore::blend::fillet_geom::p1::CornerLookup::default()
+    }
+    fn corner_mut(
+        &mut self,
+        _: FilletCornerId,
+    ) -> solidcore::Result<&mut solidcore::blend::fillet_corner::p3::FilletCorner> {
+        Err(SolidError::null_pointer("difftest::blend_fillet_solver_p5"))
+    }
+    fn corner_type(&self, _: FilletCornerId) -> solidcore::Result<FilletCornerType> {
+        Ok(self.0)
     }
 }

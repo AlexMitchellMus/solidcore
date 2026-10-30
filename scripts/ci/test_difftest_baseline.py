@@ -203,7 +203,7 @@ class BaselineTests(unittest.TestCase):
             c = r["cases"][0]
             c.update(outcome=outcome, exact_compared=exact)
             c["pass"] = outcome == "pass"
-            for kind, field in [("pass", "cases_passed"), ("fail", "cases_failed"), ("deferred", "cases_deferred"), ("rejected", "cases_rejected"), ("known_mismatch", "cases_known_mismatch")]:
+            for kind, field in [("pass", "cases_passed"), ("fail", "cases_failed"), ("deferred", "cases_deferred"), ("rejected", "cases_rejected"), ("known_mismatch", "cases_known_mismatch"), ("cpp_defect", "cases_cpp_defect"), ("parked", "cases_parked")]:
                 r[field] = int(outcome == kind)
             r["status"] = "fail" if outcome in {"fail", "rejected"} else "partial" if outcome in {"known_mismatch", "deferred"} else "green"
             r["pass"] = r["status"] != "fail"
@@ -216,6 +216,28 @@ class BaselineTests(unittest.TestCase):
             self.assertEqual(len(b.ratchet_reports({"a.b": before}, {"a.b": known(outcome, 0)})), 1)
         for outcome in ["deferred", "rejected", "fail"]:
             self.assertEqual(len(b.ratchet_reports({"a.b": before}, {"a.b": known(outcome, 0)})), 1)
+        # A confirmed C++ defect is green, ratchets like a known mismatch, and a pass
+        # may not become one (no silent waiver).
+        self.assertEqual(known("cpp_defect")["status"], "green")
+        b.validate_report(known("cpp_defect"), "a.b")
+        wrong = known("cpp_defect"); wrong["status"] = "partial"
+        with self.assertRaises(b.BaselineError): b.validate_report(wrong, "a.b")
+        for old, new in [("known_mismatch", "cpp_defect"), ("cpp_defect", "known_mismatch"), ("cpp_defect", "pass")]:
+            self.assertEqual(b.ratchet_reports({"a.b": known(old)}, {"a.b": known(new)}), [], (old, new))
+        for new in ["deferred", "rejected", "fail"]:
+            self.assertEqual(len(b.ratchet_reports({"a.b": known("cpp_defect")}, {"a.b": known(new, 0)})), 1, new)
+        self.assertEqual(len(b.ratchet_reports({"a.b": known("pass")}, {"a.b": known("cpp_defect")})), 1)
+        # A parked case (cpp_defect entry, not run) is green, compares nothing and is
+        # exempt from value coverage; it ratchets like the other listed outcomes.
+        self.assertEqual(known("parked", 0)["status"], "green")
+        b.validate_report(known("parked", 0), "a.b")
+        wrong = known("parked", 0); wrong["cases_parked"] = 0
+        with self.assertRaises(b.BaselineError): b.validate_report(wrong, "a.b")
+        for old, new in [("cpp_defect", "parked"), ("known_mismatch", "parked"), ("parked", "known_mismatch"), ("parked", "pass")]:
+            self.assertEqual(b.ratchet_reports({"a.b": known(old, 0 if old == "parked" else 1)}, {"a.b": known(new, 0 if new == "parked" else 1)}), [], (old, new))
+        for new in ["deferred", "rejected", "fail"]:
+            self.assertEqual(len(b.ratchet_reports({"a.b": known("parked", 0)}, {"a.b": known(new, 0)})), 1, new)
+        self.assertEqual(len(b.ratchet_reports({"a.b": known("pass")}, {"a.b": known("parked", 0)})), 1)
         legacy = known(); legacy.pop("schema_version"); legacy["cases"][0].pop("exact_compared")
         legacy["cases"][0]["mismatches"] = [dict(field="ints.status[0]", cpp="1006", rust="1001")]
         b.validate_report(legacy, "a.b")
@@ -528,6 +550,63 @@ class BaselineTests(unittest.TestCase):
             self.assertEqual(invoke("bootstrap", "push", "0" * 40).returncode, 0)
             self.assertEqual(calls.read_text(), before)
 
+
+
+class WorkflowGateTests(unittest.TestCase):
+    """Structure of the split difftest gate in ci.yml (text checks; no YAML dependency)."""
+
+    @staticmethod
+    def jobs():
+        text = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text()
+        head, _, rest = text.partition("\njobs:\n")
+        blocks, name = {}, None
+        for line in rest.splitlines():
+            if line.startswith("  ") and not line.startswith("   ") and line.rstrip().endswith(":") and not line.strip().startswith("#"):
+                name = line.strip()[:-1]
+                blocks[name] = []
+            elif name:
+                blocks[name].append(line)
+        return {k: "\n".join(v) for k, v in blocks.items()}
+
+    def test_required_check_aggregates_every_part(self):
+        jobs = self.jobs()
+        gate = jobs["difftest"]
+        self.assertIn("if: always()", gate)
+        for part in ("difftest-baseline", "difftest-sweep", "difftest-perturb", "difftest-compare"):
+            self.assertIn(part, gate.split("steps:")[0])
+        self.assertIn("join(needs.*.result", gate)
+        self.assertIn('[ "$r" = success ]', gate)
+
+    def test_perturbation_is_unconditional_and_parallel(self):
+        perturb = self.jobs()["difftest-perturb"]
+        # Only gated on the docs-only/main-push classifier (scripts/ci/changes.sh), which
+        # every full pull_request and merge_group run passes: never on the base or sweep.
+        self.assertIn("needs: changes\n", perturb)
+        self.assertIn("if: needs.changes.outputs.full == 'true'", perturb)
+        self.assertIn("--green --perturb", perturb)
+        # No event filter on the job or its run step: pull_request and merge_group both run it.
+        self.assertNotIn("github.event_name", perturb)
+
+    def test_sweep_does_not_wait_for_the_base(self):
+        sweep = self.jobs()["difftest-sweep"]
+        self.assertIn("needs: changes\n", sweep)  # the classifier only, never the base
+        self.assertNotIn("difftest-baseline.sh", sweep)
+        self.assertNotIn("--baseline", sweep)
+
+    def test_compare_needs_validated_base_and_sweep_and_fails_closed(self):
+        compare = self.jobs()["difftest-compare"]
+        self.assertIn("needs: [changes, difftest-baseline, difftest-sweep]", compare)
+        self.assertNotIn("always()", compare)
+        self.assertNotIn("continue-on-error", self.jobs()["difftest-baseline"])
+        self.assertIn("--compare-reports", compare)
+        self.assertIn("difftest-baseline/reports", compare)
+        base = self.jobs()["difftest-baseline"]
+        self.assertIn("scripts/ci/difftest-baseline.sh", base)
+        self.assertIn("--current-plan", base)
+
+    def test_no_job_uses_a_continue_on_error_escape(self):
+        for name, body in self.jobs().items():
+            self.assertNotIn("continue-on-error", body, name)
 
 
 if __name__ == "__main__": unittest.main()

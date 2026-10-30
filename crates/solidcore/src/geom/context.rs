@@ -21,6 +21,7 @@
 //! | [`Context::sys_notify_callback`]          | `SmContext::GetSysNotifyCallback`               |
 //! | [`Context::user_notify_callback_mut`], [`Context::sys_notify_callback_mut`] | the same getters, for `Execute` |
 //! | [`NotifyCallback`], [`NotifyCallback::execute`] | `SmNotifyCallback`, `SmNotifyCallback::Execute` |
+//! | [`NotifyCallback::owner_link`]            | (none: the `GetOwner()` / `GetEdge()` a callback reads) |
 //! | [`Context::set_sys_notify_callback`]      | `SmContext::SetSysNotifyCallback`               |
 //! | [`Context::this_model_size_estimate`]     | `SmContext::GetThisModelSizeEstimate`           |
 //! | [`Context::set_this_model_size_estimate`] | `SmContext::SetThisModelSizeEstimate` (inline, `SM_USE_OLDTOL` build) |
@@ -185,6 +186,17 @@ pub trait NotifyCallback: std::fmt::Debug + Send {
     fn as_any(&self) -> Option<&dyn core::any::Any> {
         None
     }
+
+    /// Records the object `object` is owned by (`SmCurve::GetOwner`,
+    /// `SmSurface::GetOwner`, `SmEdgeuse::GetEdge`; `None` for a null owner) for the
+    /// notifications that follow. An upstream callback reads these links from the
+    /// notified objects themselves; an [`object::ObjectRef`] carries none, so the
+    /// notifying code reports a link no notification announces (a UV trim curve's edge
+    /// use, that edge use's edge) before the notification a callback needs it for
+    /// ([`object::report_owner_link`]). The default ignores it.
+    fn owner_link(&mut self, object: ObjectKey, owner: Option<object::ObjectRef>) {
+        let _ = (object, owner);
+    }
 }
 
 /// Shared modeling state (`SmContext`): traversal marks, the Boolean flag, notify
@@ -331,6 +343,20 @@ impl Drop for NotificationScope<'_> {
     }
 }
 
+/// Lend the callbacks back to the stand-in even when the caller unwinds
+/// ([`Context::with_lease_returned`]).
+struct ReturnedLease<'a> {
+    kernel: &'a mut Kernel,
+    lent: &'a mut Context,
+}
+impl Drop for ReturnedLease<'_> {
+    fn drop(&mut self) {
+        let lease = self.kernel.context.take_lease();
+        self.kernel.context.identities.lent = true;
+        self.lent.install_lease(lease);
+    }
+}
+
 /// The refusal of a context whose callbacks a crate edit has lent out
 /// ([`Context::lend_notify`]): a nested edit through it would notify no callback, in
 /// another domain.
@@ -463,6 +489,25 @@ impl Context {
             notifications,
         };
         Ok(action(scope.kernel, &mut scope.notifications))
+    }
+
+    /// Gives the callbacks and identity domain `lent` holds (the stand-in of
+    /// [`Context::with_notification_context`]) back to the kernel context for
+    /// `action`, and lends them to `lent` again afterwards, also when `action`
+    /// unwinds: upstream has one context, so an edit nested in the lend notifies
+    /// and names through it like any other. With no stand-in, or a kernel context
+    /// that is not lent, `action` runs as is.
+    pub(crate) fn with_lease_returned<T>(
+        k: &mut Kernel,
+        lent: Option<&mut Self>,
+        action: impl FnOnce(&mut Kernel) -> T,
+    ) -> T {
+        let Some(lent) = lent.filter(|_| k.context.identities.lent) else {
+            return action(k);
+        };
+        k.context.install_lease(lent.take_lease());
+        let scope = ReturnedLease { kernel: k, lent };
+        action(scope.kernel)
     }
 
     /// An immutable metadata snapshot, without copying callback ownership.

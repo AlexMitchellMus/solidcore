@@ -61,8 +61,8 @@ enum : int32_t
     CK_API_CURVE = 2,       // SmApiCreateCurve(points)
     CK_API_ARC = 3,         // SmApiCreateArc(center, radius, start, end)
     CK_API_CIRCLE = 4,      // SmApiCreateCircle(center, radius, SmBSplineCurve*&)
-    CK_LINE_SEGMENT = 5,    // SmApiCreateLineSegment(start, end)    (SmCurve only)
-    CK_ANALYTIC_CIRCLE = 6, // SmApiCreateCircle(center, radius, SmCircle*&) (SmCurve only)
+    CK_LINE_SEGMENT = 5,    // SmApiCreateLineSegment(start, end) (real SmLine subclass)
+    CK_ANALYTIC_CIRCLE = 6, // SmApiCreateCircle(center, radius, SmCircle*&) (real SmCircle)
 };
 
 struct Bad : std::runtime_error
@@ -229,9 +229,14 @@ struct Curves
         all.back() = r;
         return r;
     }
-    SmBSplineCurve* add_bspline(const CurveSpec& c)
+    // SmLine : SmBSplineCurve (SmLine.h:49); SmCircle : SmEllipse : SmBSplineCurve
+    // (SmCircle.h:59, SmEllipse.h:243). Admit these real subclasses only for
+    // CreateLinearSweep, which uses their NURB (SmBSplineSurface.cpp:1588-1629).
+    SmBSplineCurve* add_bspline(const CurveSpec& c, bool linear_sweep = false)
     {
-        if (c.kind == CK_NULL || c.kind >= CK_LINE_SEGMENT)
+        const bool linear_subclass = linear_sweep &&
+            (c.kind == CK_LINE_SEGMENT || c.kind == CK_ANALYTIC_CIRCLE);
+        if (c.kind == CK_NULL || (c.kind >= CK_LINE_SEGMENT && !linear_subclass))
             throw Bad();
         return (SmBSplineCurve*)add(c);
     }
@@ -297,7 +302,7 @@ void run(Rd& rd, std::vector<double>& o)
         if (rd.at != rd.n)
             throw Bad();
         Curves cv;
-        SmBSplineCurve* c = cv.add_bspline(cs);
+        SmBSplineCurve* c = cv.add_bspline(cs, true);
         SmSurface* res = NULL;
         SmApiStatus stat = SmApiCreateExtrude(c, v3(v.data()), res);
         put_result(o, stat, res);
@@ -419,8 +424,9 @@ void run(Rd& rd, std::vector<double>& o)
     {
         int64_t nf = rd.idx(0, 16);
         std::vector<double> circles = rd.nums(4 * nf);
-        ULONG degree = (ULONG)rd.idx(1, 3);
-        if (rd.at != rd.n)
+        // 0 and above NL_MAXDEG are refused by the API before any work
+        ULONG degree = (ULONG)rd.idx(0, 1 << 20);
+        if ((degree >= 4 && degree <= 17) || rd.at != rd.n)
             throw Bad();
         std::vector<SmBrep*> planes;
         SmTArray<SmFace*> faces;

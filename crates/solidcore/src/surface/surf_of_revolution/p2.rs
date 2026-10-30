@@ -50,14 +50,15 @@ use crate::geom::solution_array::{ObjectKind, SolutionObject};
 use crate::geom::vector2d::Point2;
 use crate::geom::vector3d::Point3;
 use crate::kernel::Kernel;
-use crate::math::{EFF_ZERO, EFF_ZERO_PARAM, EFF_ZERO_SQRT};
+use crate::math::{BIG_DOUBLE, EFF_ZERO, EFF_ZERO_PARAM, EFF_ZERO_SQRT};
 use crate::nurbs::b_spline_curve::BoundingBoxRequest;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
 use crate::nurbs::b_spline_surface::p1::LocationType;
 use crate::nurbs::b_spline_surface::{BSplineSurface, IsoCurveOptions, SurfParamType};
+use crate::surface::plane::p2::PlaneOwner;
 use crate::surface::surface::p1::SurfaceIntersectContext;
 use crate::surface::surface::p2::{
-    base_global_surface_intersect_in, Surface, SurfaceIntersection, SurfaceKind,
+    base_global_surface_intersect_into, Surface, SurfaceIntersection, SurfaceKind,
     B_SPLINE_SURFACE_TYPE,
 };
 
@@ -65,6 +66,7 @@ use super::p1::{
     gen_adjust_step_interval, gen_base, gen_base_mut, gen_max_analytic_domain, gen_step_interval,
     not_b_spline, SurfOfRevolution, SweepIsoFn,
 };
+use super::p3::intersect_revolved_into;
 
 const OP_ADJUST: &str = "surface::surf_of_revolution::p2::SurfOfRevolution::adjust_step_uv_domain";
 const OP_STEP_INV: &str = "surface::surf_of_revolution::p2::SurfOfRevolution::step_inversion";
@@ -294,6 +296,65 @@ impl SurfOfRevolution {
         }
     }
 
+    /// The non-planar generator branch of `STEPInversion`: the general B-spline
+    /// inversion over the NURB image of `anal_domain`, with the parameter conversions
+    /// upstream calls virtually (`ConvertUVFromSTEPToNURBS` /
+    /// `ConvertUVFromNURBSToSTEP`): this class's own, or those of a derived class that
+    /// inherits `STEPInversion` (`SmTorus`, `SmCone`). The B-spline inversion's own
+    /// virtual solves run on `surface` (the derived surface upstream's `this` is) when
+    /// given, else on a plain B-spline surface of this NURB
+    /// ([`BSplineSurface::step_inversion`]).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`BSplineSurface::step_inversion`] and of `to_step`;
+    /// [`SolidError::Unported`] from `to_nurbs` (its other errors are ignored, as
+    /// upstream ignores the status).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn step_inversion_non_planar(
+        &self,
+        k: &Kernel,
+        anal_domain: &Extent2d,
+        point_on_surf: Point3,
+        tol_3d: f64,
+        uv_guess: Option<Point2>,
+        surface: Option<&Surface>,
+        to_nurbs: impl Fn(Point2) -> Result<Point2>,
+        to_step: impl Fn(Point2) -> Result<Point2>,
+    ) -> Result<StepInversionOutputs> {
+        // Not planar, must use the general solver.
+
+        // Have to convert the analytical domain to a NURBS domain (the statuses are
+        // ignored: a failed conversion leaves the STEP point).
+        let mut nurbs_domain = Extent2d::new();
+        let step_min = anal_domain.min();
+        let nurbs_min = ignored(to_nurbs(step_min))?.unwrap_or(step_min);
+        nurbs_domain.add_point(nurbs_min);
+        let step_max = anal_domain.max();
+        let nurbs_max = ignored(to_nurbs(step_max))?.unwrap_or(step_max);
+        nurbs_domain.add_point(nurbs_max);
+
+        let (nurbs_parameter, location) = match surface {
+            Some(surface) => self.base.step_inversion_on(
+                k,
+                surface,
+                &nurbs_domain,
+                point_on_surf,
+                tol_3d,
+                uv_guess,
+            )?,
+            None => self
+                .base
+                .step_inversion(k, &nurbs_domain, point_on_surf, tol_3d, uv_guess)?,
+        };
+        let step = to_step(nurbs_parameter)?;
+        Ok(StepInversionOutputs {
+            uv: step,
+            location,
+            inside: true,
+        })
+    }
+
     /// [`Self::step_inversion`] with the outputs upstream writes before returning
     /// `SM_ERR` for a point outside the sweep interval (`inside` is `false` then),
     /// for derived classes that read them (`SmCone`).
@@ -311,29 +372,16 @@ impl SurfOfRevolution {
     ) -> Result<StepInversionOutputs> {
         // pass call along for nonPlanar generator curves
         if !self.planar_generator {
-            // Not planar, must use the general solver.
-
-            // Have to convert the analytical domain to a NURBS domain (the statuses are
-            // ignored: a failed conversion leaves the STEP point).
-            let mut nurbs_domain = Extent2d::new();
-            let step_min = anal_domain.min();
-            let nurbs_min =
-                ignored(self.convert_uv_from_step_to_nurbs(k, step_min))?.unwrap_or(step_min);
-            nurbs_domain.add_point(nurbs_min);
-            let step_max = anal_domain.max();
-            let nurbs_max =
-                ignored(self.convert_uv_from_step_to_nurbs(k, step_max))?.unwrap_or(step_max);
-            nurbs_domain.add_point(nurbs_max);
-
-            let (nurbs_parameter, location) =
-                self.base
-                    .step_inversion(k, &nurbs_domain, point_on_surf, tol_3d, uv_guess)?;
-            let step = self.convert_uv_from_nurbs_to_step(k, nurbs_parameter)?;
-            return Ok(StepInversionOutputs {
-                uv: step,
-                location,
-                inside: true,
-            });
+            return self.step_inversion_non_planar(
+                k,
+                anal_domain,
+                point_on_surf,
+                tol_3d,
+                uv_guess,
+                None,
+                |uv| self.convert_uv_from_step_to_nurbs(k, uv),
+                |uv| self.convert_uv_from_nurbs_to_step(k, uv),
+            );
         }
 
         // Generator curve is planar, so we can solve it analytically.
@@ -541,18 +589,30 @@ impl SurfOfRevolution {
             },
             true,
         ))?;
-        let height = boxes
-            .and_then(|b| b.normal)
-            .unwrap_or_default()
-            .max_dimension()
-            * 1.5; // multiply max dimension by some factor to be sure
+        let bbox = boxes.and_then(|b| b.normal).unwrap_or_default();
+        let height = bbox.max_dimension() * 1.5; // multiply max dimension by some factor to be sure
         let origin = self.position.origin();
-        let axis_line = Curve::from(Line::create_line_segment(
-            3,
-            origin,
-            origin + height * z_axis,
-            None,
-        )?);
+        // Not upstream (WR-343, tangency-labs/solidcore#973), opt-in
+        // `Kernel::fixes.revolution_offset_axis_both_sides`: the axis segment spans the offset
+        // curve's whole extent along the axis, on both sides of the frame's origin (it ran
+        // from the origin along +z only and missed an offset crossing the axis below it),
+        // and the part kept is the one on the generatrix's side (positive radius).
+        let both_sides = k.fixes.revolution_offset_axis_both_sides;
+        let (axis_start, axis_end) = if both_sides {
+            let (mut axial_min, mut axial_max) = (BIG_DOUBLE, -BIG_DOUBLE);
+            for corner in bbox.corners() {
+                let axial = (corner - origin).dot(z_axis);
+                axial_min = axial_min.min(axial);
+                axial_max = axial_max.max(axial);
+            }
+            (
+                origin + (axial_min - height) * z_axis,
+                origin + (axial_max + height) * z_axis,
+            )
+        } else {
+            (origin, origin + height * z_axis)
+        };
+        let axis_line = Curve::from(Line::create_line_segment(3, axis_start, axis_end, None)?);
         let axis_ivl = axis_line.natural_interval();
         let opts = CurveIntersectOptions {
             handles: [Some(CurveHandle(domain)), Some(CurveHandle(axis_ivl))],
@@ -573,10 +633,25 @@ impl SurfOfRevolution {
                     .as_slice()
                     .first()
                     .map_or(Ok(0.0), |s| s.start.param(0))?;
-                if domain.min() != param || domain.max() != param {
-                    // Take the largest portion for now
-                    // Eventually use a better algorithm
-                    if param < domain.mid() {
+                let trim = if both_sides {
+                    domain.min() != param && domain.max() != param
+                } else {
+                    domain.min() != param || domain.max() != param
+                };
+                if trim {
+                    let keep_high = if both_sides {
+                        // (WR-343) keep the part on the generatrix's side of the axis
+                        // (positive radius along the frame's x axis), not the longer part
+                        let low_mid = off_curve.evaluate_point(k, 0.5 * (domain.min() + param))?;
+                        let high_mid = off_curve.evaluate_point(k, 0.5 * (param + domain.max()))?;
+                        let x_axis = self.position.x_axis();
+                        (high_mid - origin).dot(x_axis) > (low_mid - origin).dot(x_axis)
+                    } else {
+                        // Take the largest portion for now
+                        // Eventually use a better algorithm
+                        param < domain.mid()
+                    };
+                    if keep_high {
                         let _ = domain.set_min(param);
                     } else {
                         let _ = domain.set_max(param);
@@ -613,8 +688,8 @@ impl SurfOfRevolution {
     /// `other_uv_domain` (`GlobalSurfaceIntersect`): the special cases of a plane or
     /// another surface of revolution ([`Self::intersect_with_plane`],
     /// [`Self::intersect_with_surf_of_revolution`]) and, where they need more, the
-    /// general surface intersection ([`base_global_surface_intersect`](crate::surface::surface::p2::base_global_surface_intersect)) whose
-    /// curves follow the special cases' (upstream appends to the same arrays).
+    /// general surface intersection ([`base_global_surface_intersect`](crate::surface::surface::p2::base_global_surface_intersect)), which
+    /// resets the output arrays first (`SmSurfaceIntersector::DoIntersection`).
     ///
     /// # Errors
     ///
@@ -657,47 +732,83 @@ impl SurfOfRevolution {
         ang_tol_rad: Option<f64>,
         context: Option<SurfaceIntersectContext<'_, O>>,
     ) -> Result<SurfaceIntersection> {
-        let mut need_nurb_intersection = true;
         let mut out = SurfaceIntersection::default();
-        match other.kind() {
+        self.global_surface_intersect_into(
+            this,
+            k,
+            uv_domain,
+            other,
+            other_uv_domain,
+            use_surface_edges,
+            approx_tol_3d,
+            ang_tol_rad,
+            context,
+            &mut out,
+        )?;
+        Ok(out)
+    }
+
+    /// [`Self::global_surface_intersect_in`] into `out` (upstream's output arrays). On an
+    /// error `out` keeps what the failing intersection appended before it, as upstream
+    /// leaves its output arrays. The general intersection, when a special case needs
+    /// more, resets them first (`SmSurfaceIntersector::DoIntersection`).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn global_surface_intersect_into<O: SolutionObject + Copy + PartialEq>(
+        &self,
+        this: &Surface,
+        k: &Kernel,
+        uv_domain: &Extent2d,
+        other: &Surface,
+        other_uv_domain: &Extent2d,
+        use_surface_edges: [bool; 2],
+        approx_tol_3d: Option<f64>,
+        ang_tol_rad: Option<f64>,
+        context: Option<SurfaceIntersectContext<'_, O>>,
+        out: &mut SurfaceIntersection,
+    ) -> Result<()> {
+        let mut need_nurb_intersection = true;
+        match other.kind_with_nurb(k)? {
             SurfaceKind::Plane(p) => {
-                let (more, found) =
-                    self.intersect_with_plane(k, p, other_uv_domain, approx_tol_3d)?;
-                need_nurb_intersection = more;
-                out = found;
+                need_nurb_intersection = self.intersect_with_plane_owned_using_into(
+                    k,
+                    p,
+                    PlaneOwner::NoFace,
+                    other_uv_domain,
+                    approx_tol_3d,
+                    &Self::own_sweep_iso,
+                    out,
+                )?;
             }
             SurfaceKind::Cone(c) if c.type_code() == crate::surface::surface::p2::CONE_TYPE => {
-                let (more, found) = self.intersect_with_cone(
+                need_nurb_intersection = self.intersect_with_cone_into(
                     k,
                     uv_domain,
                     c.as_ref(),
                     other_uv_domain,
                     approx_tol_3d,
+                    out,
                 )?;
-                need_nurb_intersection = more;
-                out = found;
             }
             SurfaceKind::SurfOfRevolution(o) => {
-                let (more, found) = self.intersect_with_surf_of_revolution(
+                need_nurb_intersection = intersect_revolved_into(
+                    self,
                     k,
                     uv_domain,
                     o.as_ref(),
                     other_uv_domain,
                     approx_tol_3d,
+                    out,
                 )?;
-                need_nurb_intersection = more;
-                out = found;
             }
             SurfaceKind::Sphere(o) => {
-                let (more, found) = self.intersect_with_sphere(
+                need_nurb_intersection = self.intersect_with_sphere_into(
                     k,
                     uv_domain,
                     o.as_ref(),
                     other_uv_domain,
                     approx_tol_3d,
+                    out,
                 )?;
-                need_nurb_intersection = more;
-                out = found;
             }
             // (an SmCylinder is not SmCone_TYPE, an SmTorus not SmSurfOfRevolution_TYPE:
             // the default branch)
@@ -713,7 +824,7 @@ impl SurfOfRevolution {
 
         // If we're here, then analytic intersections were not found
         if need_nurb_intersection {
-            let more = base_global_surface_intersect_in(
+            base_global_surface_intersect_into(
                 k,
                 this,
                 uv_domain,
@@ -723,14 +834,10 @@ impl SurfOfRevolution {
                 approx_tol_3d,
                 ang_tol_rad,
                 context,
+                out,
             )?;
-            out.curves_3d.extend(more.curves_3d);
-            out.surface1_uv_curves.extend(more.surface1_uv_curves);
-            out.surface2_uv_curves.extend(more.surface2_uv_curves);
-            out.curve_types.extend(more.curve_types);
-            out.deviations.extend(more.deviations);
         }
-        Ok(out)
+        Ok(())
     }
 
     // ---- recognition ----------------------------------------------------------------
@@ -765,7 +872,7 @@ impl SurfOfRevolution {
             return Ok(None);
         }
         let plane_base;
-        let tgt: &BSplineSurface = match test_surface.kind() {
+        let tgt: &BSplineSurface = match test_surface.kind_with_nurb(k)? {
             SurfaceKind::BSpline(s) => s,
             // (an SmSurfOfExtrusion is an SmBSplineSurface: its NURB is tested)
             SurfaceKind::SurfOfExtrusion(s) => s.base(),
@@ -912,5 +1019,69 @@ impl SurfOfRevolution {
         // InputSurface->NurbDomain (status ignored)
         ignore_status(surf.reparameterize(k, &tgt.natural_uv_domain()))?;
         Ok(Some(surf))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::geom::vector3d::Vec3;
+    use crate::nurbs::b_spline_curve::BSplineCurve;
+    use crate::nurbs::crv_basic::Curve as NurbCurve;
+    use crate::nurbs::math::{CPoint, NOW};
+
+    /// The generator's radius (along the frame's x axis) at both ends of the offset
+    /// surface's generator.
+    fn end_radii(k: &Kernel, offset: &SurfOfRevolution) -> [f64; 2] {
+        let gen = offset.gen().unwrap();
+        let ivl = gen.natural_interval();
+        [ivl.min(), ivl.max()].map(|t| gen.evaluate_point(k, t).unwrap().x)
+    }
+
+    /// tangency-labs/solidcore#973: a surface of revolution about +z through the origin
+    /// whose generator (in the x-z plane, from the axis at z = -1 out to (4, 0, -5)) lies
+    /// below the frame's origin. Offset to one side, the generator crosses the axis below
+    /// the origin too: the axis segment, which ran from the origin along +z only, missed
+    /// the crossing, and the offset generator was left reaching past the axis (a negative
+    /// radius). With the opt-in it is cut at the axis.
+    #[test]
+    fn issue_973_offset_cut_at_axis_below_origin() {
+        let gen = Curve::from(BSplineCurve::from_nurb(
+            NurbCurve::new(
+                vec![
+                    CPoint::new(0.0, 0.0, -1.0, NOW),
+                    CPoint::new(4.0, 0.0, -5.0, NOW),
+                ],
+                1,
+                vec![0.0, 0.0, 1.0, 1.0],
+            )
+            .unwrap(),
+            3,
+            false,
+        ));
+        let k = Kernel::default();
+        let mut surface = SurfOfRevolution::new(
+            &k,
+            gen,
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Extent2d::from_bounds(0.0, 0.0, 360.0, 1.0),
+            false,
+        )
+        .unwrap();
+        surface.make_nurb(&k).unwrap();
+        let min_radius = |both_sides: bool| -> f64 {
+            let mut k = Kernel::default();
+            k.fixes.revolution_offset_axis_both_sides = both_sides;
+            [1.0, -1.0]
+                .into_iter()
+                .flat_map(|d| end_radii(&k, &surface.create_offset_surface(&k, d, 1e-6).unwrap()))
+                .fold(f64::INFINITY, f64::min)
+        };
+        // upstream: one of the two offsets keeps a stretch past the axis
+        assert!(min_radius(false) < -0.1);
+        // the opt-in cuts it at the axis
+        assert!(min_radius(true) > -1e-6);
     }
 }

@@ -159,7 +159,8 @@
 //! - **Callees in units not ported yet** return [`SolidError::Unported`](crate::SolidError):
 //!   `SmBrep::GetTolerance` (`topology.brep_p1`) in the manager's fallback tolerance,
 //!   `SmFace::GetEdges` (`topology.face_p4`) for edges sharing a face in
-//!   `sm_FindEDOnDegenFace`, and part 5's `SmBrep::Transform` reaches `SmBrep::Notify` (`topology.brep_p2`).
+//!   `sm_FindEDOnDegenFace` (unreachable, see the degenerate-face branch above), and
+//!   part 5's `SmBrep::Transform` reaches `SmBrep::Notify` (`topology.brep_p2`).
 //!   `SmProtoVertex::ContainsPoint` / `DistanceTo` (unit `query.face_p2`) are
 //!   [`crate::query::face::p2`]'s.
 //! - **Copy map.** `SetAt` takes two objects and `GetAt` of an object without an entry
@@ -168,7 +169,9 @@
 //! - **Manager destructor** leaves the objects it does not list in the store (upstream
 //!   allocates them from the context).
 //! - `RemoveCoincidentNoEdgeProtoVertex` keeps upstream's `return SM_SUCCESS` (read as
-//!   `TRUE`) when the point solve finds nothing (plan/upstream-issues.md WR-73).
+//!   `TRUE`) when the point solve finds nothing (plan/upstream-issues.md WR-73); the
+//!   opt-in `Kernel::fixes.proto_vertex_miss_is_false` returns `FALSE` there
+//!   (tangency-labs/solidcore#848).
 //! - `Dump`, `Draw` and the `SM_DEBUG_CODE` blocks are not ported.
 //! - **Recursion.** None.
 
@@ -213,7 +216,7 @@ mod tests {
     /// A store of owning objects keyed by index.
     #[derive(Default)]
     struct Store {
-        recs: BTreeMap<ObjectKey, Topology>,
+        recs: crate::topology::topology::NotifyRecords,
         lists: BTreeMap<ObjectKey, OwningTopology>,
     }
 
@@ -627,6 +630,64 @@ mod tests {
         assert_eq!(m.proto_vertices(), &[v3]);
     }
 
+    /// tangency-labs/solidcore#848 (WR-73): with the opt-in, a proto vertex the proto
+    /// edge does not reach is reported as not removed, so the caller goes on testing it
+    /// against the remaining proto edges.
+    #[test]
+    fn issue_848_no_hit_is_false() {
+        let mut k = Kernel::default();
+        k.fixes.proto_vertex_miss_is_false = true;
+        let geo = Geo(vec![line([0.0, 0.0, 0.0], [2.0, 0.0, 0.0])]);
+        let mut m = manager();
+        let ivl = geo.0[0].natural_interval();
+        let v0 = m
+            .new_proto_vertex(Point3::new(0.0, 0.0, 0.0), 1e-5)
+            .unwrap();
+        let v1 = m
+            .new_proto_vertex(Point3::new(2.0, 0.0, 0.0), 1e-5)
+            .unwrap();
+        let pe = m.new_proto_edge(&k, Some(v0), Some(v1), ivl).unwrap();
+        let ed = m
+            .insert_edge_definition(EdgeDefinition::new(
+                Some(C0),
+                ivl,
+                R0,
+                L0,
+                1e-5,
+                None,
+                None,
+                Some(pe),
+            ))
+            .unwrap();
+        m.proto_edge_mut(pe)
+            .unwrap()
+            .edge_definitions_mut()
+            .push(ed);
+        // off the curve: not removed, and reported so
+        let off = m
+            .new_proto_vertex(Point3::new(1.0, 5.0, 0.0), 1e-5)
+            .unwrap();
+        m.add_proto_vertex(off);
+        assert!(!m
+            .remove_coincident_no_edge_proto_vertex(&k, &geo, pe, off)
+            .unwrap());
+        assert_eq!(m.proto_vertices(), &[off]);
+        // on the curve: still removed
+        let on = m
+            .new_proto_vertex(Point3::new(1.0, 0.0, 0.0), 1e-5)
+            .unwrap();
+        m.add_proto_vertex(on);
+        assert!(m
+            .remove_coincident_no_edge_proto_vertex(&k, &geo, pe, on)
+            .unwrap());
+        assert_eq!(m.proto_vertices(), &[off]);
+        // the default keeps upstream's TRUE
+        k.fixes.proto_vertex_miss_is_false = false;
+        assert!(m
+            .remove_coincident_no_edge_proto_vertex(&k, &geo, pe, off)
+            .unwrap());
+    }
+
     #[test]
     fn manager_destroy_keeps_unlisted_objects() {
         let k = Kernel::default();
@@ -646,8 +707,10 @@ mod tests {
         assert!(deleted.is_empty());
         assert!(m.proto_vertex(v0).is_none());
         assert!(m.proto_vertex(v1).is_some());
-        // the deleted proto vertex is cleared from the end of the unlisted proto edge
-        assert_eq!(m.proto_edge(pe).unwrap().end_proto_vertex(), None);
+        // v1.0.1's ~SmProtoTopologyManager (3fd5b95) empties the listed proto vertices'
+        // edge lists before deleting them, so the deleted vertex no longer clears itself
+        // from the unlisted proto edge: its ends stay as they were
+        assert_eq!(m.proto_edge(pe).unwrap().end_proto_vertex(), Some(v0));
         assert_eq!(m.proto_edge(pe).unwrap().start_proto_vertex(), Some(v1));
     }
 

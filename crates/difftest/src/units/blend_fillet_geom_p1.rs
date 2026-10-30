@@ -34,7 +34,6 @@
 //! harness error; HANG-20 bounds the four global-solver ops at `MAX_SOLVER_MAGNITUDE`).
 //! Every run has at least [`MIN_GENERATED`] generated cases.
 
-use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -129,7 +128,8 @@ pub(crate) struct VertexIn {
     pub(crate) pc_class: i64,
     /// `0` none, `1` the start/end (`pc_sub`) vertex of target wire edge `pc_index`, `2`
     /// its primary edge use, `3` target face `pc_index`, `4` the target wire edge itself
-    /// (an `SmEdge`, what `SM_PC_EDGE` classifies to upstream).
+    /// (an `SmEdge`, what `SM_PC_EDGE` classifies to upstream), `5` edge use `pc_sub` of
+    /// the first loop of target face `pc_index` (an edge use with a face).
     #[serde(default)]
     pub(crate) pc_kind: i64,
     #[serde(default = "minus_one")]
@@ -1181,7 +1181,7 @@ fn uv(p: [f64; 2]) -> Point2 {
 /// The `SmStatus` of a Rust error; `-1` for one upstream cannot return.
 pub(crate) fn status(e: &SolidError) -> f64 {
     match e {
-        SolidError::InvalidInput { .. } => 1007.0,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007.0,
         SolidError::Upstream { code, .. } => f64::from(*code),
         _ => -1.0,
     }
@@ -1363,8 +1363,8 @@ pub(crate) fn natural_face(
     b: &mut Brep,
     surface: Surface,
 ) -> Result<FaceId, HarnessError> {
-    let domain = surface.natural_uv_domain();
-    let mut records = BTreeMap::new();
+    let domain = surface.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?;
+    let mut records = solidcore::topology::topology::NotifyRecords::new();
     let mut attributes = AttributeStore::default();
     let key_of = super::topology_brep_p8::key_of;
     let mut env = NotifyEnv {
@@ -1462,6 +1462,11 @@ pub(crate) struct RustModel {
     pub(crate) fillet: Brep,
     pub(crate) fillet_edges: Vec<EdgeId>,
     pub(crate) fb: FilletBrep,
+    /// The Model's own geometries (the first `geom_count` of the arena; the shim's
+    /// `geoms` vector). Geometries the library adds later (a temporary solver's, which
+    /// upstream deletes with the solver) are not the Model's: the shim neither exports
+    /// nor addresses them.
+    pub(crate) geom_count: usize,
 }
 
 impl RustModel {
@@ -1517,6 +1522,19 @@ impl RustModel {
                 (3, Ok(i)) => Some(EntityRef::Face(
                     *target_faces.get(i).ok_or_else(|| harness("pc face"))?,
                 )),
+                (5, Ok(i)) => {
+                    // edge use `pc_sub` of the first loop of target face `i`
+                    let f = *target_faces.get(i).ok_or_else(|| harness("pc face"))?;
+                    let loops = solidcore::topology::face::p2::loops(&target, f, false, None)
+                        .map_err(h)?;
+                    let l = *loops.first().ok_or_else(|| harness("pc loop"))?;
+                    let eus = solidcore::topology::loopuse::loop_edgeuses(&target, l).map_err(h)?;
+                    let eu = usize::try_from(v.pc_sub)
+                        .ok()
+                        .and_then(|s| eus.get(s).copied())
+                        .ok_or_else(|| harness("pc loop edge use"))?;
+                    Some(EntityRef::Edgeuse(eu))
+                }
                 (4, Ok(i)) => Some(EntityRef::Edge(
                     *target_edges.get(i).ok_or_else(|| harness("pc index"))?,
                 )),
@@ -1656,6 +1674,7 @@ impl RustModel {
             fillet,
             fillet_edges,
             fb,
+            geom_count: gids.len(),
         })
     }
 
@@ -1692,7 +1711,7 @@ impl RustModel {
     }
 
     pub(crate) fn geom(&self, i: usize) -> Result<FilletGeomId, HarnessError> {
-        if i < self.fb.geoms().len() {
+        if i < self.geom_count.min(self.fb.geoms().len()) {
             Ok(FilletGeomId(i as u32))
         } else {
             Err(harness("geometry index"))
@@ -1875,11 +1894,17 @@ impl RustModel {
                 o.push(self.vertex_index(v));
                 dump_curve(o, r.uv_trim_curve.as_ref());
                 let g = self.fb.fillet_edgeuse(eu).map_err(h)?.fillet_geom();
-                o.push(g.map_or(-1.0, |g| f64::from(g.0)));
+                // index_of(geoms, ..): -1 for a geometry that is not the Model's
+                o.push(
+                    g.filter(|g| (g.0 as usize) < self.geom_count)
+                        .map_or(-1.0, |g| f64::from(g.0)),
+                );
             }
         }
 
+        // the shim's `geoms` (the Model's own geometries)
         let gs = self.fb.geoms();
+        let gs = gs.get(..self.geom_count).unwrap_or(gs);
         o.push(gs.len() as f64);
         for g in gs {
             o.push(g.fillet_geom_type() as i64 as f64);
@@ -1896,7 +1921,7 @@ impl RustModel {
                 o.push(self.edge_index(Some(e)));
             }
             dump_bcurve(o, g.center_line_curve());
-            dump_surface(o, g.fillet_surface().map_err(h)?)?;
+            dump_surface(o, g.fillet_surface(None).map_err(h)?)?;
             o.push(g.ref_eus.len() as f64);
             for &eu in &g.ref_eus {
                 self.put_eu(o, Some(eu));
@@ -3297,6 +3322,7 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
 
     /// Mutates generated and fixture programs and feeds them to the FFI: every program
     /// the guards accept must run without crashing (a crash kills the test process) or

@@ -3,12 +3,12 @@
 //!
 //! The C++ side builds a real `SmBrep` per call with the shared topology fixture (an
 //! upstream `.smb` file, a wire edge, a one-face B-rep or the `my_test_topology` wire
-//! network), replaces analytic geometry by plain B-spline copies, and runs one
-//! `SmBrep` member. The Rust side imports the graph the shim exports (the
-//! `topology.vertexuse` importer), restores what the import cannot carry (the B-rep
-//! tolerance, infinite region, region list head, editing flag and each vertex's vertex
-//! use order, from the shim's `Extras`), runs the port and writes the same output
-//! layout (`out`).
+//! network) and runs one `SmBrep` member on it, analytic geometry as it is. The Rust
+//! side builds a wire edge, face or network source itself and reads an `.smb` file with
+//! the Rust reader, both renumbered into the shim's walk order
+//! ([`crate::own_reader::brep_in_order`] under this shim's conventions: lists registered
+//! first, its own owner identities; no C++ export reaches the Rust side), runs the port
+//! and writes the same output layout (`out`).
 //!
 //! Entity selectors are taken modulo the matching entity count (`-1` selects null);
 //! an op that needs an entity the B-rep lacks is skipped on both sides
@@ -55,7 +55,7 @@ use solidcore_ffi::units::topology_brep_p2::{self as ffi, Op};
 use solidcore_ffi::units::topology_vertexuse::counts;
 
 use super::topology_vertexuse::{
-    gen_brep, gen_curve, gen_surface, import, path_of, push_curve, push_surface, BrepIn, CrvIn,
+    gen_brep, gen_curve, gen_surface, path_of, push_curve, push_surface, BrepIn, CrvIn,
     SrfIn,
 };
 use crate::case::CaseContext;
@@ -115,6 +115,18 @@ enum OpIn {
         face: i64,
         tol: f64,
         curves: Vec<CrvIn>,
+    },
+    /// `MergeCurvesOnSurface` with optional UV curves (one per curve) and an optional
+    /// intersection surface (`pOptIntersectionSurface`), which enables
+    /// `sm_RefineCCIToSurfaces`'s surface/surface/surface refinement.
+    MergeSsi {
+        face: i64,
+        tol: f64,
+        curves: Vec<CrvIn>,
+        #[serde(default)]
+        uv_curves: Option<Vec<CrvIn>>,
+        #[serde(default)]
+        surface: Option<SrfIn>,
     },
     Mate {
         edge: i64,
@@ -278,6 +290,35 @@ fn op_args(op: &OpIn, c: &[usize; 10]) -> Result<Option<(Op, Vec<f64>)>, Harness
             }
             (Op::Merge, v)
         }
+        OpIn::MergeSsi {
+            face,
+            tol,
+            curves,
+            uv_curves,
+            surface,
+        } => {
+            let Some(f) = pick(*face, n_f) else {
+                return Ok(None);
+            };
+            let mut v = vec![f as f64, *tol, curves.len() as f64];
+            for c in curves {
+                push_curve(&mut v, c)?;
+            }
+            v.push(flag(uv_curves.is_some()));
+            if let Some(uv) = uv_curves {
+                if uv.len() != curves.len() {
+                    return Err(harness("one UV curve per curve"));
+                }
+                for c in uv {
+                    push_curve(&mut v, c)?;
+                }
+            }
+            v.push(flag(surface.is_some()));
+            if let Some(srf) = surface {
+                push_surface(&mut v, srf)?;
+            }
+            (Op::MergeSsi, v)
+        }
         OpIn::Mate {
             edge,
             surface,
@@ -412,48 +453,6 @@ fn entity(ty: f64, i: f64) -> Option<EntityRef> {
         16021 => EntityRef::Vertex(VertexId::from_index(i)),
         _ => return None,
     })
-}
-
-/// The Rust B-rep of the case (with the shim's extras restored).
-fn rust_brep(path: &str, h: &[f64], c: &[usize; 10]) -> Result<Brep, HarnessError> {
-    let export = ffi::eval(Op::Export, path, h).map_err(|e| ffi_err(&e))?;
-    let (mut b, exact) = import(&export)?;
-    if exact.iter().any(|e| !e) {
-        return Err(harness("a face surface was not imported exactly"));
-    }
-    let ex = ffi::eval(Op::Extras, path, h).map_err(|e| ffi_err(&e))?;
-    let mut at = 1usize;
-    let mut next = || -> Result<f64, HarnessError> {
-        let v = ex
-            .get(at)
-            .copied()
-            .ok_or_else(|| harness("extras too short"))?;
-        at += 1;
-        Ok(v)
-    };
-    let tol = next()?;
-    let inf = next()?;
-    let head_r = next()?;
-    let editing = next()? != 0.0;
-    b.set_tolerance(tol);
-    b.set_infinite_region((inf >= 0.0).then(|| RegionId::from_index(inf as u32)));
-    b.set_region_list_head((head_r >= 0.0).then(|| RegionId::from_index(head_r as u32)));
-    b.set_editing_enabled(editing);
-    for v in 0..c[9] {
-        let n = next()? as usize;
-        let mut list = Vec::new();
-        for _ in 0..n {
-            let i = next()?;
-            if i < 0.0 {
-                return Err(harness("unregistered vertex use in a vertex list"));
-            }
-            list.push(VertexuseId::from_index(i as u32));
-        }
-        b.vertex_mut(VertexId::from_index(v as u32))
-            .map_err(|e| harness(e.to_string()))?
-            .vertexuses = list;
-    }
-    Ok(b)
 }
 
 fn rust_curve(c: &CrvIn) -> Result<BSplineCurve, HarnessError> {
@@ -661,7 +660,17 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
             let s = match arg(0)? as u8 {
                 0 => status(bp2::make_shell_vertex_topology(b, region))?.0,
                 1 => status(bp2::make_edge_vertex_topology(b, region, v1))?.0,
-                _ => status(bp2::make_edge_topology(k, b, region, v1, v2))?.0,
+                _ => {
+                    let mut records = solidcore::topology::topology::NotifyRecords::new();
+                    let mut attrs = AttributeStore::default();
+                    let mut env = NotifyEnv {
+                        records: &mut records,
+                        attributes: &mut attrs,
+                        context: None,
+                        key_of: &key_of,
+                    };
+                    status(bp2::make_edge_topology(k, b, region, v1, v2, &mut env))?.0
+                }
             };
             out.push(s);
             topology_summary(b, &mut out)?;
@@ -711,13 +720,15 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
             out.push(s);
             out.push(idx(r.flatten(), RegionId::index));
         }
-        Op::Merge => return Err(Fail::Harness(harness("merge runs in merge_rust"))),
+        Op::Merge | Op::MergeSsi => {
+            return Err(Fail::Harness(harness("merge runs in merge_rust")))
+        }
         Op::Mate => {
             let e = EdgeId::from_index(arg(0)? as u32);
             let surf = surface_arg(a, 1)?;
             let ext = arg(a.len() - 2)?;
             let uv = arg(a.len() - 1)?;
-            let mut records = BTreeMap::new();
+            let mut records = solidcore::topology::topology::NotifyRecords::new();
             let mut attrs = AttributeStore::default();
             let mut env = NotifyEnv {
                 records: &mut records,
@@ -746,7 +757,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
             }
             // every notified object, the B-rep included (it is a topology object
             // upstream: `this` and possibly a data object), has its default record
-            let mut records = BTreeMap::new();
+            let mut records = solidcore::topology::topology::NotifyRecords::new();
             records.insert(
                 bp2::brep_ref(b).key,
                 solidcore::topology::topology::Topology::default(),
@@ -806,7 +817,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
                 _ => bp2::OldSurface::Keep,
             };
             let create = arg(a.len() - 1)? != 0.0;
-            let mut records = BTreeMap::new();
+            let mut records = solidcore::topology::topology::NotifyRecords::new();
             let mut attrs = AttributeStore::default();
             let mut env = NotifyEnv {
                 records: &mut records,
@@ -834,15 +845,16 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: Op, a: &[f64]) -> Result<Vec<f6
             let tol = tol::zone_tol3d(k, arg(6)?);
             let limit = (arg(7)? != 0.0).then_some(arg(8)?);
             // the cache SmBrep::RayFire's solve builds (CacheMakeOrValidate), over the
-            // geometry owners of a native B-rep
-            crate::util::own_arena_geometry(b);
+            // geometry owners the build gave: faces and edges own their surfaces and
+            // curves under this runner's identities ([`CONVENTIONS`], [`key_of`]); no
+            // owner is added to geometry the build left without one
             let kk: &Kernel = k;
             let cache = must(solidcore::topology::brep_cache::make_brep_cache(
                 kk,
                 solidcore::topology::brep_cache::CacheSource::Brep(&*b),
-                &solidcore::topology::brep_cache::arena_identity,
+                &cache_identity,
             ))?;
-            let keys = |o: CacheObject| solidcore::topology::brep_cache::arena_identity(o);
+            let keys = |o: CacheObject| cache_identity(o);
             let owners = |_: ObjectRef| None;
             let (s, r) = status(bp2::ray_fire(
                 kk,
@@ -914,19 +926,106 @@ fn surface_arg(a: &[f64], at: usize) -> Result<Surface, Fail> {
     Ok(rust_surface(&SrfIn::Bspline(b))?)
 }
 
+/// The B-rep cache identity of an object of the Rust B-rep: this runner's [`key_of`]
+/// names, under which the build owns the faces' surfaces and the edges' curves
+/// ([`CONVENTIONS`]), where `brep_cache::arena_identity` would name them by arena index.
+fn cache_identity(o: CacheObject) -> ObjectRef {
+    match o {
+        CacheObject::Edge(e) | CacheObject::Curve(e) => key_of(EntityRef::Edge(e)),
+        CacheObject::Face(f) | CacheObject::Surface(f) => key_of(EntityRef::Face(f)),
+        CacheObject::Vertex(v) => key_of(EntityRef::Vertex(v)),
+        _ => key_of(EntityRef::Brep(BrepId::from_index(0))),
+    }
+}
+
+/// The surface and curve owners of the `topology.brep_p2` Rust B-rep: this runner's
+/// identities ([`key_of`]).
+fn face_owner(f: FaceId) -> ObjectRef {
+    key_of(EntityRef::Face(f))
+}
+
+fn edgeuse_owner(eu: EdgeuseId) -> ObjectRef {
+    key_of(EntityRef::Edgeuse(eu))
+}
+
+fn edge_owner(e: EdgeId) -> (ObjectRef, ObjectRef) {
+    (
+        key_of(EntityRef::Edge(e)),
+        key_of(EntityRef::Brep(BrepId::from_index(0))),
+    )
+}
+
+/// The shim's build conventions (`sc_topology_fixture.h`, its `run`): the face, edge
+/// and vertex lists registered before the traversal, `GetVertexEdgeGap` in the
+/// `init_gaps` walk.
+const CONVENTIONS: crate::own_builder::Conventions<'static> = crate::own_builder::Conventions {
+    prefix_lists: true,
+    vertex_edge_gaps: true,
+    vertex_lists_last: false,
+    skip_edge_list: false,
+    face_owner: &face_owner,
+    edge_owner: &edge_owner,
+    edgeuse_owner: &edgeuse_owner,
+};
+
+/// The Rust B-rep of the case and its entity counts, or the build failure's output:
+/// shim-built sources built by the Rust kernel and `.smb` files read by the Rust
+/// reader, both in the shim's walk order ([`crate::own_reader::brep_in_order`]), the
+/// shim's `editing` flag applied after.
+fn own_brep(k: &mut Kernel, i: &Inputs) -> Result<Result<(Brep, [usize; 10]), Output>, HarnessError> {
+    use crate::own_builder::{build_status, counts, Built};
+    let src: super::topology_edgeuse_p1::BrepIn = serde_json::to_value(&i.brep)
+        .and_then(serde_json::from_value)
+        .map_err(|e| harness(format!("B-rep source: {e}")))?;
+    let built =
+        crate::own_reader::brep_in_order(k, &src, i.validate_only, i.init_gaps, &CONVENTIONS)?;
+    match built {
+        Built::Brep(b) => {
+            let mut b = *b;
+            if i.editing >= 0 {
+                b.set_editing_enabled(i.editing != 0);
+            }
+            let c = counts(&b);
+            Ok(Ok((b, c)))
+        }
+        Built::Failed(e) => match Output::unported(&e) {
+            Some(o) => Ok(Err(o)),
+            None => Ok(Err(Output::new().values("out", vec![-1.0, build_status(&e)]))),
+        },
+    }
+}
+
 fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
-    let (path, h, c) = match prepare(i)? {
+    let mut k = Kernel::default();
+    let (mut b, c) = match own_brep(&mut k, i)? {
         Ok(x) => x,
         Err(o) => return Ok(o),
     };
     let Some((op, args)) = op_args(&i.op, &c)? else {
         return Ok(Output::err("no target"));
     };
-    let mut b = rust_brep(&path, &h, &c)?;
-    let mut k = Kernel::default();
     if let OpIn::Merge { curves, tol, .. } = &i.op {
         let face = FaceId::from_index(args.first().copied().unwrap_or(0.0) as u32);
         return merge_rust(&mut k, &mut b, face, curves, *tol);
+    }
+    if let OpIn::MergeSsi {
+        curves,
+        tol,
+        uv_curves,
+        surface,
+        ..
+    } = &i.op
+    {
+        let face = FaceId::from_index(args.first().copied().unwrap_or(0.0) as u32);
+        return merge_ssi_rust(
+            &mut k,
+            &mut b,
+            face,
+            curves,
+            uv_curves.as_deref(),
+            surface.as_ref(),
+            *tol,
+        );
     }
     match run_rust_op(&mut k, &mut b, op, &args) {
         Ok(out) => Ok(Output::new().values("out", out)),
@@ -935,9 +1034,11 @@ fn run_rust(i: &Inputs) -> Result<Output, HarnessError> {
     }
 }
 
-/// `MergeCurvesOnSurface` with editing enabled: every curve shorter than `tol` is
-/// skipped (no new faces or edges); a longer one reaches the unported curve
-/// classification constructor.
+/// `MergeCurvesOnSurface` with editing enabled over the case's B-rep
+/// (`topology::brep::p10::merge_curves_on_surface`, no UV curves): every curve shorter
+/// than `tol` is skipped (no new faces or edges); a longer one is classified against the
+/// face and merged into it, its edits notified to default records under the arena
+/// identities.
 fn merge_rust(
     k: &mut Kernel,
     b: &mut Brep,
@@ -949,22 +1050,17 @@ fn merge_rust(
         .iter()
         .map(|c| rust_curve(c).map(SmCurve::from))
         .collect::<Result<_, _>>()?;
-    let objects = MergeObjects { curves: &crvs };
-    let handles: Vec<H> = (0..crvs.len()).map(H).collect();
-    let r = bp2::merge_curves_on_surface(
-        k,
-        b,
-        &objects,
-        face,
-        tol,
-        &handles,
-        None,
-        bp2::MergeCurvesOptions::default(),
+    let mut state = bp2::ArenaNotifyState::new(b);
+    let mut env = state.env(None);
+    let key_of = env.key_of;
+    let curve_ref = |e: EdgeId, _type_code: i64| key_of(EntityRef::Edge(e));
+    let r = solidcore::topology::brep::p10::merge_curves_on_surface(
+        k, b, &mut env, &curve_ref, face, tol, &crvs, None, false,
     );
     match r {
-        Ok(m) => Ok(Output::new().values(
+        Ok((new_faces, edges)) => Ok(Output::new().values(
             "out",
-            vec![0.0, 0.0, m.new_faces.len() as f64, m.edges.len() as f64],
+            vec![0.0, 0.0, new_faces.len() as f64, edges.len() as f64],
         )),
         Err(e) => match Output::unported(&e) {
             Some(o) => Ok(o),
@@ -972,91 +1068,103 @@ fn merge_rust(
                 SolidError::Upstream { code, .. } => {
                     Ok(Output::new().values("out", vec![0.0, f64::from(code), 0.0, 0.0]))
                 }
-                // CurveOnClassify reached the face's topology through `MergeObjects`, which
-                // resolves only the case's curves: `merge_curves_on_surface` holds the
-                // B-rep mutably, so no adapter can hand the classification its topology
-                // (ClassGeometry::topology_entity) yet
-                SolidError::InvalidInput { operation, .. }
-                    if operation.starts_with("intersect::point_class") =>
-                {
-                    Ok(Output::deferred(
-                        "topology.brep_p2",
-                        "MergeCurvesOnSurface: topology handles of the merged B-rep",
-                    ))
-                }
                 other => Err(harness(format!("rust: {other}"))),
             },
         },
     }
 }
 
-/// Classification handles of a `Merge` case: curve `i` is handle `i`.
-struct MergeObjects<'a> {
-    curves: &'a [SmCurve],
-}
-
-/// A classification handle: curve `i` of the case (`usize::MAX` the face).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct H(usize);
-
-impl solidcore::intersect::point_class::ClassObject for H {
-    fn class_kind(&self) -> solidcore::intersect::point_class::ClassObjectKind {
-        solidcore::intersect::point_class::ClassObjectKind::Curve
+/// `n` points of `c` spread evenly over `[t0, t1]` (the shim's `put_curve_points`).
+fn curve_points(k: &Kernel, c: &SmCurve, t0: f64, t1: f64, n: u32, o: &mut Vec<f64>) {
+    for i in 0..n {
+        let t = t0 + (t1 - t0) * f64::from(i) / f64::from(n - 1);
+        let p = c.evaluate_point(k, t).unwrap_or(Vec3::UNDEF);
+        o.extend([p.x, p.y, p.z]);
     }
 }
 
-impl solidcore::query::face::p2::CurveOnClassifyObjects<H> for MergeObjects<'_> {
-    fn face(&self, _f: FaceId) -> H {
-        H(usize::MAX)
+/// `MergeCurvesOnSurface` with UV curves and an intersection surface over the case's
+/// B-rep (`topology::brep::p10::merge_curves_on_surface_through_surface`), then the
+/// shim's read-back: the (refined) curves, every edge (`GetEdges`) and vertex
+/// (`GetVertices`).
+#[allow(clippy::too_many_arguments)]
+fn merge_ssi_rust(
+    k: &mut Kernel,
+    b: &mut Brep,
+    face: FaceId,
+    curves: &[CrvIn],
+    uv_curves: Option<&[CrvIn]>,
+    surface: Option<&SrfIn>,
+    tol: f64,
+) -> Result<Output, HarnessError> {
+    let mut crvs: Vec<SmCurve> = curves
+        .iter()
+        .map(|c| rust_curve(c).map(SmCurve::from))
+        .collect::<Result<_, _>>()?;
+    let uv: Option<Vec<Option<SmCurve>>> = uv_curves
+        .map(|uv| {
+            uv.iter()
+                .map(|c| rust_curve(c).map(|c| Some(SmCurve::from(c))))
+                .collect::<Result<_, _>>()
+        })
+        .transpose()?;
+    let srf = surface.map(rust_surface).transpose()?;
+    let mut state = bp2::ArenaNotifyState::new(b);
+    let mut env = state.env(None);
+    let key_of = env.key_of;
+    let curve_ref = |e: EdgeId, _type_code: i64| key_of(EntityRef::Edge(e));
+    let r = solidcore::topology::brep::p10::merge_curves_on_surface_through_surface(
+        k,
+        b,
+        &mut env,
+        &curve_ref,
+        face,
+        tol,
+        &mut crvs,
+        uv.as_deref(),
+        srf,
+    );
+    let (s, nf, ne) = match r {
+        Ok((new_faces, edges)) => (0.0, new_faces.len(), edges.len()),
+        Err(e) => match Output::unported(&e) {
+            Some(o) => return Ok(o),
+            None => match e {
+                SolidError::Upstream { code, .. } => (f64::from(code), 0, 0),
+                other => return Err(harness(format!("rust: {other}"))),
+            },
+        },
+    };
+    let mut out = vec![0.0, s, nf as f64, ne as f64];
+    for c in &crvs {
+        let ivl = c.natural_interval();
+        out.push(
+            c.number_control_points()
+                .map_err(|e| harness(format!("rust: {e}")))? as f64,
+        );
+        curve_points(k, c, ivl.min(), ivl.max(), 9, &mut out);
     }
-    fn vertex(&self, _v: VertexId) -> H {
-        H(usize::MAX)
+    let h = |e: SolidError| harness(format!("rust: {e}"));
+    let edges = bp1::edges(b, None).map_err(h)?;
+    let vertices = bp1::vertices(b, None).map_err(h)?;
+    out.push(edges.len() as f64);
+    for e in edges {
+        let edge = b.edge(e).map_err(h)?;
+        out.push(solidcore::topology::edge::tolerance(b, e).map_err(h)?);
+        let Some(c) = edge.curve.as_ref() else {
+            out.push(-1.0);
+            continue;
+        };
+        let ivl = solidcore::topology::edge::interval(b, e).map_err(h)?;
+        out.extend([ivl.min(), ivl.max()]);
+        curve_points(k, c, ivl.min(), ivl.max(), 3, &mut out);
     }
-    fn edge(&self, _e: EdgeId) -> H {
-        H(usize::MAX)
+    out.push(vertices.len() as f64);
+    for v in vertices {
+        let p = b.vertex(v).map_err(h)?.point;
+        let t = solidcore::topology::vertex::tolerance(b, v).map_err(h)?;
+        out.extend([p.x, p.y, p.z, t]);
     }
-    fn vertexuse(&self, _vu: VertexuseId) -> H {
-        H(usize::MAX)
-    }
-    fn edgeuse(&self, _eu: EdgeuseId) -> H {
-        H(usize::MAX)
-    }
-    fn edge_curve(&self, _e: EdgeId) -> H {
-        H(usize::MAX)
-    }
-    fn trim_curve(&self, _eu: EdgeuseId) -> H {
-        H(usize::MAX)
-    }
-    fn face_surface(&self, _f: FaceId) -> Option<H> {
-        None
-    }
-    fn loop_id(&self, _tgt_loop: H) -> Option<LoopId> {
-        None
-    }
-}
-
-impl solidcore::intersect::point_class::ClassGeometry<H> for MergeObjects<'_> {
-    fn curve(&self, o: H) -> Option<&SmCurve> {
-        self.curves.get(o.0)
-    }
-    fn surface(&self, _o: H) -> Option<&Surface> {
-        None
-    }
-    fn volume(&self, _o: H) -> Option<&solidcore::surface::volume::Volume> {
-        None
-    }
-    fn point(&self, _o: H) -> Option<solidcore::geom::vector3d::Point3> {
-        None
-    }
-}
-
-impl bp2::MergeCurvesObjects<H> for MergeObjects<'_> {
-    fn edge_of(&self, _object: H) -> Option<EdgeId> {
-        None
-    }
-    fn face_of(&self, _object: H) -> Option<FaceId> {
-        None
-    }
+    Ok(Output::new().values("out", out))
 }
 
 // ---- generation ---------------------------------------------------------------------------

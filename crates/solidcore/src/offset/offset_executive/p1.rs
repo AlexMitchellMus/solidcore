@@ -10,6 +10,7 @@
 //! | `notify_edge_and_vertices` (private) | `sm_NotifyEdgeAndVertices` |
 //! | [`OffsetExecutive::replace_implicit_offsets`] | `ReplaceImplicitOffsets` |
 //! | [`OffsetExecutive::remove_excess_faces`] | `RemoveExcessFaces` |
+//! | `forget_seconds`, `forget_firsts`, `removed_faces_edgeuses` (private) | `sm_ForgetSeconds`, `sm_ForgetFirsts`, `RemoveExcessFaces`' `sGone` |
 //! | [`OffsetExecutive::get_create_extended_surface`] | `GetCreateExtendedSurface` |
 //! | [`OffsetExecutive::insert_extended_surface`] | `m_vSurfExtSurf.Insert` (protected upstream; harness seeding) |
 //! | [`OffsetExecutive::piecewise_merge`] | `PiecewiseMerge` |
@@ -36,7 +37,10 @@
 //! and keys its cache by each edge's and face's geometry owner (arena identity when
 //! unowned), so geometry owned under a caller's notification keys is found; an owner
 //! shared by two records or naming another record (an indirect owner chain) is
-//! [`SolidError::Unsupported`] rather than silently skipped.
+//! [`SolidError::Unsupported`] rather than silently skipped. Its relation forgetting
+//! (`sm_ForgetSeconds` / `sm_ForgetFirsts` and the `sGone` / `sLive` walks) propagates
+//! a dangling-id error from the topology queries where upstream's walks cannot fail;
+//! only a corrupt B-rep reaches it.
 //! Result-edge enumeration uses `SmBrep::GetEdges` list order (`topology::brep::p1::edges`);
 //! the result B-rep is borrowed mutably because `NormalizedEvaluate` takes the edge use's
 //! B-rep mutably (its 3D evaluation, used here, edits nothing). `BuildSideWallOfEdgeuse` takes
@@ -73,7 +77,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::boolean::merge::p4::KernelManifoldIntersector;
 use crate::curve::curve::{Curve, CurveKind};
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
-use crate::geom::context::MarkType;
+use crate::geom::context::{Context, MarkType};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::extent3d::Extent3d;
@@ -82,21 +86,25 @@ use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::geom::solution_array::{Solution, SolutionArray};
 use crate::geom::tol::Relation;
+use crate::heal::stitch::p1::{BorrowedStitchEdits, StitchEditContext};
 use crate::heal::stitch::p2 as stitch;
 use crate::intersect::topology_solver::p1::TopologySolver;
 use crate::intersect::topology_solver::p2::TopologySolveOptions;
 use crate::kernel::Kernel;
-use crate::math::{Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
+use crate::math::{min2, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
+use crate::nurbs::b_spline_surface_n_lib::p1::OffsetParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
 use crate::offset::offset_geometry_creation::{OffsetGeometryCreation, SsiData};
 
 use super::edgeuse::{CapNotifications, MarkSource};
+use super::p2::OffsetNotifications;
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::brep::p1::{self as bp1, SetRegionVoidType};
 use crate::topology::brep::p4::shrink_geometry;
 use crate::topology::brep::p7::{self as bp7, FaceCurvesInput, SelfIntersectionCurve};
+use crate::topology::brep::p9::CurveIdentity;
 use crate::topology::brep_cache::{
     arena_identity, make_brep_cache, BrepCache, BrepObjects, CacheObject, CacheSource,
 };
@@ -174,6 +182,122 @@ pub struct VertexOffset {
     pub curve_orientations: Vec<OrientType>,
 }
 
+/// Not upstream (WR-532; the fork's tangency-labs/smlib@b283ea2, `sm_ExtendConeAsItself`):
+/// cone (or cylinder) `surface` extended by `dist` along its rulings and around its axis
+/// as itself, each direction's end spans carried on (`SM_CT_CINFINITY`), which stays on
+/// the circle where a tangent extension (`SM_CT_G1R`) leaves it. Around the axis it goes
+/// no farther than half the turn the cone leaves open on each side, so it never laps
+/// itself; a closed cone is extended along its rulings only. Around the axis each
+/// side is extended on its own and each old end made a knot of multiplicity equal to
+/// the degree again ([`full_knot`]; tangency-labs/smlib@3626d4b).
+///
+/// # Errors
+///
+/// Those of the extensions and knot insertions.
+fn extend_cone_as_itself(
+    kernel: &Kernel,
+    surface: &Surface,
+    cone: &crate::surface::cone::Cone,
+    dist: f64,
+) -> Result<Surface> {
+    use crate::nurbs::b_spline_surface::SurfParamType;
+    let (around, along) = if cone.rev().swap_uv() {
+        (SurfParamType::V, SurfParamType::U)
+    } else {
+        (SurfParamType::U, SurfParamType::V)
+    };
+    let along_srf =
+        surface.create_extended_surface_dir(kernel, along, dist, ContinuityType::CInfinity)?;
+
+    // around: half the open turn on each side, in arc length on the smaller end circle
+    let sweep_rad = cone.rev().step_uv_domain().u_interval().length() * PI / 180.0;
+    let radius = min2(cone.bot_radius(), cone.top_radius());
+    let open = 2.0 * PI - sweep_rad;
+    let around_dist = min2(dist, 0.5 * 0.5 * open * radius);
+    // (`SM_CAST_PTR(SmBSplineSurface, ..)`: the B-spline surface and its subclasses)
+    let is_bspline = !matches!(
+        along_srf.kind(),
+        SurfaceKind::OffsetSurface(_)
+            | SurfaceKind::CurveBounded(_)
+            | SurfaceKind::Step(_)
+            | SurfaceKind::SrfInVolume(_)
+    );
+    if !is_bspline || open <= 0.0 || around_dist <= EFF_ZERO_SQRT * (1.0 + radius) {
+        return Ok(along_srf);
+    }
+    // (tangency-labs/smlib@3626d4b) each side on its own, each old end then a knot of
+    // multiplicity equal to the degree again: SMLib's own form for a circle
+    // (`SmCone::IsNurbSurfaceCone` takes only a triple knot at each end and double knots
+    // inside); both sides in one call extend the first side's extended span again and
+    // leave a single knot at the old end, and a face on that surface is no longer found
+    // to be a cone
+    let around_ivl = if around == SurfParamType::U {
+        along_srf.natural_uv_domain_with_nurb(kernel)?.u_interval()
+    } else {
+        along_srf.natural_uv_domain_with_nurb(kernel)?.v_interval()
+    };
+    let (min_side, max_side) = if around == SurfParamType::U {
+        (SurfParamType::UMin, SurfParamType::UMax)
+    } else {
+        (SurfParamType::VMin, SurfParamType::VMax)
+    };
+    let mut min_srf = along_srf.create_extended_surface_dir(
+        kernel,
+        min_side,
+        around_dist,
+        ContinuityType::CInfinity,
+    )?;
+    full_knot(&mut min_srf, around, around_ivl.min())?;
+    let mut both = min_srf.create_extended_surface_dir(
+        kernel,
+        max_side,
+        around_dist,
+        ContinuityType::CInfinity,
+    )?;
+    full_knot(&mut both, around, around_ivl.max())?;
+    Ok(both)
+}
+
+/// Not upstream (WR-532; tangency-labs/smlib@3626d4b): makes the knot of B-spline
+/// `surface` at `at` in direction `dir` of multiplicity equal to the degree
+/// (`InsertOneKnot` of the missing count; a knot within `EFF_ZERO` of the interval's
+/// length counts as the same).
+///
+/// # Errors
+///
+/// `SM_ERR_NULL_POINTER` for a surface that is not a B-spline surface (upstream's
+/// `NER` of the cast); those of the knot query and insertion.
+fn full_knot(
+    surface: &mut Surface,
+    dir: crate::nurbs::b_spline_surface::SurfParamType,
+    at: f64,
+) -> Result<()> {
+    use crate::nurbs::b_spline_surface::SurfParamType;
+    const OP: &str = "offset::offset_executive::p1::extend_cone_as_itself";
+    let SurfaceKind::BSpline(bs) = surface.kind_mut() else {
+        return Err(SolidError::null_pointer(OP));
+    };
+    let (knots, mults) = bs.knots(dir, None)?;
+    let domain = bs.natural_uv_domain();
+    let ivl = if dir == SurfParamType::U {
+        domain.u_interval()
+    } else {
+        domain.v_interval()
+    };
+    let same = EFF_ZERO * (1.0 + ivl.length());
+    let mut have = 0;
+    for (&knot, &mult) in knots.iter().zip(&mults) {
+        if (knot - at).abs() <= same {
+            have = mult;
+        }
+    }
+    let degree = bs.degree(dir);
+    if have < degree {
+        bs.insert_one_knot(at, degree - have, dir)?;
+    }
+    Ok(())
+}
+
 /// The 27-bit object namespace under which the lamina clean-up's `DeleteFaces`
 /// (merge p4's arena adapter) records its notifications; distinct from the Boolean
 /// kernels' namespaces, which share no attribute store with an offset executive.
@@ -196,12 +320,21 @@ pub struct OffsetExecutive {
     shell_faces: Vec<FaceId>,
     offset_brep: Option<Brep>,
     closing_faces: Vec<FaceId>,
-    faceuse_to_faces: Relation<FaceuseId, FaceId>,
-    edgeuse_to_edgeuses: Relation<EdgeuseId, EdgeuseId>,
-    edge_to_faces: Relation<EdgeId, FaceId>,
-    vertex_to_faces: Relation<VertexId, FaceId>,
-    blend_to_faces: Relation<FaceId, FaceId>,
+    pub(super) faceuse_to_faces: Relation<FaceuseId, FaceId>,
+    pub(super) edgeuse_to_edgeuses: Relation<EdgeuseId, EdgeuseId>,
+    pub(super) edge_to_faces: Relation<EdgeId, FaceId>,
+    pub(super) vertex_to_faces: Relation<VertexId, FaceId>,
+    pub(super) blend_to_faces: Relation<FaceId, FaceId>,
     extended_surfaces: BTreeMap<u64, Surface>,
+    /// Not upstream (WR-346): the original faces of an inset whose offset collapses (a
+    /// convex round thinner than the wall), mated across instead of offset
+    /// (`m_sCollapsedFaces`; only with `Kernel::fixes.offset_collapsed_rounds_mated`).
+    pub(super) collapsed_faces: Vec<FaceId>,
+    /// The faces of a local operation and the surfaces replacing theirs, in step (the
+    /// part of `SmLocalOperationGeometryCreation` the executive reads: `m_vFaces`,
+    /// `m_vSurfaces`).
+    pub(super) local_faces: Vec<FaceId>,
+    pub(super) local_surfaces: Vec<Surface>,
 }
 
 impl OffsetExecutive {
@@ -247,6 +380,9 @@ impl OffsetExecutive {
             vertex_to_faces: Relation::default(),
             blend_to_faces: Relation::default(),
             extended_surfaces: BTreeMap::new(),
+            collapsed_faces: Vec::new(),
+            local_faces: Vec::new(),
+            local_surfaces: Vec::new(),
         }
     }
 
@@ -331,6 +467,13 @@ impl OffsetExecutive {
         self.shell_faces.extend_from_slice(faces);
     }
 
+    /// The geometry of a local operation (`SmLocalOperationGeometryCreation`'s face and
+    /// surface lists): `surfaces[i]` replaces the surface of `faces[i]`.
+    pub fn set_local_surfaces(&mut self, faces: &[FaceId], surfaces: Vec<Surface>) {
+        self.local_faces = faces.to_vec();
+        self.local_surfaces = surfaces;
+    }
+
     /// Sets `m_eOffsetOperation`.
     pub fn set_operation(&mut self, operation: OffsetOperation) {
         self.operation = operation;
@@ -376,6 +519,92 @@ impl OffsetExecutive {
     /// upstream, for harness observation), in id order.
     pub fn offset_faces(&self, original: FaceuseId) -> Vec<FaceId> {
         self.faceuse_to_faces.seconds(original)
+    }
+
+    /// Not upstream (WR-346, `IsCollapsedFace`): whether original face `face` is an
+    /// inset face whose offset collapsed.
+    pub fn is_collapsed_face(&self, face: FaceId) -> bool {
+        self.collapsed_faces.contains(&face)
+    }
+
+    /// Not upstream (WR-346, `GetEdgeuseAcrossCollapsedFace`): the original edge use
+    /// beyond a collapsed face, seen from its edge use `edgeuse`. Across a rail (a
+    /// tangent edge of a four-sided round) it is the radial of the opposite rail; across
+    /// an end edge, seen from `from` (one of that edge's vertices), the radial of the
+    /// rail at the edge's other vertex. `None` when the edge use's face did not
+    /// collapse, the face across collapsed too, or the face has another shape.
+    ///
+    /// # Errors
+    ///
+    /// Those of the topology queries and the tangency test.
+    pub fn edgeuse_across_collapsed_face(
+        &self,
+        kernel: &Kernel,
+        original: &mut Brep,
+        edgeuse: Option<EdgeuseId>,
+        from: Option<VertexId>,
+    ) -> Result<Option<EdgeuseId>> {
+        let Some(edgeuse) = edgeuse else {
+            return Ok(None);
+        };
+        match eu::face(original, edgeuse)? {
+            Some(face) if self.is_collapsed_face(face) => {}
+            _ => return Ok(None),
+        }
+        let tan_tol_deg = self.tangency_tol_degrees();
+        let next = if eu2::is_tangent_sector(kernel, original, edgeuse, tan_tol_deg, false, true)? {
+            let loopuse = required(eu::loopuse(original, edgeuse)?)?;
+            if eu::loopuse_edgeuses(original, loopuse)?.len() != 4 {
+                return Ok(None);
+            }
+            let ccw = required(eu::ccw_edgeuse(original, edgeuse)?)?;
+            eu::ccw_edgeuse(original, ccw)?
+        } else {
+            let Some(from) = from else {
+                return Ok(None);
+            };
+            // the end edge's vertex away from `from` (by position: `from` may be a
+            // vertex of the rail beside it)
+            let end_edge = edge_of(original, edgeuse)?;
+            let v0 = required(edge::start_vertex(original, end_edge)?)?;
+            let v1 = required(edge::end_vertex(original, end_edge)?)?;
+            let from_point = original.vertex(from)?.point;
+            let far = if original.vertex(v0)?.point.distance(from_point)
+                > original.vertex(v1)?.point.distance(from_point)
+            {
+                v0
+            } else {
+                v1
+            };
+            let mut found = None;
+            for side in [
+                required(eu::cw_edgeuse(original, edgeuse)?)?,
+                required(eu::ccw_edgeuse(original, edgeuse)?)?,
+            ] {
+                let side_edge = edge_of(original, side)?;
+                if side != edgeuse
+                    && (edge::start_vertex(original, side_edge)? == Some(far)
+                        || edge::end_vertex(original, side_edge)? == Some(far))
+                {
+                    found = Some(side);
+                    break;
+                }
+            }
+            found
+        };
+        let Some(next) = next else {
+            return Ok(None);
+        };
+        let Some(across) = eu::radial(original, next)? else {
+            return Ok(None);
+        };
+        if across == next {
+            return Ok(None);
+        }
+        match eu::face(original, across)? {
+            Some(face) if self.is_collapsed_face(face) => Ok(None),
+            _ => Ok(Some(across)),
+        }
     }
 
     fn required_offset_brep(&self) -> Result<&Brep> {
@@ -502,11 +731,14 @@ impl OffsetExecutive {
             std::collections::btree_map::Entry::Vacant(entry) => {
                 // The obsolete offset-specific `else` at cpp:2158 is unreachable:
                 // NER(pBase) already established pOrigSurf == pBase != NULL.
-                let extension = base.create_extended_surface(
-                    kernel,
-                    self.offset_distance * 5.0,
-                    ContinuityType::G1R,
-                )?;
+                let dist = self.offset_distance * 5.0;
+                let extension = match base.kind() {
+                    // Not upstream (WR-532), opt-in `offset_extends_cones_as_themselves`
+                    SurfaceKind::Cone(cone) if kernel.fixes.offset_extends_cones_as_themselves => {
+                        extend_cone_as_itself(kernel, base, cone, dist)?
+                    }
+                    _ => base.create_extended_surface(kernel, dist, ContinuityType::G1R)?,
+                };
                 Ok(entry.insert(extension))
             }
         }
@@ -522,32 +754,95 @@ impl OffsetExecutive {
 
     /// Replaces implicit offset surfaces with approximations (`ReplaceImplicitOffsets`).
     /// The unconditional initial shrink is `topology.brep_p4`'s `ShrinkGeometry`.
+    ///
+    /// Every face with an `SmOffsetSurface` gets a cubic approximation of the offset of
+    /// its extended (else its own) base, which must be a B-spline surface, within
+    /// `approximation_tol_3d`. All approximations are built before any face is
+    /// changed; each face is then notified (`PRE_EDIT`), given the new surface's
+    /// natural domain and the surface (`SmBrep::ReplaceSurface`, old surface to the
+    /// deleted list, UV trim curves rebuilt) and notified again (`POST_EDIT`), in
+    /// face order. `notifications` must be keyed by `brep`'s identities.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR` for a base that is not a B-spline surface; those of the approximation
+    /// and of `ReplaceSurface` (`SER`). The notifications' statuses are not checked.
     pub fn replace_implicit_offsets(
-        kernel: &Kernel,
+        kernel: &mut Kernel,
         brep: &mut Brep,
-        _approximation_tol_3d: f64,
+        approximation_tol_3d: f64,
+        notifications: &mut NotificationStores<'_>,
     ) -> Result<()> {
         // remove curve and surface portions not used by edges and faces (status
         // ignored upstream)
         ignore_status(shrink_geometry(kernel, brep))?;
-        // Continuation cpp:1978–2035: enumerate offset surfaces, approximate their
-        // extended-or-original B-spline bases, then notify/replace each surface.
-        // A B-rep without offset surfaces leaves both loops empty (SM_SUCCESS); with
-        // one, the replacement loop's SmBrep::ReplaceSurface is not ported, so the
-        // continuation defers before building any approximation.
+
+        // for every face
+        let mut fix = Vec::new();
         for f in bp1::faces(brep, None)? {
-            let is_offset = brep
-                .face(f)?
-                .surface
-                .as_ref()
-                .is_some_and(|s| matches!(s.kind(), SurfaceKind::OffsetSurface(_)));
-            if is_offset {
-                // UNPORTED(topology.brep_p2): SmBrep::ReplaceSurface
-                return Err(SolidError::unported(
-                    "SmBrep::ReplaceSurface",
-                    "topology.brep_p2",
-                ));
-            }
+            // skip non SmOffsetSurfaces
+            let Some(SurfaceKind::OffsetSurface(offset)) =
+                brep.face(f)?.surface.as_ref().map(Surface::kind)
+            else {
+                continue;
+            };
+            // get SmOffsetSurface base (use extended surface if there is one)
+            let base = offset
+                .extended_base_surface()
+                .unwrap_or_else(|| offset.base_surface());
+            // make sure base surface is an SmBSplineSurface (`SM_CAST_PTR`, which every
+            // subclass passes: plane, extrusion, revolution, cone, sphere, torus); its
+            // B-spline part with the NURB `GetOrCreateGwNurbPointer` makes when missing
+            let Some(nurb) = crate::topology::brep::p3::with_nurb(kernel, base)? else {
+                return Err(SolidError::sm_err(OP));
+            };
+            // use NLIB function to build offset surface approximation
+            let approximation = nurb.approximate_offset_surface(
+                offset.offset_distance(),
+                approximation_tol_3d,
+                OffsetParamType::Inherited,
+            )?;
+            // remember face/surface pair
+            fix.push((f, Surface::from(approximation)));
+        }
+
+        // for every face that had an approximate surface built for an exact offset
+        // surface
+        let mut state = NotifyState::from_kernel_stores(notifications);
+        for (f, new_surface) in fix {
+            state.with_kernel_env(kernel, |kernel, env| {
+                let face_ref = (env.key_of)(EntityRef::Face(f));
+                // SM_NO_GET_BREP is NULL in the pinned reference
+                ignore_status(face3::notify(
+                    brep,
+                    f,
+                    env,
+                    None,
+                    NotifyOperation::PreEdit,
+                    [Some(face_ref), None, None],
+                ))?;
+                let domain = new_surface.natural_uv_domain_with_nurb(kernel)?;
+                crate::topology::face::p2::set_uv_domain(brep, f, &domain)?;
+                // swap the approx surface for the exact offset surface
+                crate::topology::brep::p2::replace_surface(
+                    kernel,
+                    brep,
+                    env,
+                    f,
+                    new_surface,
+                    face_ref,
+                    crate::topology::brep::p2::OldSurface::AddToDeletedList,
+                    true,
+                )?;
+                ignore_status(face3::notify(
+                    brep,
+                    f,
+                    env,
+                    None,
+                    NotifyOperation::PostEdit,
+                    [Some(face_ref), None, None],
+                ))
+            })?;
         }
         Ok(())
     }
@@ -555,8 +850,9 @@ impl OffsetExecutive {
     /// Removes result faces too close to the original (`RemoveExcessFaces`).
     ///
     /// The source is borrowed immutably while solving, corresponding to the upstream
-    /// editing-disabled query. This legacy immutable-kernel entry cannot advance the
-    /// real traversal mark at removal; use the kernel-context entry for that step.
+    /// editing-disabled query; the removal uses the result's actual editing flag and
+    /// the kernel's traversal marks. An empty deletion list still calls the landed
+    /// `RemoveFaces` implementation.
     /// Each original edge and face is identified by its geometry's owner key
     /// ([`arena_identity`] when unowned); an owner shared by two records or naming
     /// another record returns [`SolidError::Unsupported`] rather than omitting geometry.
@@ -564,32 +860,20 @@ impl OffsetExecutive {
     /// evaluation statuses are ignored, but an unported evaluator still defers.
     /// Result edges are visited in upstream edge list order (`SmBrep::GetEdges`).
     pub fn remove_excess_faces(
-        &self,
-        kernel: &Kernel,
-        original: &Brep,
-        result: &mut Brep,
-    ) -> Result<()> {
-        if self.excess_faces(kernel, original, result)?.is_none() {
-            return Ok(());
-        }
-        // UNPORTED(offset.offset_executive_p1): SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)
-        Err(SolidError::unported(
-            "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
-            "offset.offset_executive_p1",
-        ))
-    }
-
-    /// Removes excess faces using the result's actual editing flag and kernel marks.
-    /// An empty deletion list still calls the landed `RemoveFaces` implementation.
-    pub fn remove_excess_faces_with_kernel_context(
-        &self,
+        &mut self,
         kernel: &mut Kernel,
-        original: &Brep,
+        original: &mut Brep,
         result: &mut Brep,
     ) -> Result<()> {
         let Some(delete_faces) = self.excess_faces(kernel, original, result)? else {
             return Ok(());
         };
+
+        // The faces about to be removed and their edgeuses, which RemoveFaces deletes
+        let gone_faces: BTreeSet<FaceId> = delete_faces.iter().copied().collect();
+        let gone = removed_faces_edgeuses(result, &delete_faces)?;
+
+        // Clean up those faces we have collected.
         let editing_enabled = result.editing_enabled();
         // cpp:2099–2102 ignores ordinary RemoveFaces failures but still executes
         // its editing guard and traversal-mark effects. Missing work must defer.
@@ -598,13 +882,37 @@ impl OffsetExecutive {
             result,
             editing_enabled,
             &delete_faces,
-        ))
+        ))?;
+
+        // Forget the deleted faces and edgeuses, so later lookups in the relations
+        // (lamina side walls, PiecewiseMerge) cannot return them. For m_vEUToEU also
+        // forget any edgeuse no result edge has.
+        if !gone_faces.is_empty() {
+            let mut live = BTreeSet::new();
+            for e in bp1::edges(result, None)? {
+                live.extend(edge::edgeuses(result, e, None, None)?);
+            }
+            forget_seconds(&mut self.edgeuse_to_edgeuses, &gone, Some(&live))?;
+            self.forget_faces(&gone_faces)?;
+        }
+        Ok(())
+    }
+
+    /// `RemoveExcessFaces`' forgetting of the removed faces: `m_vFUToF`, `m_vEToF`,
+    /// `m_vVToF` and `m_vBlendToFaces` forget the pairs whose second is gone, and
+    /// `m_vBlendToFaces` also those whose first is gone.
+    pub(super) fn forget_faces(&mut self, gone: &BTreeSet<FaceId>) -> Result<()> {
+        forget_seconds(&mut self.faceuse_to_faces, gone, None)?;
+        forget_seconds(&mut self.edge_to_faces, gone, None)?;
+        forget_seconds(&mut self.vertex_to_faces, gone, None)?;
+        forget_seconds(&mut self.blend_to_faces, gone, None)?;
+        forget_firsts(&mut self.blend_to_faces, gone)
     }
 
     fn excess_faces(
         &self,
         kernel: &Kernel,
-        original: &Brep,
+        original: &mut Brep,
         result: &mut Brep,
     ) -> Result<Option<Vec<FaceId>>> {
         if !self.merge_results || !self.shell_faces.is_empty() {
@@ -622,11 +930,15 @@ impl OffsetExecutive {
                 kernel, result, primary, 0.5, false, false, true,
             ))?
             .map_or(Vec3::UNDEF, |eval| eval.point);
+            // cpp:2069–2072: the solve runs with the original's editing disabled and
+            // leaves it enabled afterwards (still disabled when the solve fails)
+            original.set_editing_enabled(false);
             if original_cache.is_none() {
                 original_cache = Some(make_original_brep_cache(kernel, original)?);
             }
             let (cache, keys) = required(original_cache.as_ref())?;
             let solutions = solve_original_brep_point(kernel, original, cache, keys, point)?;
+            original.set_editing_enabled(true);
             collect_excess_faces(
                 result,
                 id,
@@ -641,11 +953,24 @@ impl OffsetExecutive {
     }
 
     /// Builds a closing ruled side wall, or succeeds without work for null/ambiguous mappings.
+    /// The new face is named in an arena-only store (`topology::loopuse::notify_ref`).
     pub fn build_side_wall_of_edgeuse(
         &mut self,
         kernel: &mut Kernel,
         original_brep: &mut Brep,
         original: Option<EdgeuseId>,
+    ) -> Result<()> {
+        self.build_side_wall_of_edgeuse_with(kernel, original_brep, original, None)
+    }
+
+    /// [`Self::build_side_wall_of_edgeuse`] notifying the new face through
+    /// `notifications`, keyed by result identities (`None`: an arena-only store).
+    pub(super) fn build_side_wall_of_edgeuse_with(
+        &mut self,
+        kernel: &mut Kernel,
+        original_brep: &mut Brep,
+        original: Option<EdgeuseId>,
+        notifications: Option<&mut NotifyState<'_>>,
     ) -> Result<()> {
         let Some(original) = original else {
             return Ok(());
@@ -667,8 +992,29 @@ impl OffsetExecutive {
             None,
         )?;
         // cpp:2819: m_pOffsetBrep->CreateFaceFromSurface(pNewSurface, natural domain)
-        let domain = new_surface.natural_uv_domain();
-        let new_face = create_face_from_surface(kernel, offset_brep, &new_surface, &domain)?;
+        let domain = new_surface.natural_uv_domain_with_nurb(kernel)?;
+        let new_face = match notifications {
+            Some(notifications) => {
+                let key_of = notifications.key_of;
+                let this_face = |face: FaceId| key_of(EntityRef::Face(face));
+                notifications.with_kernel_env(kernel, |kernel, env| {
+                    let mut marks = crate::topology::topology_traverser::Marks::default();
+                    let mut fenv = crate::topology::brep::p8::FaceBuildEnv {
+                        env,
+                        marks: &mut marks,
+                        this_face: &this_face,
+                    };
+                    crate::topology::brep::p8::create_face_from_surface(
+                        kernel,
+                        offset_brep,
+                        Some(new_surface),
+                        &domain,
+                        &mut fenv,
+                    )
+                })?
+            }
+            None => create_face_from_surface(kernel, offset_brep, &new_surface, &domain)?,
+        };
         self.closing_faces.push(new_face); // [B549]
         Ok(())
     }
@@ -761,6 +1107,55 @@ impl OffsetExecutive {
         )
     }
 
+    /// Not upstream (WR-346): `m_rGeometryCreation.MateEdges(ctx, this, pEU, pAcross,
+    /// pOffEU, pOffAcross, eMarkType)`, mating the offsets of the faces on either side
+    /// of a collapsed face (`edgeuse` and `across` are original edge uses beside it).
+    ///
+    /// # Errors
+    ///
+    /// Those of `MateEdges`.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn mate_edges_across_with_marked(
+        &mut self,
+        kernel: &mut Kernel,
+        original: &mut Brep,
+        edgeuse: EdgeuseId,
+        across: EdgeuseId,
+        offset_edgeuse: EdgeuseId,
+        offset_across: EdgeuseId,
+        mark_type: MarkType,
+        marked: &BTreeSet<EdgeuseId>,
+        notifications: &mut NotificationStores<'_>,
+        offset_key_of: &dyn Fn(EntityRef) -> ObjectRef,
+    ) -> Result<()> {
+        let creator = self.geometry_creator();
+        NotifyState::from_kernel_stores(notifications).with_kernel_env(kernel, |kernel, env| {
+            let mut result = required(self.offset_brep.take())?;
+            let made = super::edgeuse::mate(
+                kernel,
+                &creator,
+                self,
+                original,
+                &mut result,
+                edgeuse,
+                across,
+                offset_edgeuse,
+                offset_across,
+                mark_type,
+                MarkSource::Set(marked),
+                CapNotifications {
+                    records: &mut *env.records,
+                    attributes: &mut *env.attributes,
+                    context: env.context.as_deref_mut(),
+                    original_key_of: env.key_of,
+                    offset_key_of,
+                },
+            );
+            self.offset_brep = Some(result);
+            made
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn build_offset_of_edgeuses_with_state(
         &mut self,
@@ -849,6 +1244,14 @@ impl OffsetExecutive {
                 &[],
                 &mut notifications.rekey(offset_key_of),
             )?;
+            // Not upstream (opt-in `Kernel::fixes.local_operation_step_walls`, fork
+            // tangency-labs/smlib 5d428ae): a step wall spans the gap between two edges
+            // exactly, as a lamina side wall does, and is kept out of the face extensions
+            // as one (extended along its rulings it can pass through its own axis, a step
+            // round a circle, and fold over itself).
+            if cap.closing_wall {
+                self.closing_faces.push(new_face);
+            }
             // map origEdge to its offset capFaces
             new_faces.push(new_face);
             self.relate_edge_face(edge, new_face);
@@ -936,17 +1339,36 @@ impl OffsetExecutive {
             }
         }
         if problems {
-            let _curve = edge::create_trimmed_nurbs_curve(kernel, original, edge)?;
-            self.required_offset_brep()?;
-            // cpp:3092: offset distance, approximation tolerance, FALSE, FALSE.
-            // Ported: primitive::primitive_creation::p2::PrimitiveCreation::create_pipe_sweep,
-            // which needs a PrimitiveCreationAccess over the offset B-rep. Its first B-rep
-            // edit (p3's curve sweep) is the face construction below.
-            // UNPORTED(topology.brep_p8): SmBrep::CreateFacesFromSurface
-            return Err(SolidError::unported(
-                "SmBrep::CreateFacesFromSurface",
-                "topology.brep_p8",
-            ));
+            use crate::primitive::primitive_creation::model::PrimitiveModel;
+            use crate::primitive::primitive_creation::p1::PrimitiveCreation;
+
+            // cpp:3088-3094: a pipe of the offset distance along the edge's trimmed NURBS
+            // curve, built into the offset B-rep (SmPrimitiveCreation on its infinite
+            // region, no caps, not translational); the faces it makes are not used.
+            let curve = edge::create_trimmed_nurbs_curve(kernel, original, edge)?;
+            let Some(CurveKind::BSpline(path)) = curve.as_ref().map(Curve::kind) else {
+                // a NULL curve handed to CreatePipeSweep upstream
+                return Err(SolidError::null_pointer(OP));
+            };
+            let offset = required(self.offset_brep.take())?;
+            let region = offset.infinite_region();
+            let mut model = PrimitiveModel::new(kernel, offset);
+            let (mut start, mut side, mut end) = (Vec::new(), Vec::new(), Vec::new());
+            let swept = PrimitiveCreation::new(region, 0, false).create_pipe_sweep(
+                &mut model,
+                PrimitiveModel::MAIN,
+                self.offset_distance,
+                path,
+                self.approximation_tol_3d,
+                false,
+                false,
+                &mut start,
+                &mut side,
+                &mut end,
+            );
+            // the offset B-rep comes back whatever the sweep's status (SER)
+            self.offset_brep = Some(model.into_brep()?);
+            swept?;
         }
         Ok(())
     }
@@ -1210,7 +1632,7 @@ impl OffsetExecutive {
         loop_points: &[Vec3],
         notifications: &mut NotifyState<'_>,
     ) -> Result<FaceId> {
-        let domain = surface.natural_uv_domain();
+        let domain = surface.natural_uv_domain_with_nurb(kernel)?;
         let key_of = notifications.key_of;
         let this_face = |face: FaceId| key_of(EntityRef::Face(face));
         let brep = required(self.offset_brep.as_mut())?;
@@ -1260,23 +1682,67 @@ impl OffsetExecutive {
     ///
     /// On the non-merge path the B-rep is taken and relations are cleared *before*
     /// stitching, as upstream. A deferred stitch therefore leaves `offset_brep()` empty.
-    pub fn piecewise_merge(&mut self, kernel: &mut Kernel, original: &mut Brep) -> Result<Brep> {
+    /// The merge path builds a new merge B-rep and runs `SmMerge::PiecewiseMerge` over
+    /// the offset temporary in the caller's `notifications` stores (`None` refuses it);
+    /// the temporary stays in `offset_brep()`, as `m_pOffsetBrep` upstream.
+    ///
+    /// # Errors
+    ///
+    /// Those of the stitch and of the merge; [`SolidError::InvalidInput`] for a merge
+    /// without `notifications` or without their merge identities.
+    pub fn piecewise_merge(
+        &mut self,
+        kernel: &mut Kernel,
+        original: &mut Brep,
+        notifications: Option<&mut OffsetNotifications<'_>>,
+    ) -> Result<Brep> {
         if !self.merge_results {
             self.clear_relations();
             let mut result = required(self.offset_brep.take())?;
-            // the stitch statuses are ignored upstream
-            if self.create_offset_solid {
-                // Tol: StitchIntoShell() adds in the tols of the topology objects,
-                // so the Brep's tolerance should be plenty.
-                let stitch_tol_3d = result.tolerance();
-                ignore_status(stitch::stitch_into_shell(
-                    kernel,
-                    &mut result,
-                    true,
-                    stitch_tol_3d,
-                ))?;
-            } else {
-                ignore_status(stitch::stitch_into_solid(kernel, &mut result))?;
+            // the stitch statuses are ignored upstream. Its edits notify the offset's
+            // objects (its glue merges and splits carry their attributes, as upstream's
+            // objects' own do) through the caller's stores under the result identities;
+            // without them, on call-local records.
+            let create_offset_solid = self.create_offset_solid;
+            let run = |kernel: &mut Kernel,
+                       result: &mut Brep,
+                       edits: Option<&mut dyn StitchEditContext>|
+             -> Result<()> {
+                if create_offset_solid {
+                    // Tol: StitchIntoShell() adds in the tols of the topology objects,
+                    // so the Brep's tolerance should be plenty.
+                    let stitch_tol_3d = result.tolerance();
+                    ignore_status(stitch::stitch_into_shell_with(
+                        kernel,
+                        result,
+                        true,
+                        stitch_tol_3d,
+                        edits,
+                    ))
+                } else {
+                    ignore_status(stitch::stitch_into_solid_with(kernel, result, edits))
+                }
+            };
+            match notifications {
+                Some(n) => {
+                    let key_of = n.result_key_of;
+                    let curve_ref = n.result_curve_ref;
+                    let (records, attributes) = (&mut *n.records, &mut *n.attributes);
+                    Context::with_notification_context(kernel, |kernel, context| {
+                        let mut env = NotifyEnv {
+                            records,
+                            attributes,
+                            context: Some(context),
+                            key_of,
+                        };
+                        let mut edits = BorrowedStitchEdits {
+                            env: &mut env,
+                            curve_identity: CurveIdentity::Legacy(curve_ref),
+                        };
+                        run(kernel, &mut result, Some(&mut edits))
+                    })??;
+                }
+                None => run(kernel, &mut result, None)?,
             }
 
             if bp1::regions(&result, None)?.len() > 1 {
@@ -1302,22 +1768,18 @@ impl OffsetExecutive {
         for faceuse in self.faceuse_to_faces.all_firsts() {
             let face = required(original.faceuse(faceuse)?.face)?;
             for offset_face in self.faceuse_to_faces.seconds(faceuse) {
-                required(result.face(offset_face)?.surface.as_ref())?;
                 for edge_id in face_edges(original, face)? {
                     let edge_faces = self.edge_to_faces.seconds(edge_id);
                     for &edge_face in &edge_faces {
-                        required(result.face(edge_face)?.surface.as_ref())?;
                         for blended in self.blend_to_faces.seconds(edge_face) {
-                            required(result.face(blended)?.surface.as_ref())?;
-                            relate_surface_pair(&mut no_ssi, blended, edge_face)?;
+                            relate_surface_pair(result, &mut no_ssi, blended, edge_face)?;
                         }
-                        relate_surface_pair(&mut no_ssi, offset_face, edge_face)?;
+                        relate_surface_pair(result, &mut no_ssi, offset_face, edge_face)?;
                         let start = edge::vertex(original, edge_id)?;
                         let end = edge::other_vertex(original, edge_id, start)?;
                         for vertex in [start, end].into_iter().flatten() {
                             if let Some(vertex_face) = self.vertex_to_faces.second(vertex) {
-                                required(result.face(vertex_face)?.surface.as_ref())?;
-                                relate_surface_pair(&mut no_ssi, edge_face, vertex_face)?;
+                                relate_surface_pair(result, &mut no_ssi, edge_face, vertex_face)?;
                             }
                         }
                     }
@@ -1326,22 +1788,36 @@ impl OffsetExecutive {
                     }
                     if edge::is_manifold(original, edge_id)? {
                         let primary = required(eu::primary_edgeuse(original, edge_id)?)?;
-                        if eu2::is_tangent_sector(
-                            kernel,
-                            original,
-                            primary,
-                            self.tangency_tol_degrees(),
-                            false,
-                            true,
-                        )? {
+                        // Not upstream (WR-344, tangency-labs/solidcore#469), opt-in
+                        // `Kernel::fixes.offset_extended_edges_mated`: with extended convex edges,
+                        // every edge without an offset cap face had its two faces' offsets
+                        // mated along it (EdgeuseOffset), so they share their intersection
+                        // edge already, as a tangent sector's do (the tangency test is then
+                        // skipped, as the fork's `||` does).
+                        let mated =
+                            kernel.fixes.offset_extended_edges_mated && self.extend_convex_edges();
+                        if mated
+                            || eu2::is_tangent_sector(
+                                kernel,
+                                original,
+                                primary,
+                                self.tangency_tol_degrees(),
+                                false,
+                                true,
+                            )?
+                        {
                             for edgeuse in edge::edgeuses(original, edge_id, None, None)? {
                                 if eu::faceuse(original, edgeuse)? == Some(faceuse) {
                                     let radial = required(eu::radial(original, edgeuse)?)?;
                                     let radial_faceuse = required(eu::faceuse(original, radial)?)?;
                                     for radial_face in self.faceuse_to_faces.seconds(radial_faceuse)
                                     {
-                                        required(result.face(radial_face)?.surface.as_ref())?;
-                                        relate_surface_pair(&mut no_ssi, offset_face, radial_face)?;
+                                        relate_surface_pair(
+                                            result,
+                                            &mut no_ssi,
+                                            offset_face,
+                                            radial_face,
+                                        )?;
                                     }
                                 }
                             }
@@ -1350,8 +1826,7 @@ impl OffsetExecutive {
                 }
                 for vertex in face_vertices(original, face)? {
                     if let Some(vertex_face) = self.vertex_to_faces.second(vertex) {
-                        required(result.face(vertex_face)?.surface.as_ref())?;
-                        relate_surface_pair(&mut no_ssi, offset_face, vertex_face)?;
+                        relate_surface_pair(result, &mut no_ssi, offset_face, vertex_face)?;
                     }
                 }
             }
@@ -1359,14 +1834,20 @@ impl OffsetExecutive {
         self.clear_relations();
         // Shrink the geometry - this helps some for self intersections
         shrink_geometry(kernel, required(self.offset_brep.as_mut())?)?;
-        // Continuation cpp:2429–2474: construct a merge B-rep with the original
-        // tolerance, editing enabled; SmMerge uses 20*PI/180 angular tolerance,
-        // PiecewiseMerge(&no_ssi, TRUE, TRUE). It keeps the original offset B-rep.
-        // UNPORTED(boolean.merge_p3): SmMerge::PiecewiseMerge
-        Err(SolidError::unported(
-            "SmMerge::PiecewiseMerge",
-            "boolean.merge_p3",
-        ))
+        // Now Get things ready for piecewise merge (cpp:2453–2474)
+        let notifications = notifications.ok_or_else(|| {
+            SolidError::invalid_input(OP, "a merging PiecewiseMerge needs notification stores")
+        })?;
+        let offset = required(self.offset_brep.take())?;
+        let (result, offset) = super::merge::merge_offset(
+            kernel,
+            offset,
+            original.tolerance(),
+            &no_ssi,
+            notifications,
+        );
+        self.offset_brep = offset;
+        result
     }
 
     /// Builds a face from the supplied offset surface (`BuildOffsetOfFaceuse`).
@@ -1410,16 +1891,52 @@ impl OffsetExecutive {
             SurfaceKind::SurfOfExtrusion(surface) if surface.base().gw_nurb().is_none() => {
                 ignore_status(surface.make_nurb(kernel))?;
             }
+            // (SmCone/SmCylinder, SmSphere and SmTorus are SmBSplineSurfaces too)
+            SurfaceKind::Cone(surface) if surface.rev().base().gw_nurb().is_none() => {
+                ignore_status(surface.make_nurb(kernel))?;
+            }
+            SurfaceKind::Sphere(surface) if surface.base().base().gw_nurb().is_none() => {
+                ignore_status(surface.make_nurb(kernel))?;
+            }
+            SurfaceKind::Torus(surface) if surface.base().base().gw_nurb().is_none() => {
+                ignore_status(surface.make_nurb(kernel))?;
+            }
             _ => {}
         }
         let original_faceuse = faceuse;
         let faceuse = original.faceuse(faceuse)?;
         let face_id = required(faceuse.face)?;
         let orientation = faceuse.orientation;
+        // Not upstream (WR-342, tangency-labs/solidcore#974), opt-in
+        // `Kernel::fixes.offset_clip_right_side_out`: a face that does not fit the offset
+        // surface's domain is clipped to it by a 2D boolean of planar faces made from its
+        // UV loops, which need them counterclockwise (the SM_OT_SAME faceuse's sense); an
+        // inset's SM_OT_OPPOSITE loops made that face inside out and the clip empty.
+        let right_side_out = kernel.fixes.offset_clip_right_side_out;
+        let loop_orientation = if right_side_out {
+            let fits = original
+                .face(face_id)?
+                .uv_domain
+                .is_contained_by(&surface.natural_uv_domain_with_nurb(kernel)?, EFF_ZERO)
+                || self.operation == OffsetOperation::LocalOperation;
+            if fits {
+                orientation
+            } else {
+                OrientType::Same
+            }
+        } else {
+            orientation
+        };
         // The translated-3D-curve plane case (cpp:3560–3600) is `#if 0` upstream.
-        let mut curves =
-            face::create_curves_from_face(kernel, original, face_id, orientation, false, true)?;
-        let offset_domain = surface.natural_uv_domain();
+        let mut curves = face::create_curves_from_face(
+            kernel,
+            original,
+            face_id,
+            loop_orientation,
+            false,
+            true,
+        )?;
+        let offset_domain = surface.natural_uv_domain_with_nurb(kernel)?;
         let face_domain = original.face(face_id)?.uv_domain;
         if face_domain.is_contained_by(&offset_domain, EFF_ZERO)
             || self.operation == OffsetOperation::LocalOperation
@@ -1506,163 +2023,172 @@ impl OffsetExecutive {
         use crate::topology::topology_traverser::Marks;
 
         let arena_face = |face: FaceId| loopuse::notify_ref(EntityRef::Face(face));
-        let mut planar_brep = new_brep(kernel, USE_DEFAULT, USE_DEFAULT)?;
-        planar_brep.set_editing_enabled(true);
-        planar_brep.set_tolerance(1.0e-6);
+        // The domain and planar B-reps and their 2D Boolean are made through the
+        // kernel context, whose callbacks a kernel-context caller has lent to
+        // `notifications.context` (upstream: the one context).
+        let lent = notifications.context.as_deref_mut();
+        let result =
+            Context::with_lease_returned(kernel, lent, |kernel| -> Result<Option<Brep>> {
+                let mut planar_brep = new_brep(kernel, USE_DEFAULT, USE_DEFAULT)?;
+                planar_brep.set_editing_enabled(true);
+                planar_brep.set_tolerance(1.0e-6);
 
-        // get bounding box containing all pFU->Face->UVTrimCurves
-        let mut total_bbox = Extent3d::new();
-        if let Some(uv_curves) = curves.uv_curves.as_mut() {
-            for curve in uv_curves {
-                let bbox = uv_curve_bounding_box(kernel, curve)?;
-                total_bbox = total_bbox.union(&bbox);
-            }
-        }
+                // get bounding box containing all pFU->Face->UVTrimCurves
+                let mut total_bbox = Extent3d::new();
+                if let Some(uv_curves) = curves.uv_curves.as_mut() {
+                    for curve in uv_curves {
+                        let bbox = uv_curve_bounding_box(kernel, curve)?;
+                        total_bbox = total_bbox.union(&bbox);
+                    }
+                }
 
-        // create a 3d line between every offsetSurface domain corner point
-        let min = offset_domain.min();
-        let max = offset_domain.max();
-        let mut box_curves = Vec::new();
-        for (start, end, ivl) in [
-            (
-                min,
-                offset_domain.evaluate(1.0, 0.0),
-                Extent1d::from_raw(min.x, max.x),
-            ),
-            (
-                offset_domain.evaluate(0.0, 1.0),
-                max,
-                Extent1d::from_raw(min.x, max.x),
-            ),
-            (
-                min,
-                offset_domain.evaluate(0.0, 1.0),
-                Extent1d::from_raw(min.y, max.y),
-            ),
-            (
-                offset_domain.evaluate(1.0, 0.0),
-                max,
-                Extent1d::from_raw(min.y, max.y),
-            ),
-        ] {
-            let mut line = crate::nurbs::b_spline_curve::BSplineCurve::create_line_segment(
-                3,
-                Vec3::new(start.x, start.y, 0.0),
-                Vec3::new(end.x, end.y, 0.0),
-            )?;
-            ignore_status(line.edit_parameterization(&ivl))?;
-            box_curves.push(Curve::from(line));
-        }
+                // create a 3d line between every offsetSurface domain corner point
+                let min = offset_domain.min();
+                let max = offset_domain.max();
+                let mut box_curves = Vec::new();
+                for (start, end, ivl) in [
+                    (
+                        min,
+                        offset_domain.evaluate(1.0, 0.0),
+                        Extent1d::from_raw(min.x, max.x),
+                    ),
+                    (
+                        offset_domain.evaluate(0.0, 1.0),
+                        max,
+                        Extent1d::from_raw(min.x, max.x),
+                    ),
+                    (
+                        min,
+                        offset_domain.evaluate(0.0, 1.0),
+                        Extent1d::from_raw(min.y, max.y),
+                    ),
+                    (
+                        offset_domain.evaluate(1.0, 0.0),
+                        max,
+                        Extent1d::from_raw(min.y, max.y),
+                    ),
+                ] {
+                    let mut line = crate::nurbs::b_spline_curve::BSplineCurve::create_line_segment(
+                        3,
+                        Vec3::new(start.x, start.y, 0.0),
+                        Vec3::new(end.x, end.y, 0.0),
+                    )?;
+                    ignore_status(line.edit_parameterization(&ivl))?;
+                    box_curves.push(Curve::from(line));
+                }
 
-        // make a new Brep containing 1 planar face bounded by the 3d Curves just made
-        let mut domain_brep = new_brep(kernel, USE_DEFAULT, USE_DEFAULT)?;
-        domain_brep.set_tolerance(planar_brep.tolerance());
-        domain_brep.set_editing_enabled(true);
-        {
-            let mut state = ArenaNotifyState::new(&domain_brep);
-            let mut env = state.env(None);
-            let mut marks = Marks::default();
-            let mut fenv = FaceBuildEnv {
-                env: &mut env,
-                marks: &mut marks,
-                this_face: &arena_face,
-            };
-            let region = domain_brep.infinite_region();
-            let tolerance = domain_brep.tolerance();
-            create_planar_face_with_3d_curves(
-                kernel,
-                &mut domain_brep,
-                region,
-                &box_curves,
-                tolerance,
-                &mut fenv,
-            )?;
-        }
+                // make a new Brep containing 1 planar face bounded by the 3d Curves just made
+                let mut domain_brep = new_brep(kernel, USE_DEFAULT, USE_DEFAULT)?;
+                domain_brep.set_tolerance(planar_brep.tolerance());
+                domain_brep.set_editing_enabled(true);
+                {
+                    let mut state = ArenaNotifyState::new(&domain_brep);
+                    let mut env = state.env(None);
+                    let mut marks = Marks::default();
+                    let mut fenv = FaceBuildEnv {
+                        env: &mut env,
+                        marks: &mut marks,
+                        this_face: &arena_face,
+                    };
+                    let region = domain_brep.infinite_region();
+                    let tolerance = domain_brep.tolerance();
+                    create_planar_face_with_3d_curves(
+                        kernel,
+                        &mut domain_brep,
+                        region,
+                        &box_curves,
+                        tolerance,
+                        &mut fenv,
+                    )?;
+                }
 
-        // copy the plane just made and get its natural domain
-        let mut copy_plane = {
-            // GetSurfaces: the surfaces their faces own, under the faces' identities.
-            let owners = bp1::surface_owners(&domain_brep, None, &arena_face)?;
-            let first_face = required(owners.first().copied())?;
-            let first = required(domain_brep.face(first_face)?.surface.as_ref())?;
-            if !matches!(first.kind(), SurfaceKind::Plane(_)) {
-                // SM_CAST_PTR yields NULL, dereferenced next upstream.
-                return Err(SolidError::null_pointer(OP));
-            }
-            first.copy(kernel)?
-        };
-        let mut copy_domain = copy_plane.natural_uv_domain();
-        let SurfaceKind::Plane(plane) = copy_plane.kind_mut() else {
-            return Err(SolidError::null_pointer(OP));
-        };
+                // copy the plane just made and get its natural domain
+                let mut copy_plane = {
+                    // GetSurfaces: the surfaces their faces own, under the faces' identities.
+                    let owners = bp1::surface_owners(&domain_brep, None, &arena_face)?;
+                    let first_face = required(owners.first().copied())?;
+                    let first = required(domain_brep.face(first_face)?.surface.as_ref())?;
+                    if !matches!(first.kind(), SurfaceKind::Plane(_)) {
+                        // SM_CAST_PTR yields NULL, dereferenced next upstream.
+                        return Err(SolidError::null_pointer(OP));
+                    }
+                    first.copy(kernel)?
+                };
+                let mut copy_domain = copy_plane.natural_uv_domain_with_nurb(kernel)?;
+                let SurfaceKind::Plane(plane) = copy_plane.kind_mut() else {
+                    return Err(SolidError::null_pointer(OP));
+                };
 
-        // increase the copy domain to include the projection of every UV trim curve
-        // bounding box corner onto this plane.
-        for corner in [
-            total_bbox.min(),
-            total_bbox.max(),
-            total_bbox.evaluate(1.0, 0.0, 0.0),
-            total_bbox.evaluate(0.0, 1.0, 0.0),
-        ] {
-            copy_domain.add_point(plane.project_point_to_uv_domain(corner));
-        }
-        ignore_status(plane.adjust_step_uv_domain(&copy_domain))?;
-        let copy_plane_domain = copy_plane.natural_uv_domain();
+                // increase the copy domain to include the projection of every UV trim curve
+                // bounding box corner onto this plane.
+                for corner in [
+                    total_bbox.min(),
+                    total_bbox.max(),
+                    total_bbox.evaluate(1.0, 0.0, 0.0),
+                    total_bbox.evaluate(0.0, 1.0, 0.0),
+                ] {
+                    copy_domain.add_point(plane.project_point_to_uv_domain(corner));
+                }
+                ignore_status(plane.adjust_step_uv_domain(&copy_domain))?;
+                let copy_plane_domain = copy_plane.natural_uv_domain_with_nurb(kernel)?;
 
-        // make a planar face using the offset UV trim curves (as 3D curves)
-        let mut loops = Vec::new();
-        for &count in &curves.curve_loops {
-            loops.push(
-                usize::try_from(count)
-                    .map_err(|_| SolidError::invalid_input(OP, "loop count exceeds usize"))?,
-            );
-        }
-        let input = FaceCurvesInput {
-            loops,
-            curves_3d: curves
-                .uv_curves
-                .take()
-                .map(|list| list.into_iter().map(Some).collect()),
-            uv_curves: None,
-            orientations: std::mem::take(&mut curves.curve_orients),
-            loop_points: std::mem::take(&mut curves.loop_points),
-        };
-        {
-            let mut state = ArenaNotifyState::new(&planar_brep);
-            let mut env = state.env(None);
-            let region = planar_brep.infinite_region();
-            bp7::make_face_with_curves(
-                kernel,
-                &mut planar_brep,
-                region,
-                input,
-                copy_plane,
-                &copy_plane_domain,
-                OrientType::Same,
-                None,
-                &arena_face,
-                &mut env,
-            )?;
-        }
+                // make a planar face using the offset UV trim curves (as 3D curves)
+                let mut loops = Vec::new();
+                for &count in &curves.curve_loops {
+                    loops.push(
+                        usize::try_from(count).map_err(|_| {
+                            SolidError::invalid_input(OP, "loop count exceeds usize")
+                        })?,
+                    );
+                }
+                let input = FaceCurvesInput {
+                    loops,
+                    curves_3d: curves
+                        .uv_curves
+                        .take()
+                        .map(|list| list.into_iter().map(Some).collect()),
+                    uv_curves: None,
+                    orientations: std::mem::take(&mut curves.curve_orients),
+                    loop_points: std::mem::take(&mut curves.loop_points),
+                };
+                {
+                    let mut state = ArenaNotifyState::new(&planar_brep);
+                    let mut env = state.env(None);
+                    let region = planar_brep.infinite_region();
+                    bp7::make_face_with_curves(
+                        kernel,
+                        &mut planar_brep,
+                        region,
+                        input,
+                        copy_plane,
+                        &copy_plane_domain,
+                        OrientType::Same,
+                        None,
+                        &arena_face,
+                        &mut env,
+                    )?;
+                }
 
-        // Intersect in 2d the domain B-rep with the planar B-rep.
-        let mut result = None;
-        {
-            let mut primitive = PrimitiveCreation::new(None, 0, false);
-            let mut domain_marks = Marks::default();
-            let mut planar_marks = Marks::default();
-            let mut state = ArenaNotifyState::new(&domain_brep);
-            state.seed(&planar_brep);
-            primitive.boolean_2d(
-                kernel,
-                &mut domain_brep,
-                &mut planar_brep,
-                Boolean2d::Intersection,
-                &mut result,
-                (&mut domain_marks, &mut planar_marks),
-                &mut state.env(None),
-            )?;
-        }
+                // Intersect in 2d the domain B-rep with the planar B-rep.
+                let mut result = None;
+                {
+                    let mut primitive = PrimitiveCreation::new(None, 0, false);
+                    let mut domain_marks = Marks::default();
+                    let mut planar_marks = Marks::default();
+                    let mut state = ArenaNotifyState::new(&domain_brep);
+                    state.seed(&planar_brep);
+                    primitive.boolean_2d(
+                        kernel,
+                        &mut domain_brep,
+                        &mut planar_brep,
+                        Boolean2d::Intersection,
+                        &mut result,
+                        (&mut domain_marks, &mut planar_marks),
+                        &mut state.env(None),
+                    )?;
+                }
+                Ok(result)
+            })?;
         // Upstream dereferences the result next, even when Boolean2D left it null.
         let mut result = required(result)?;
 
@@ -1673,11 +2199,18 @@ impl OffsetExecutive {
         let result_faces = bp1::faces(&result, None)?;
         let mut new_faces = Vec::new();
         for (index, &result_face) in result_faces.iter().enumerate() {
+            // (WR-342 opt-in: the loops in the sense of the faceuse's orientation, which
+            // the offset face is made with)
+            let result_orientation = if kernel.fixes.offset_clip_right_side_out {
+                orientation
+            } else {
+                OrientType::Same
+            };
             let made = face::create_curves_from_face(
                 kernel,
                 &mut result,
                 result_face,
-                OrientType::Same,
+                result_orientation,
                 true,
                 false,
             )?;
@@ -1969,18 +2502,19 @@ impl OffsetExecutive {
         let domain = ignored(original_face.uv_domain.intersect(&offset_face.uv_domain))?
             .unwrap_or_else(Extent2d::new);
         let mid_uv = domain.evaluate(0.5, 0.5);
+        // (`EvaluateNormal(sMidUV, TRUE, TRUE, ..)`: from the left)
         let normal = ignored(required(original_face.surface.as_ref())?.evaluate_normal(
             kernel.kernel(),
             mid_uv,
-            Side::Right,
-            Side::Right,
+            Side::Left,
+            Side::Left,
         ))?
         .unwrap_or(Vec3::UNDEF);
         let offset_normal = ignored(required(offset_face.surface.as_ref())?.evaluate_normal(
             kernel.kernel(),
             mid_uv,
-            Side::Right,
-            Side::Right,
+            Side::Left,
+            Side::Left,
         ))?
         .unwrap_or(Vec3::UNDEF);
         let same_normals = normal.dot(offset_normal) > 0.0;
@@ -2079,7 +2613,7 @@ impl OffsetExecutive {
         offset_key_of: &dyn Fn(EntityRef) -> ObjectRef,
         offset_curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
     ) -> Result<()> {
-        crate::geom::context::Context::with_notification_context(kernel, |kernel, context| {
+        Context::with_notification_context(kernel, |kernel, context| {
             self.build_offset_of_faceuse(
                 kernel,
                 original,
@@ -2114,10 +2648,19 @@ fn offset_env<'a>(
 }
 
 fn relate_surface_pair(
+    result: &Brep,
     relation: &mut Relation<FaceId, FaceId>,
     a: FaceId,
     b: FaceId,
 ) -> Result<()> {
+    // Upstream `SmOffsetExecutive::PiecewiseMerge` (cpp:2313–2412) does not null-check
+    // `GetSurface()`, and `SmRelation::RelatePair` (SmRelation.h:203–206, unchecked) is
+    // a no-op when either pointer is NULL — including faces already destroyed by
+    // `RemoveExcessFaces` whose `~SmFace` cleared `m_pSurface` (UB-256).
+    let has_surface = |id: FaceId| result.faces().get(id).is_some_and(|f| f.surface.is_some());
+    if !has_surface(a) || !has_surface(b) {
+        return Ok(());
+    }
     relation.relate_pair(a, b)?;
     relation.relate_pair(b, a)
 }
@@ -2413,36 +2956,49 @@ fn make_original_brep_cache(kernel: &Kernel, original: &Brep) -> Result<(BrepCac
     Ok((cache, keys))
 }
 
+/// `pOriginal->BrepPointSolve(..)`. The face surfaces reach their faces' caches
+/// (`smsurf_GetSurfaceCache`, which may create UV trim curves on `original`): the
+/// read-only solve requests each missing cache or trim, which is prepared on
+/// `original` before the solve runs again from its start.
 fn solve_original_brep_point(
     kernel: &Kernel,
-    original: &Brep,
+    original: &mut Brep,
     cache: &BrepCache,
     keys: &OriginalKeys,
     point: Vec3,
 ) -> Result<SolutionArray<CacheObject>> {
-    let objects = BrepObjects {
-        preparation: None,
-        brep: original,
-        // There is exactly one B-rep in this query adapter's local namespace.
-        brep_id: crate::topology::BrepId::from_index(0),
-        cache: Some(cache),
-        keys: &|object| keys.key(object),
-        // OriginalKeys identifies every edge and face by its geometry's own owner.
-        owner_of: &|_| None,
-    };
-    TopologySolver::brep_point_solve(
-        kernel,
-        &objects,
-        Some(CacheObject::Brep),
-        point,
-        TopologySolveOptions {
-            operation: SolverOperation::Minimize,
-            requested: SolutionRequested::Single,
-            tolerance_3d: original.tolerance(),
-            best_answer_so_far_sq: BIG_DOUBLE,
-            opt_vectors: &[],
-        },
-    )
+    let mut preparation = crate::query::brep::RayPreparation::default();
+    loop {
+        let objects = BrepObjects {
+            preparation: Some(&preparation),
+            brep: original,
+            // There is exactly one B-rep in this query adapter's local namespace.
+            brep_id: crate::topology::BrepId::from_index(0),
+            cache: Some(cache),
+            keys: &|object| keys.key(object),
+            // OriginalKeys identifies every edge and face by its geometry's own owner.
+            owner_of: &|_| None,
+        };
+        let result = TopologySolver::brep_point_solve(
+            kernel,
+            &objects,
+            Some(CacheObject::Brep),
+            point,
+            TopologySolveOptions {
+                operation: SolverOperation::Minimize,
+                requested: SolutionRequested::Single,
+                tolerance_3d: original.tolerance(),
+                best_answer_so_far_sq: BIG_DOUBLE,
+                opt_vectors: &[],
+            },
+        );
+        match (result, preparation.take_request()) {
+            (Err(SolidError::PreparationRequired { .. }), Some(request)) => {
+                preparation.prepare(kernel, original, request)?;
+            }
+            (result, _) => return result,
+        }
+    }
 }
 
 fn collect_excess_faces(
@@ -2504,6 +3060,56 @@ fn notify_edge_and_vertices(
     Ok(())
 }
 
+/// `sm_ForgetSeconds`: forgets the pairs of `relation` whose second is in `gone` or,
+/// with `live`, is not in `live`.
+pub(super) fn forget_seconds<A: Ord + Copy, B: Ord + Copy>(
+    relation: &mut Relation<A, B>,
+    gone: &BTreeSet<B>,
+    live: Option<&BTreeSet<B>>,
+) -> Result<()> {
+    for second in relation.all_seconds() {
+        if !gone.contains(&second) && live.is_none_or(|live| live.contains(&second)) {
+            continue;
+        }
+        for first in relation.firsts(second) {
+            relation.remove_pair(first, second)?;
+        }
+    }
+    Ok(())
+}
+
+/// `sm_ForgetFirsts`: forgets the pairs of `relation` whose first is in `gone`.
+fn forget_firsts<A: Ord + Copy, B: Ord + Copy>(
+    relation: &mut Relation<A, B>,
+    gone: &BTreeSet<A>,
+) -> Result<()> {
+    for first in relation.all_firsts() {
+        if !gone.contains(&first) {
+            continue;
+        }
+        for second in relation.seconds(first) {
+            relation.remove_pair(first, second)?;
+        }
+    }
+    Ok(())
+}
+
+/// The edge uses `RemoveFaces` deletes with `faces` (`RemoveExcessFaces`' `sGone`,
+/// collected before the removal): for each face, the uses of its edges on that face.
+fn removed_faces_edgeuses(result: &Brep, faces: &[FaceId]) -> Result<BTreeSet<EdgeuseId>> {
+    let mut gone = BTreeSet::new();
+    for &f in faces {
+        for e in face_edges(result, f)? {
+            for u in edge::edgeuses(result, e, None, None)? {
+                if eu::face(result, u)? == Some(f) {
+                    gone.insert(u);
+                }
+            }
+        }
+    }
+    Ok(gone)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2518,7 +3124,7 @@ mod tests {
 
     /// Runs `run` with empty notification stores keyed by arena identity.
     fn with_state<R>(run: impl FnOnce(&mut NotifyState<'_>) -> R) -> R {
-        let mut records = BTreeMap::new();
+        let mut records = topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let key = |entity| loopuse::notify_ref(entity);
         let mut env = NotifyEnv {
@@ -2663,7 +3269,8 @@ mod tests {
                 type_code,
             }
         };
-        let mut records = BTreeMap::from([(brep_key, topology::Topology::new())]);
+        let mut records =
+            topology::NotifyRecords::from(BTreeMap::from([(brep_key, topology::Topology::new())]));
         for &entity in entities {
             records.insert(key(entity).key, topology::Topology::new());
         }
@@ -2694,16 +3301,6 @@ mod tests {
         split_env(brep_key, &entities, |env, curve_ref| {
             executive.synchronize_offset_edgeuses(&mut kernel, original, other, env, curve_ref)
         })
-    }
-
-    fn assert_dependency<T: core::fmt::Debug>(result: Result<T>, symbol: &str, owner: &str) {
-        match result.unwrap_err() {
-            SolidError::Unported { upstream, unit } => {
-                assert_eq!(upstream, symbol);
-                assert_eq!(unit, owner);
-            }
-            other => panic!("expected dependency {symbol}, got {other:?}"),
-        }
     }
 
     #[test]
@@ -3111,9 +3708,15 @@ mod tests {
         let first = executive
             .get_create_extended_surface(&kernel, 41, &base)
             .unwrap();
-        assert_eq!(first.natural_uv_domain(), expected.natural_uv_domain());
+        assert_eq!(
+            first.natural_uv_domain_if_built(),
+            expected.natural_uv_domain_if_built()
+        );
         let first_point = first
-            .evaluate_point(&kernel, first.natural_uv_domain().evaluate(0.5, 0.5))
+            .evaluate_point(
+                &kernel,
+                first.natural_uv_domain_if_built().evaluate(0.5, 0.5),
+            )
             .unwrap();
         // A cached identity does not evaluate even a different/malformed supplied base.
         let broken = Surface::from(BSplineSurface::new());
@@ -3122,7 +3725,10 @@ mod tests {
             .unwrap();
         assert_eq!(
             cached
-                .evaluate_point(&kernel, cached.natural_uv_domain().evaluate(0.5, 0.5))
+                .evaluate_point(
+                    &kernel,
+                    cached.natural_uv_domain_if_built().evaluate(0.5, 0.5)
+                )
                 .unwrap(),
             first_point
         );
@@ -3131,7 +3737,10 @@ mod tests {
             .unwrap();
         assert_eq!(
             other
-                .evaluate_point(&kernel, other.natural_uv_domain().evaluate(0.5, 0.5))
+                .evaluate_point(
+                    &kernel,
+                    other.natural_uv_domain_if_built().evaluate(0.5, 0.5)
+                )
                 .unwrap()
                 .z,
             7.0
@@ -3191,52 +3800,251 @@ mod tests {
 
     #[test]
     fn excess_face_early_returns_and_actual_dependencies() {
-        let kernel = Kernel::default();
+        let mut kernel = Kernel::default();
         let mut executive = executive();
-        let original = Brep::new();
+        let mut original = Brep::new();
         let mut result = Brep::new();
         executive
-            .remove_excess_faces(&kernel, &original, &mut result)
+            .remove_excess_faces(&mut kernel, &mut original, &mut result)
             .unwrap();
         executive.set_merge_results(true);
         executive.set_shell_faces(&[FaceId::from_index(1)]);
         executive
-            .remove_excess_faces(&kernel, &original, &mut result)
+            .remove_excess_faces(&mut kernel, &mut original, &mut result)
             .unwrap();
         executive.set_shell_faces(&[]);
-        assert_dependency(
-            executive.remove_excess_faces(&kernel, &original, &mut result),
-            "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
-            "offset.offset_executive_p1",
-        );
+        // No result edge: the original's editing flag is not touched; the empty
+        // deletion list still reaches RemoveFaces, whose editing-disabled refusal is
+        // ignored (cpp:2099-2102).
+        executive
+            .remove_excess_faces(&mut kernel, &mut original, &mut result)
+            .unwrap();
+        assert!(!original.editing_enabled());
         add_use(&mut result, 0.0, 1.0, 1.0);
         add_use(&mut result, 0.0, 1.0, 2.0);
-        // The edges evaluate and solve against the empty original; the legacy entry
-        // still defers at its removal step without removing any result faces.
-        assert_dependency(
-            executive.remove_excess_faces(&kernel, &original, &mut result),
-            "SmOffsetExecutive::RemoveExcessFaces (mutable Kernel adapter)",
-            "offset.offset_executive_p1",
-        );
+        // The edges evaluate and solve against the empty original; no result face is
+        // close to it, so nothing is removed.
+        executive
+            .remove_excess_faces(&mut kernel, &mut original, &mut result)
+            .unwrap();
         assert_eq!(result.edges().len(), 2);
         assert_eq!(result.edgeuses().len(), 2);
         assert!(result.faces().is_empty());
+        // Each edge's solve leaves the original's editing enabled (cpp:2069–2072).
+        assert!(original.editing_enabled());
         // ShrinkGeometry trims the two edge curves; without offset surfaces the
         // continuation's loops are empty (SM_SUCCESS)
-        OffsetExecutive::replace_implicit_offsets(&kernel, &mut result, 1.0e-6).unwrap();
+        let (mut records, mut attributes) =
+            (topology::NotifyRecords::new(), AttributeStore::default());
+        OffsetExecutive::replace_implicit_offsets(
+            &mut Kernel::default(),
+            &mut result,
+            1.0e-6,
+            &mut NotificationStores {
+                records: &mut records,
+                attributes: &mut attributes,
+                key_of: &loopuse::notify_ref,
+            },
+        )
+        .unwrap();
         assert_eq!(result.edges().len(), 2);
+    }
+
+    #[test]
+    fn removed_offset_faces_leave_every_correspondence_in_both_directions() {
+        let mut exec = executive();
+        let gone = FaceId::from_index(0);
+        let kept = FaceId::from_index(1);
+        let blend = FaceId::from_index(2);
+        let faceuses = [FaceuseId::from_index(0), FaceuseId::from_index(1)];
+        let edges = [EdgeId::from_index(0), EdgeId::from_index(1)];
+        let vertices = [VertexId::from_index(0), VertexId::from_index(1)];
+        for face in [gone, kept] {
+            for source in faceuses {
+                exec.relate_faceuse(source, face);
+            }
+            for source in edges {
+                exec.relate_edge_face(source, face);
+            }
+            for source in vertices {
+                exec.relate_vertex_face(source, face);
+            }
+            exec.relate_blend_face(blend, face);
+        }
+        exec.relate_blend_face(gone, kept);
+        exec.relate_blend_face(gone, gone);
+        exec.relate_blend_face(kept, gone);
+
+        // Duplicate candidates and repeated cleanup are harmless. Original ids can
+        // have the same numeric indices as result ids, but must remain related to kept.
+        exec.forget_faces(&BTreeSet::from([gone])).unwrap();
+        exec.forget_faces(&BTreeSet::from([gone])).unwrap();
+        for source in faceuses {
+            assert_eq!(exec.offset_faces(source), vec![kept]);
+        }
+        for source in edges {
+            assert_eq!(exec.edge_to_faces.seconds(source), vec![kept]);
+        }
+        for source in vertices {
+            assert_eq!(exec.vertex_to_faces.seconds(source), vec![kept]);
+        }
+        assert_eq!(exec.blend_to_faces.seconds(blend), vec![kept]);
+        assert!(exec.blend_to_faces.seconds(gone).is_empty());
+        assert!(exec.blend_to_faces.seconds(kept).is_empty());
+        assert!(exec.faceuse_to_faces.firsts(gone).is_empty());
+        assert!(exec.edge_to_faces.firsts(gone).is_empty());
+        assert!(exec.vertex_to_faces.firsts(gone).is_empty());
+        assert!(exec.blend_to_faces.firsts(gone).is_empty());
+        assert_eq!(exec.blend_to_faces.firsts(kept), vec![blend]);
+
+        exec.forget_faces(&BTreeSet::from([kept])).unwrap();
+        assert!(exec.faceuse_to_faces.all_firsts().is_empty());
+        assert!(exec.edge_to_faces.all_firsts().is_empty());
+        assert!(exec.vertex_to_faces.all_firsts().is_empty());
+        assert!(exec.blend_to_faces.all_firsts().is_empty());
+        assert!(exec.blend_to_faces.all_seconds().is_empty());
+    }
+
+    /// `RemoveExcessFaces`: `m_vEUToEU` forgets the pairs whose result edge use belongs
+    /// to a removed face or to no result edge, and keeps the rest.
+    #[test]
+    fn forget_seconds_drops_removed_and_dead_edgeuses() {
+        let mut k = Kernel::default();
+        let result = crate::primitive::api_primitives::create_box(
+            &mut k,
+            crate::math::Point3::new(0.0, 0.0, 0.0),
+            1.0,
+            2.0,
+            3.0,
+        )
+        .unwrap();
+        let faces = bp1::faces(&result, None).unwrap();
+        let removed = faces[0];
+        let mut on_removed = None;
+        let mut elsewhere = None;
+        let mut live = BTreeSet::new();
+        for e in bp1::edges(&result, None).unwrap() {
+            for u in edge::edgeuses(&result, e, None, None).unwrap() {
+                live.insert(u);
+                if eu::face(&result, u).unwrap() == Some(removed) {
+                    on_removed.get_or_insert(u);
+                } else {
+                    elsewhere.get_or_insert(u);
+                }
+            }
+        }
+        let (on_removed, elsewhere) = (on_removed.unwrap(), elsewhere.unwrap());
+        let dead = EdgeuseId::from_index(100_000);
+        let originals = [1, 2, 3].map(EdgeuseId::from_index);
+        let mut x = executive();
+        for (o, r) in originals.into_iter().zip([on_removed, elsewhere, dead]) {
+            x.edgeuse_to_edgeuses.relate_pair(o, r).unwrap();
+        }
+        let gone = removed_faces_edgeuses(&result, &[removed]).unwrap();
+        assert!(gone.contains(&on_removed) && !gone.contains(&elsewhere));
+        forget_seconds(&mut x.edgeuse_to_edgeuses, &gone, Some(&live)).unwrap();
+        assert_eq!(x.edgeuse_to_edgeuses.all_seconds(), vec![elsewhere]);
+        assert_eq!(x.edgeuse_to_edgeuses.seconds(originals[1]), vec![elsewhere]);
+    }
+
+    #[test]
+    fn implicit_offsets_are_replaced_by_approximations_of_their_base() {
+        use crate::surface::offset_surface::OffsetSurface;
+        let patch = || {
+            BSplineSurface::create_bilinear_surface(
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::new(1.0, 1.0, 0.0),
+            )
+            .unwrap()
+        };
+        let kernel = Kernel::default();
+        let offset = OffsetSurface::new(&kernel, 0.25, patch().into(), true, 0).unwrap();
+        let mut brep = Brep::new();
+        let (plain, _) = add_face(&mut brep, plane(0.0));
+        let (offset_face, _) = add_face(&mut brep, Surface::from(offset));
+        let (mut records, mut attributes) =
+            (topology::NotifyRecords::new(), AttributeStore::default());
+        let mut kernel = kernel;
+        OffsetExecutive::replace_implicit_offsets(
+            &mut kernel,
+            &mut brep,
+            1.0e-6,
+            &mut NotificationStores {
+                records: &mut records,
+                attributes: &mut attributes,
+                key_of: &loopuse::notify_ref,
+            },
+        )
+        .unwrap();
+        // the plane is untouched; the offset face gets the approximation of its base
+        // offset (the bilinear patch at z = 0.25) and that surface's natural domain
+        assert!(matches!(
+            brep.face(plain).unwrap().surface.as_ref().unwrap().kind(),
+            SurfaceKind::Plane(_)
+        ));
+        let face = brep.face(offset_face).unwrap();
+        let surface = face.surface.as_ref().unwrap();
+        assert!(matches!(surface.kind(), SurfaceKind::BSpline(_)));
+        assert_eq!(face.uv_domain, surface.natural_uv_domain_if_built());
+        let p = surface
+            .evaluate_point(&kernel, Vec2::new(0.5, 0.5))
+            .unwrap();
+        assert!((p.z - 0.25).abs() < 1.0e-6, "{p:?}");
+
+        // a plane is an SmBSplineSurface too (issue #1476): its offset is approximated
+        let offset = OffsetSurface::new(&kernel, 0.25, plane(0.0), true, 0).unwrap();
+        let mut brep = Brep::new();
+        let (offset_face, _) = add_face(&mut brep, Surface::from(offset));
+        OffsetExecutive::replace_implicit_offsets(
+            &mut kernel,
+            &mut brep,
+            1.0e-6,
+            &mut NotificationStores {
+                records: &mut records,
+                attributes: &mut attributes,
+                key_of: &loopuse::notify_ref,
+            },
+        )
+        .unwrap();
+        let surface = brep.face(offset_face).unwrap().surface.clone().unwrap();
+        assert!(matches!(surface.kind(), SurfaceKind::BSpline(_)));
+        let mid = surface.natural_uv_domain_if_built().mid();
+        let p = surface.evaluate_point(&kernel, mid).unwrap();
+        assert!((p.z - 0.25).abs() < 1.0e-6, "{p:?}");
+
+        // a base that is not a B-spline surface (here an offset surface) is SM_ERR
+        let inner = OffsetSurface::new(&kernel, 0.25, plane(0.0), true, 0).unwrap();
+        let offset = OffsetSurface::new(&kernel, 0.25, Surface::from(inner), true, 0).unwrap();
+        let mut brep = Brep::new();
+        add_face(&mut brep, Surface::from(offset));
+        let status = OffsetExecutive::replace_implicit_offsets(
+            &mut kernel,
+            &mut brep,
+            1.0e-6,
+            &mut NotificationStores {
+                records: &mut records,
+                attributes: &mut attributes,
+                key_of: &loopuse::notify_ref,
+            },
+        );
+        assert!(
+            matches!(status, Err(SolidError::Upstream { code: 1001, .. })),
+            "{status:?}"
+        );
     }
 
     #[test]
     fn kernel_context_removal_uses_actual_editing_flag_and_releases_nested_mark() {
         let mut kernel = Kernel::default();
-        let original = Brep::new();
+        let mut original = Brep::new();
         let mut result = Brep::new_with_infinite_region().unwrap();
         let mut exec = executive();
         exec.set_merge_results(true);
         // Native RemoveExcessFaces ignores the editing-disabled refusal from
         // RemoveFaces. No traversal mark is acquired by that refused inner call.
-        exec.remove_excess_faces_with_kernel_context(&mut kernel, &original, &mut result)
+        exec.remove_excess_faces(&mut kernel, &mut original, &mut result)
             .unwrap();
         assert!(!result.editing_enabled());
         assert_eq!(kernel.context.current_mark(MarkType::Mark), 1);
@@ -3246,7 +4054,7 @@ mod tests {
             crate::geom::context::ALL_MARKS,
             |kernel, mark| {
                 assert_eq!(mark, MarkType::Mark);
-                exec.remove_excess_faces_with_kernel_context(kernel, &original, &mut result)
+                exec.remove_excess_faces(kernel, &mut original, &mut result)
                     .unwrap();
                 assert!(kernel.context.is_mark_locked(mark));
                 assert!(!kernel.context.is_mark_locked(MarkType::Mark2));
@@ -3374,20 +4182,21 @@ mod tests {
                 other_gaps: vec![second],
                 ..SynchronizedEdgeuses::default()
             };
-            assert_dependency(
-                with_state(|state| {
-                    exec.fill_offset_edgeuse_gaps(
-                        &mut kernel,
-                        &original,
-                        edge,
-                        &synchronized,
-                        &[],
-                        state,
-                    )
-                }),
-                "SmBrep::CreateFacesFromSurface",
-                "topology.brep_p8",
-            );
+            // the pipe fallback runs (CreatePipeSweep): this fixture's offset B-rep has no
+            // region to sweep into, a failure upstream returns too, not a missing call;
+            // the offset B-rep is handed back either way
+            let r = with_state(|state| {
+                exec.fill_offset_edgeuse_gaps(
+                    &mut kernel,
+                    &original,
+                    edge,
+                    &synchronized,
+                    &[],
+                    state,
+                )
+            });
+            assert!(matches!(&r, Err(e) if !e.is_unported()), "{r:?}");
+            assert!(exec.offset_brep().is_some());
         }
     }
 
@@ -3473,11 +4282,11 @@ mod tests {
     #[test]
     fn original_brep_query_calls_live_solver_and_propagates_its_status() {
         let kernel = Kernel::default();
-        let original = Brep::new();
+        let mut original = Brep::new();
         let cache = BrepCache::new(crate::geom::a_object::BREP_TYPE).unwrap();
         let keys = OriginalKeys::new(&original).unwrap();
         assert!(matches!(
-            solve_original_brep_point(&kernel, &original, &cache, &keys, Vec3::ZERO),
+            solve_original_brep_point(&kernel, &mut original, &cache, &keys, Vec3::ZERO),
             Err(SolidError::Upstream {
                 operation: "intersect::topology_solver::p1::TopologyObjects::brep_trees",
                 code: crate::error::SM_ERR_NULL_POINTER,
@@ -3552,7 +4361,7 @@ mod tests {
             // StitchIntoShell and StitchIntoSolid of the empty offset B-rep succeed (the
             // B-rep box is ported, query.brep); the merged B-rep is handed back
             let merged = executive
-                .piecewise_merge(&mut kernel, &mut original)
+                .piecewise_merge(&mut kernel, &mut original, None)
                 .unwrap();
             assert!(merged.faces().is_empty());
             assert!(executive.offset_brep().is_none());
@@ -3562,15 +4371,41 @@ mod tests {
         executive.set_merge_results(true);
         executive.set_offset_brep(Brep::new());
         executive.relate_edgeuses(EdgeuseId::from_index(1), EdgeuseId::from_index(2));
-        // ShrinkGeometry of the (empty) offset B-rep succeeds; the merge continuation
-        // defers at SmMerge::PiecewiseMerge
-        assert_dependency(
-            executive.piecewise_merge(&mut kernel, &mut original),
-            "SmMerge::PiecewiseMerge",
-            "boolean.merge_p3",
-        );
+        // ShrinkGeometry of the (empty) offset B-rep succeeds; the merge itself needs
+        // the caller's notification stores, and the temporary stays
+        assert!(matches!(
+            executive.piecewise_merge(&mut kernel, &mut original, None),
+            Err(SolidError::InvalidInput { .. })
+        ));
         assert!(executive.offset_brep().is_some());
         assert_eq!(executive.offset_edgeuse(EdgeuseId::from_index(1)), None);
+    }
+
+    #[test]
+    fn relate_surface_pair_skips_destroyed_faces_without_surfaces() {
+        let mut brep = Brep::new();
+        let (live_a, _) = add_face(
+            &mut brep,
+            Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::Z)),
+        );
+        let (live_b, _) = add_face(
+            &mut brep,
+            Surface::from(Plane::from_normal(Vec3::Z, Vec3::Z)),
+        );
+        let (destroyed, _) = add_face(
+            &mut brep,
+            Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::Y)),
+        );
+        brep.face_mut(destroyed).unwrap().surface = None;
+
+        let mut no_ssi = Relation::default();
+        relate_surface_pair(&brep, &mut no_ssi, destroyed, live_a).unwrap();
+        relate_surface_pair(&brep, &mut no_ssi, live_a, FaceId::from_index(999)).unwrap();
+        assert!(no_ssi.all_firsts().is_empty());
+
+        relate_surface_pair(&brep, &mut no_ssi, live_a, live_b).unwrap();
+        assert_eq!(no_ssi.seconds(live_a), vec![live_b]);
+        assert_eq!(no_ssi.seconds(live_b), vec![live_a]);
     }
 
     fn add_face(brep: &mut Brep, surface: Surface) -> (FaceId, FaceuseId) {
@@ -3626,7 +4461,7 @@ mod tests {
     fn face_env<R>(
         run: impl FnOnce(&mut NotifyEnv<'_>, &dyn Fn(EntityRef) -> ObjectRef) -> R,
     ) -> R {
-        let mut records = BTreeMap::new();
+        let mut records = topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let key = |_: EntityRef| ObjectRef {
             key: ObjectKey(1),
@@ -3773,7 +4608,7 @@ mod tests {
         let kernel_events = callbacks::install(&mut kernel.context);
         let mut external_context = Context::default();
         let external_events = callbacks::install(&mut external_context);
-        let mut records = BTreeMap::<ObjectKey, Topology>::new();
+        let mut records = topology::NotifyRecords::new();
         records.insert(caller.key, Topology::default());
         let mut attributes = AttributeStore::new();
         let key_of = |_entity| result_key;
@@ -3994,7 +4829,7 @@ mod tests {
         assert!(matches!(surface.kind(), SurfaceKind::BSpline(_)));
         assert!(cap.trim_curves.is_empty());
         assert!(cap.curve_orientations.is_empty());
-        let domain = surface.natural_uv_domain();
+        let domain = surface.natural_uv_domain_if_built();
         for (u, v) in [(0.17, 0.29), (0.43, 0.61), (0.83, 0.79)] {
             let uv = crate::math::Point2::new(
                 (1.0 - u) * domain.min().x + u * domain.max().x,
@@ -4080,7 +4915,7 @@ mod tests {
             value.key.0 += 100;
             value
         };
-        let mut records = BTreeMap::new();
+        let mut records = topology::NotifyRecords::new();
         for (entity, metadata) in [
             (EntityRef::Edge(EdgeId::from_index(0)), 37),
             (EntityRef::Vertex(VertexId::from_index(0)), 11),
@@ -4155,5 +4990,74 @@ mod tests {
             edge::start_vertex(&original, EdgeId::from_index(0)).unwrap(),
             Some(VertexId::from_index(1))
         );
+    }
+
+    /// tangency-labs/solidcore#974: an inset (`SM_OT_OPPOSITE`) face use whose face does
+    /// not fit its offset surface's domain is clipped by a 2D boolean of planar faces made
+    /// from its UV loops. Taken in the face use's sense the loops run clockwise, the planar
+    /// face is inside out and the clip empty: the face gets no offset. With the opt-in the
+    /// loops are taken counterclockwise and the clipped face is made.
+    #[test]
+    #[ignore = "fixture does not reproduce the inside-out clip: on this create_plane sheet \
+                the default path also clips to one offset face; needs the shell/4567 vase's \
+                inset bottom"]
+    fn issue_974_inset_face_clipped_right_side_out() {
+        use crate::primitive::api_primitives::create_plane;
+        let offsets = |right_side_out: bool| -> usize {
+            let mut kernel = Kernel::default();
+            kernel.fixes.offset_clip_right_side_out = right_side_out;
+            let mut original = create_plane(&mut kernel, Vec3::ZERO, 10.0, 10.0).unwrap();
+            let inset = original
+                .faceuses()
+                .iter()
+                .find(|(_, fu)| fu.orientation == OrientType::Opposite)
+                .map(|(id, _)| id)
+                .unwrap();
+            let mut executive = executive();
+            executive.set_offset_brep(Brep::new_with_infinite_region().unwrap());
+            // an offset plane 1 below the face, parametrised as the face's surface, whose
+            // domain holds only a band of the face's UV domain
+            let face = original.faceuse(inset).unwrap().face.unwrap();
+            let (domain, at) = {
+                let f = original.face(face).unwrap();
+                let s = f.surface.as_ref().unwrap();
+                let at = |u: f64, v: f64| s.evaluate_point(&kernel, Vec2::new(u, v)).unwrap();
+                (f.uv_domain, [at(0.0, 0.0), at(1.0, 0.0), at(0.0, 1.0)])
+            };
+            let [p00, p10, p01] = at;
+            let (du, dv) = (p10 - p00, p01 - p00);
+            let (u, v) = (domain.u_interval(), domain.v_interval());
+            let mut offset = Some(Surface::from(Plane::new(
+                p00 + Vec3::new(0.0, 0.0, -1.0),
+                du.unitize_or_z(),
+                dv.unitize_or_z(),
+                Vec2::new(du.length(), dv.length()),
+                &Extent2d::from_bounds(
+                    u.min() + 0.2 * u.length(),
+                    v.min() - 0.1 * v.length(),
+                    u.min() + 0.8 * u.length(),
+                    v.max() + 0.1 * v.length(),
+                ),
+            )));
+            face_env(|env, offset_key_of| {
+                executive.build_offset_of_faceuse(
+                    &mut kernel,
+                    &mut original,
+                    Some(inset),
+                    &mut offset,
+                    &SsiData::default(),
+                    env,
+                    offset_key_of,
+                    &|_, type_code| ObjectRef {
+                        key: ObjectKey(3),
+                        type_code,
+                    },
+                )
+            })
+            .unwrap();
+            executive.offset_faces(inset).len()
+        };
+        assert_eq!(offsets(false), 0);
+        assert!(offsets(true) >= 1);
     }
 }

@@ -69,8 +69,13 @@
 //!   nothing, so the visits grow with the product of the tree sizes (fuzz
 //!   `curve.curve_p9` fuzz01043 ran for minutes). [`solve_branch`] counts its
 //!   visits since the solve started ([`GlobalSolver::branches_visited`]) and returns [`SolidError::InvalidInput`]
-//!   past [`MAX_SOLVE_BRANCHES`] (upstream fixtures and the committed difftest
-//!   cases visit at most 56,753 branches in one solve).
+//!   past [`MAX_SOLVE_BRANCHES`] (`2^23` = 8,388,608). The largest legitimate solve
+//!   measured visits 3,408,795 branches: a tiny-scale box / torus boolean (box 1e-4,
+//!   torus major 1e-4 minor 3e-5; test `max_solve_branches_tiny_torus`, `#[ignore]`;
+//!   `plan/findings/geom.global_solver--tiny-torus-c-reaches-ub175-2026-10-26.md`);
+//!   upstream fixtures and the committed difftest cases visit at most 56,753.
+//!   `2^23` gives 2.46 times headroom over that while keeping a runaway input (fuzz) to
+//!   about a minute per solve at ~8 µs a branch (`2^24` would be about two).
 //! - **Owner objects.** A tree node's owner object is a solution handle, not the
 //!   curve, so the `SM_SO_SURFACE_PROJECTED_INTERSECT` test
 //!   ([`GlobalSolver::surface_projected_may_contain_answers`]) takes the second
@@ -117,9 +122,11 @@ pub const MAX_SOLVER_TREES: usize = 3;
 pub const MAX_SOLVE_DEPTH: usize = 1_000;
 
 /// Most branches [`solve_branch`] visits in one solve (not upstream; see the module
-/// deviations): `2^20`, 18 times the most any upstream fixture or committed difftest
-/// case visits (56,753).
-pub const MAX_SOLVE_BRANCHES: u64 = 1 << 20;
+/// deviations): `2^23`, 2.46 times the most a legitimate input is measured to visit
+/// (3,408,795: a tiny-scale box / torus boolean, 2026-10-26; test
+/// `max_solve_branches_tiny_torus` and
+/// `plan/findings/geom.global_solver--tiny-torus-c-reaches-ub175-2026-10-26.md`).
+pub const MAX_SOLVE_BRANCHES: u64 = 1 << 23;
 
 /// One node per traversed tree (`SmTreeNode* apBranch[SM_GS_MAX_TREES]`);
 /// `None` is a null pointer. Slots past the solver's tree count are `None`.
@@ -424,6 +431,9 @@ pub fn resolve_object_zone_tol_3d<O>(
         Some(r) => r.get(object),
         // UNPORTED(geom.tol): SmTol::GetZoneTol3d(const SmObject*) on a handle the
         // caller gave no resolver for
+        // Proof (unreachable): only Rayfire solvers read this; the library ones
+        // (offset_geometry_creation, brep p2) pass a resolver or override
+        // object_zone_tol_3d; 0 hits in the green difftest sweep.
         None => Err(SolidError::Unported {
             upstream: "SmTol::GetZoneTol3d(const SmObject*)",
             unit: "geom.tol",

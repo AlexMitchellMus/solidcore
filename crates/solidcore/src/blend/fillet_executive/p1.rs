@@ -35,16 +35,19 @@
 //! | Rust                                   | Upstream                                              |
 //! |----------------------------------------|-------------------------------------------------------|
 //! | [`ErrorInfo::new`], `ErrorInfo::default` (co-port) | `SmFilletErrorInfo(pFilletExec)`, `SmFilletErrorInfo()`, `set()` |
-//! | [`ErrorInfo::note_error`], [`ErrorInfo::note_edge_error`], [`ErrorInfo::note_merge_error`], [`ErrorInfo::note_corner_error`], [`ErrorInfo::note_fillet_edge_error`], [`ErrorInfo::note_intersection_error`] | the six `SmFilletErrorInfo::NoteError` overloads (cpp:117, 150, 173, 199, 231, 256) |
+//! | [`ErrorInfo::note_error`], [`ErrorInfo::note_edge_error`], [`ErrorInfo::note_vertex_error`], [`ErrorInfo::note_merge_error`], [`ErrorInfo::note_corner_error`], [`ErrorInfo::note_fillet_edge_error`], [`ErrorInfo::note_intersection_error`] | the seven `SmFilletErrorInfo::NoteError` overloads (cpp:117, 131, 150, 173, 199, 231, 256) |
 //! | `ErrorInfo::assign` (co-port)          | `SmFilletErrorInfo::operator=`                        |
 //! | [`FilletExecutive::new`], [`ExecutiveObjects`] | `SmFilletExecutive::SmFilletExecutive`        |
 //! | [`FilletExecutive::load_fillet_solver`] | `LoadFilletSolver` |
 //! | [`FilletExecutive::create_fillet_corners`] | `CreateFilletCorners` |
+//! | [`FilletExecutive::create_smooth_edge_sequence`] | `CreateSmoothEdgeSequence` |
 //! | [`remove_topo_edges`]                  | `RemoveTopoEdges`                                     |
 //! | [`FilletExecutive::set_bevel_corner`]  | `SetBevelCorner`                                      |
 //! | [`FilletExecutive::add_fillet_surface_generator`] | `AddFilletSurfaceGenerator`                |
 //! | [`FilletExecutive::remove_from_topo_edges`] | `RemoveFromTopoEdges`                            |
 //! | [`FilletExecutive::set_do_global_merge`], [`FilletExecutive::set_do_trimming`], [`FilletExecutive::set_self_intersection_handler`] | `SetDoGlobalMerge`, `SetDoTrimming`, `SetSelfIntersectionHandler` |
+//! | [`FilletExecutive::set_blend_curve_at_thirds`], [`FilletExecutive::set_mark_corner_patches`] | the fork's `SetBlendCurveAtThirds` (tangency-labs/smlib `fd3b6a7`), `SetMarkCornerPatches` (`60af574`); off by default |
+//! | [`is_radius_supported`]                | `SmFilletExecutive::IsRadiusSupported` (static)       |
 //! | fields `fillet`, `pseudo_brep`, `corners`, `solvers`, `error` | `GetFilletBrep`, `GetPseudoBrep`, `GetFilletCorners`, `GetFilletSolvers`, `GetFilletErrorInfo` |
 //! | [`FilletExecutive::fillet_corner_of_vertex`] | `GetFilletCornerOfVertex`                       |
 //! | [`FilletExecutive::fillet_solver_of_edgeuse`], [`FilletExecutive::fillet_solver_of_edge`] | `GetFilletSolverOfEdgeuse`, `GetFilletSolverOfEdge` |
@@ -73,7 +76,11 @@
 //!   text is cut to 1023 bytes as `snprintf` into the `SM_TBLOCK_SIZE` buffers does, at
 //!   a character boundary (upstream may cut inside a UTF-8 sequence; that case is not
 //!   compared). The vertex overload of `NoteError` (cpp:131) reads the vertex's number
-//!   but stores nothing, and is not ported. The codes are typed
+//!   but stores nothing in the pin; [`ErrorInfo::note_vertex_error`] ports the fork's
+//!   recording behaviour, and the executive consults it only under
+//!   [`crate::kernel::UpstreamFixes::fillet_vertex_error_diagnostics`] (WR-513, #1469).
+//!   The caller supplies the vertex's point (the C++ overload reads it from the vertex).
+//!   The codes are typed
 //!   ([`FilletErrorType`], [`FilStatus`], [`FilletEdgeType`]) and stored as their
 //!   upstream values. `NoteFilletError` on a fillet edge whose type `GetName` writes
 //!   no name for is [`SolidError::InvalidInput`]: upstream prints an uninitialised
@@ -118,7 +125,7 @@ use crate::geom::object;
 use crate::geom::solution_array::SolutionObject;
 use crate::intersect::point_class::ClassObject;
 use crate::kernel::Kernel;
-use crate::math::{Point3, EFF_ZERO, EFF_ZERO_SQ, PI};
+use crate::math::{Point3, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::surface::surface::Surface;
 use crate::topology::brep::{p4 as brep_p4, p5 as brep_p5};
@@ -438,6 +445,36 @@ impl<O: Copy + PartialEq> ErrorInfo<O> {
         self.comment = tblock_text(comment);
     }
 
+    /// `NoteError(pBadVert, eVertexStatus, eErrorCode, cComment)`: an error at a filleted
+    /// vertex; nothing for a null vertex.
+    ///
+    /// The pinned overload reads the vertex number and records nothing (the issue #1469
+    /// defect). This stores the vertex, its point, the status, the code and the comment;
+    /// the executive calls it only when
+    /// [`crate::kernel::UpstreamFixes::fillet_vertex_error_diagnostics`] is on.
+    /// `location` is the vertex point the caller resolved (the fork's corrected overload
+    /// reads it from `pBadVert->GetPoint()`); a null comment keeps the old one, as its
+    /// `if (cComment != NULL)` guard does.
+    pub fn note_vertex_error(
+        &mut self,
+        vertex: Option<O>,
+        location: Option<Point3>,
+        status: FilStatus,
+        code: FilletErrorType,
+        comment: Option<&str>,
+    ) {
+        if vertex.is_none() {
+            return;
+        }
+        self.vertex = vertex;
+        self.location = location;
+        self.code = code as i32;
+        self.status = status as i32;
+        if comment.is_some() {
+            self.comment = tblock_text(comment);
+        }
+    }
+
     /// `NoteError(eErrorCode, eEdgeStatus, pFilletedEdge, pSideFace, pFilletEdge,
     /// pFilletSurface, cComment)`: merging a fillet edge into a target face failed.
     #[allow(clippy::too_many_arguments)] // upstream's overload
@@ -622,6 +659,14 @@ pub struct ExecutiveObjects<O> {
     pub edge_attribute: O,
 }
 
+/// `SmFilletExecutive::IsRadiusSupported`: `false` for a radius or chamfer width below
+/// 8 times the B-rep tolerance `brep_tol` (below that, some fillets come out
+/// non-manifold, crash or hang), and for NaN.
+#[must_use]
+pub fn is_radius_supported(radius: f64, brep_tol: f64) -> bool {
+    radius >= 8.0 * brep_tol * (1.0 - EFF_ZERO_SQRT)
+}
+
 impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     /// `SmFilletExecutive(crContext, pTargetBrep)`: no fillet B-rep, empty lists and
     /// maps, the upstream switch defaults, the `SmMerge(crContext)` intersector
@@ -652,6 +697,8 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             vertex_corner_map: BTreeMap::new(),
             edgeuse_solver_map: BTreeMap::new(),
             self_intersection_handler: None,
+            blend_curve_at_thirds: false,
+            mark_corner_patches: false,
         }
     }
 
@@ -786,6 +833,18 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         self.options.trimming = value;
     }
 
+    /// `SetBlendCurveAtThirds` (the fork's, tangency-labs/smlib `fd3b6a7`): before
+    /// `SetFilletParameters`, which creates the section generators with it.
+    pub fn set_blend_curve_at_thirds(&mut self, value: bool) {
+        self.blend_curve_at_thirds = value;
+    }
+
+    /// `SetMarkCornerPatches` (the fork's, tangency-labs/smlib `60af574`): before
+    /// `DoFilleting`.
+    pub fn set_mark_corner_patches(&mut self, value: bool) {
+        self.mark_corner_patches = value;
+    }
+
     /// `SetSelfIntersectionHandler`.
     pub fn set_self_intersection_handler(&mut self, handler: Option<O>) {
         self.self_intersection_handler = handler;
@@ -824,8 +883,20 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     where
         A: ExecutiveAccess<O> + ?Sized,
     {
-        Ok(access
-            .edge_edgeuses(edge)?
+        self.fillet_solver_of_edge_with(edge, |e| access.edge_edgeuses(e))
+    }
+
+    /// Closure-backed form of [`FilletExecutive::fillet_solver_of_edge`].
+    ///
+    /// # Errors
+    ///
+    /// Those of `edgeuses_of`.
+    pub fn fillet_solver_of_edge_with(
+        &self,
+        edge: O,
+        mut edgeuses_of: impl FnMut(O) -> Result<Vec<O>>,
+    ) -> Result<Option<O>> {
+        Ok(edgeuses_of(edge)?
             .into_iter()
             .find_map(|eu| self.fillet_solver_of_edgeuse(eu)))
     }
@@ -957,6 +1028,23 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     }
 }
 
+/// What the owner's `SmFilletCorner::Create` factory did for one vertex.
+///
+/// `SmFilletCorner::Create` returns a corner pointer or null; the null case is split
+/// here so an owner that can resolve the vertex's point can feed the opt-in vertex
+/// error note without changing the existing factory signature.
+#[derive(Debug, Clone, Copy)]
+pub enum CornerCreation<O> {
+    /// The factory created a corner of this identity.
+    Created(O),
+    /// No corner type handles the vertex. `location` is its point when the owner could
+    /// resolve it; the fork's corrected overload reads it from the vertex.
+    Unsupported {
+        /// The vertex's point when the owner resolved it.
+        location: Option<Point3>,
+    },
+}
+
 impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     /// `SmFilletExecutive::CreateFilletCorners`: create corners in the native
     /// filleted-vertex order using the owner's actual corner factory and store.
@@ -965,6 +1053,9 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
     /// the identity of the corner it allocated, or `None` for an unsupported
     /// corner. Successful corners replace pending entries; unsupported corners
     /// remain pending. The optional error info is assigned only after the loop.
+    ///
+    /// This keeps the original factory shape. An owner that can resolve a missing
+    /// vertex's point uses [`Self::create_fillet_corners_recording_vertex_errors`].
     ///
     /// # Errors
     ///
@@ -979,6 +1070,38 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
         mut create: impl FnMut(&Kernel, &Self, Option<O>, &[O]) -> Result<Option<O>>,
         error_info: Option<&mut ErrorInfo<O>>,
     ) -> Result<()> {
+        self.create_fillet_corners_recording_vertex_errors(
+            k,
+            |k, executive, vertex, pending| {
+                Ok(match create(k, executive, vertex, pending)? {
+                    Some(corner) => CornerCreation::Created(corner),
+                    None => CornerCreation::Unsupported { location: None },
+                })
+            },
+            error_info,
+        )
+    }
+
+    /// [`Self::create_fillet_corners`] with the vertex's point supplied on an
+    /// unsupported corner, so the opt-in `fixes.fillet_vertex_error_diagnostics` can
+    /// retain the fields written by the fork's corrected vertex `NoteError` overload.
+    ///
+    /// With the fix off (the default), an unsupported corner records nothing and keeps
+    /// its pending entry, exactly as [`Self::create_fillet_corners`] and the pinned
+    /// `CreateFilletCorners` do. With it on, the executive records the vertex, its
+    /// location, `SM_FIL_FAILURE`, `FilletErrorType::CornerUnsupported` and
+    /// `"Corner case not implemented"` (the fork's note) and still keeps the pending
+    /// entry: retaining the note does not change the operation's result or topology.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Self::create_fillet_corners`].
+    pub fn create_fillet_corners_recording_vertex_errors(
+        &mut self,
+        k: &Kernel,
+        mut create: impl FnMut(&Kernel, &Self, Option<O>, &[O]) -> Result<CornerCreation<O>>,
+        error_info: Option<&mut ErrorInfo<O>>,
+    ) -> Result<()> {
         use crate::blend::fillet_executive::p3::VertexEntry;
 
         const OP: &str = "blend::fillet_executive::p1::FilletExecutive::create_fillet_corners";
@@ -990,10 +1113,23 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 }
                 None => return Err(SolidError::null_pointer(OP)),
             };
-            if let Some(corner) = create(k, self, vertex, pending)? {
-                self.corners.push(corner);
-                self.vertex_corner_map
-                    .insert(vertex, VertexEntry::Corner(corner));
+            match create(k, self, vertex, pending)? {
+                CornerCreation::Created(corner) => {
+                    self.corners.push(corner);
+                    self.vertex_corner_map
+                        .insert(vertex, VertexEntry::Corner(corner));
+                }
+                CornerCreation::Unsupported { location } => {
+                    if k.fixes.fillet_vertex_error_diagnostics {
+                        self.error.note_vertex_error(
+                            vertex,
+                            location,
+                            FilStatus::Failure,
+                            FilletErrorType::CornerUnsupported,
+                            Some("Corner case not implemented"),
+                        );
+                    }
+                }
             }
         }
         if let Some(info) = error_info {
@@ -1028,6 +1164,295 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             None => Err(SolidError::null_pointer(OP)),
         }
     }
+
+    /// `SmFilletExecutive::CreateSmoothEdgeSequence(rSmoothSequence)` (`SmFilletExecutive.cpp:4704`):
+    /// orients the edges of `sequence` into sequence order, trims each edge curve to its
+    /// edge interval, rescales and translates intervals after the first so consecutive
+    /// segments meet with C1 derivative continuity, joins all segments into one
+    /// [`BSplineCurve`], updates any `CurveBasedFs` original curve / `VariableRadiusFs`
+    /// law interval, and installs copies of the joined curve on every edge.
+    ///
+    /// # Errors
+    ///
+    /// `SM_ERR_NULL_POINTER` when a solver has no primary edge use, an edge has no curve
+    /// derived from `SmBSplineCurve`, or `CreateByJoining` fails (`NER(pCompCurve)`);
+    /// those of the adapter and B-rep operations.
+    pub fn create_smooth_edge_sequence<A>(
+        &mut self,
+        k: &mut Kernel,
+        access: &mut A,
+        sequence: &[O],
+    ) -> Result<()>
+    where
+        A: SmoothSequenceAccess<O> + ?Sized,
+    {
+        const OP: &str =
+            "blend::fillet_executive::p1::FilletExecutive::create_smooth_edge_sequence";
+        if sequence.len() < 2 {
+            return Ok(());
+        }
+
+        let mut edges = Vec::new();
+        let mut shares_edge_curve = Vec::new();
+        for &fs in sequence {
+            let edge_id = access.smooth_solver_edge0_id(fs)?;
+            let shares = match (
+                access.smooth_solver_original_curve(fs)?,
+                access.smooth_target_brep()?.edge(edge_id)?.curve.as_ref(),
+            ) {
+                (Some(orig), Some(edge_crv)) => orig.approx_eq(k, edge_crv)?,
+                _ => false,
+            };
+            edges.push(edge_id);
+            shares_edge_curve.push(shares);
+        }
+
+        let mut bs_curves = access.smooth_with_target_mut(&edges, |target| {
+            crate::error::ignore_status(topo_edge::orient_edge_sequence(k, target, &edges))?;
+
+            let mut prev_ivl = Extent1d::new();
+            let mut curves = Vec::new();
+            for (ii, &edge_id) in edges.iter().enumerate() {
+                let mut edge_ivl = topo_edge::interval(target, edge_id)?;
+                let edge_tol = topo_edge::tolerance(target, edge_id)?;
+                let mut tk = Kernel::new(&crate::kernel::KernelOptions {
+                    tolerances: crate::kernel::Tolerances {
+                        zone_tol_3d: edge_tol,
+                        ..k.tolerances
+                    },
+                    ..crate::kernel::KernelOptions::default()
+                });
+                tk.rng = k.rng.clone();
+                let mut trim_ivl = edge_ivl;
+                let crv = target
+                    .edge_mut(edge_id)?
+                    .curve
+                    .as_mut()
+                    .ok_or_else(|| SolidError::null_pointer(OP))?;
+                crate::error::ignore_status(crv.trim(
+                    &tk,
+                    &mut trim_ivl,
+                    crate::nurbs::b_spline_curve_n_lib::TrimMode::Notify,
+                ))?;
+
+                if ii > 0 {
+                    let prev_edge_id = *edges
+                        .get(ii - 1)
+                        .ok_or_else(|| SolidError::null_pointer(OP))?;
+                    let prev_param1 = prev_ivl.max();
+                    let curr_param0 = edge_ivl.min();
+                    let prev_crv = target
+                        .edge(prev_edge_id)?
+                        .curve
+                        .as_ref()
+                        .ok_or_else(|| SolidError::null_pointer(OP))?;
+                    let curr_crv = target
+                        .edge(edge_id)?
+                        .curve
+                        .as_ref()
+                        .ok_or_else(|| SolidError::null_pointer(OP))?;
+                    let prev_deriv = eval_first_deriv_ignored(k, prev_crv, prev_param1)?;
+                    let curr_deriv = eval_first_deriv_ignored(k, curr_crv, curr_param0)?;
+                    let prev_len = prev_deriv.length();
+                    let curr_len = curr_deriv.length();
+
+                    // Keep the Min of the current interval the same, scale its Max by the deriv length ratio.
+                    let scale = curr_len / prev_len;
+                    let scaled_end = edge_ivl.min() + scale * edge_ivl.length();
+                    crate::error::ignore_status(edge_ivl.set_min_max(edge_ivl.min(), scaled_end))?;
+
+                    // Domains are the right lengths, make sure they're consecutive.
+                    if !crate::geom::tol::are_same(edge_ivl.min(), prev_ivl.max()) {
+                        edge_ivl.translate(prev_ivl.max() - edge_ivl.min());
+                    }
+
+                    let crv = target
+                        .edge_mut(edge_id)?
+                        .curve
+                        .as_mut()
+                        .ok_or_else(|| SolidError::null_pointer(OP))?;
+                    crate::error::ignore_status(crv.edit_parameterization(k, &edge_ivl))?;
+                    target.edge_mut(edge_id)?.interval = edge_ivl;
+                }
+
+                let curr_crv = target
+                    .edge(edge_id)?
+                    .curve
+                    .as_ref()
+                    .ok_or_else(|| SolidError::null_pointer(OP))?;
+                curves.push(curve_as_bspline(curr_crv, OP)?);
+                prev_ivl = edge_ivl;
+            }
+            Ok(curves)
+        })?;
+
+        for ((&fs, &edge_id), &shares) in sequence.iter().zip(&edges).zip(&shares_edge_curve) {
+            if shares {
+                if let Some(edited) = access.smooth_target_brep()?.edge(edge_id)?.curve.clone() {
+                    access.smooth_set_solver_original_curve(fs, edited)?;
+                }
+            }
+        }
+
+        let comp_curve = match BSplineCurve::create_by_joining(&mut bs_curves, None) {
+            Ok(c) => c,
+            Err(e) if e.is_unported() => return Err(e),
+            Err(_) => return Err(SolidError::null_pointer(OP)),
+        };
+
+        for (ii, ((&fs, &edge_id), &shares)) in sequence
+            .iter()
+            .zip(&edges)
+            .zip(&shares_edge_curve)
+            .enumerate()
+        {
+            let new_curve = if ii == 0 {
+                crate::curve::curve::Curve::from(comp_curve.clone())
+            } else {
+                crate::curve::curve::Curve::from(comp_curve.copy())
+            };
+            if shares {
+                access.smooth_set_solver_original_curve(fs, new_curve.clone())?;
+            }
+            let ivl = topo_edge::interval(access.smooth_target_brep()?, edge_id)?;
+            access.smooth_set_solver_law_interval(fs, ivl)?;
+            access.smooth_set_edge_curve(k, edge_id, new_curve)?;
+        }
+
+        Ok(())
+    }
+}
+
+fn eval_first_deriv_ignored(
+    k: &Kernel,
+    crv: &crate::curve::curve::Curve,
+    param: f64,
+) -> Result<crate::math::Vec3> {
+    match crv.evaluate(k, param, 1, false, true) {
+        Ok(vals) => Ok(vals.get(1).copied().unwrap_or(crate::math::Vec3::UNDEF)),
+        Err(e) if e.is_unported() => Err(e),
+        Err(_) => Ok(crate::math::Vec3::UNDEF),
+    }
+}
+
+fn curve_as_bspline(crv: &crate::curve::curve::Curve, op: &'static str) -> Result<BSplineCurve> {
+    use crate::curve::curve::CurveKind;
+    match crv.kind() {
+        CurveKind::BSpline(b) => Ok(b.clone()),
+        CurveKind::Line(l) => Ok(l.base_with_nurb()?.into_owned()),
+        CurveKind::Ellipse(e) => Ok(e.base().clone()),
+        CurveKind::Parabola(p) => Ok(p.base().clone()),
+        CurveKind::Hyperbola(h) => Ok(h.base.clone()),
+        _ => Err(SolidError::null_pointer(op)),
+    }
+}
+
+/// Live adapter operations used by `CollectTangentEdgeSequence` and
+/// `CreateSmoothEdgeSequence`.
+pub trait SmoothSequenceAccess<O: ClassObject + SolutionObject + Ord> {
+    /// `pEdge->GetEdgeuses(sEdgeuses)` (used by `GetFilletSolverOfEdge`).
+    ///
+    /// # Errors
+    /// Object resolution or topology query failures.
+    fn smooth_edge_edgeuses(&self, edge: O) -> Result<Vec<O>>;
+    /// `pFS->GetEdge()`: the target edge handle of `solver`.
+    ///
+    /// # Errors
+    /// Object resolution or missing solver edge (`SM_ERR_NULL_POINTER`).
+    fn smooth_solver_edge(&self, solver: O) -> Result<O>;
+    /// `pFS->GetFilletCorner(index)`: corner of `solver`'s start (`0`) or end (`1`) vertex.
+    ///
+    /// # Errors
+    /// Object resolution or pending corner-map failures.
+    fn smooth_solver_corner(
+        &self,
+        executive: &FilletExecutive<O>,
+        solver: O,
+        index: usize,
+    ) -> Result<Option<O>>;
+    /// `pFS->GetOtherFilletCorner(corner)`: the corner at the opposite end of `solver`.
+    ///
+    /// # Errors
+    /// Those of [`SmoothSequenceAccess::smooth_solver_corner`].
+    fn smooth_solver_other_corner(
+        &self,
+        executive: &FilletExecutive<O>,
+        solver: O,
+        corner: O,
+    ) -> Result<Option<O>> {
+        let c0 = self.smooth_solver_corner(executive, solver, 0)?;
+        let c1 = self.smooth_solver_corner(executive, solver, 1)?;
+        if c0 == Some(corner) {
+            Ok(c1)
+        } else if c1 == Some(corner) {
+            Ok(c0)
+        } else {
+            Ok(None)
+        }
+    }
+    /// `pCorner->GetTangentFilletSolver(solver)`.
+    ///
+    /// # Errors
+    /// Object resolution or continuity evaluation failures.
+    fn smooth_corner_tangent_solver(
+        &self,
+        k: &Kernel,
+        executive: &FilletExecutive<O>,
+        corner: O,
+        solver: O,
+    ) -> Result<Option<O>>;
+    /// Target `EdgeId` of `pFS->GetEdgeuse(0)->GetEdge()` for `CreateSmoothEdgeSequence`.
+    ///
+    /// # Errors
+    /// Object resolution or missing edge use / edge (`SM_ERR_NULL_POINTER`).
+    fn smooth_solver_edge0_id(&self, solver: O) -> Result<EdgeId>;
+    /// Borrow the target `Brep` (`CreateSmoothEdgeSequence`).
+    ///
+    /// # Errors
+    /// Missing target B-rep.
+    fn smooth_target_brep(&self) -> Result<&Brep>;
+    /// Mutate the target `Brep` during `OrientEdgeSequence`, `Trim`, `EditParameterization`,
+    /// and `SetInterval`, invalidating any cached `CurveCache` for `edges`.
+    ///
+    /// # Errors
+    /// Missing target B-rep or callback errors.
+    fn smooth_with_target_mut<T>(
+        &mut self,
+        edges: &[EdgeId],
+        f: impl FnOnce(&mut Brep) -> Result<T>,
+    ) -> Result<T>;
+    /// Set a joined curve on `edge` (`pE->SetCurve(pNewCurve, TRUE)`) and invalidate caches.
+    ///
+    /// # Errors
+    /// Topology notification or B-rep mutation failures.
+    fn smooth_set_edge_curve(
+        &mut self,
+        k: &mut Kernel,
+        edge: EdgeId,
+        curve: crate::curve::curve::Curve,
+    ) -> Result<()>;
+    /// `SM_CAST_PTR(SmCurveBasedFS, solver)->GetOriginalCurve()`.
+    ///
+    /// # Errors
+    /// Solver lookup failure.
+    fn smooth_solver_original_curve(
+        &self,
+        solver: O,
+    ) -> Result<Option<&crate::curve::curve::Curve>>;
+    /// `SM_CAST_PTR(SmCurveBasedFS, solver)->SetOriginalCurve(curve)`.
+    ///
+    /// # Errors
+    /// Solver lookup failure.
+    fn smooth_set_solver_original_curve(
+        &mut self,
+        solver: O,
+        curve: crate::curve::curve::Curve,
+    ) -> Result<()>;
+    /// `SM_CAST_PTR(SmVariableRadiusFS, solver)->SetFilletLawInterval(interval)`.
+    ///
+    /// # Errors
+    /// Solver lookup failure.
+    fn smooth_set_solver_law_interval(&mut self, solver: O, interval: Extent1d) -> Result<()>;
 }
 
 // ---- RemoveTopoEdges -----------------------------------------------------------------------
@@ -1067,7 +1492,10 @@ pub fn remove_topo_edges(k: &mut Kernel, b: &mut Brep, edges: &[Option<EdgeId>])
         if let [f0, f1] = faces[..] {
             let domains = match (face_p2::surface(b, f0)?, face_p2::surface(b, f1)?) {
                 (None, None) => None,
-                (Some(s0), Some(s1)) => Some((s0.natural_uv_domain(), s1.natural_uv_domain())),
+                (Some(s0), Some(s1)) => Some((
+                    s0.natural_uv_domain_with_nurb(k)?,
+                    s1.natural_uv_domain_with_nurb(k)?,
+                )),
                 _ => return Err(SolidError::invalid_input(OP, "face without surface")),
             };
             if let Some((domain0, domain1)) = domains {
@@ -1082,14 +1510,14 @@ pub fn remove_topo_edges(k: &mut Kernel, b: &mut Brep, edges: &[Option<EdgeId>])
                 let new_surface = face_p2::surface(b, kept_face)?
                     .ok_or_else(|| SolidError::invalid_input(OP, "face without surface"))?
                     .copy_and_add_analytics(k)?;
-                let face_domain = new_surface.natural_uv_domain();
+                let face_domain = new_surface.natural_uv_domain_with_nurb(k)?;
                 face_p2::set_uv_domain(b, delete_face, &face_domain)?;
                 // the face owns the copy (under the identity the DeleteSurface names it
                 // by); the DeleteSurface is deleted
                 let this = face_p2::surface(b, delete_face)?
                     .and_then(Surface::owner)
                     .unwrap_or_else(|| loopuse::notify_ref(EntityRef::Face(delete_face)));
-                face_p1::set_surface(b, delete_face, this, new_surface, true)?;
+                face_p1::set_surface(k, b, delete_face, this, new_surface, true)?;
             }
         }
 
@@ -1114,6 +1542,7 @@ pub fn remove_topo_edges(k: &mut Kernel, b: &mut Brep, edges: &[Option<EdgeId>])
                     if let Err(
                         e @ (SolidError::Unported { .. }
                         | SolidError::InvalidInput { .. }
+                        | SolidError::PortInvariant { .. }
                         | SolidError::NotFound { .. }),
                     ) = brep_p5::delete_topological_vertex(k, b, editing, Some(vertex), None)
                     {
@@ -1323,6 +1752,143 @@ mod tests {
             (x.error.executive, x.pseudo_brep),
             (Some(H(9)), Some(H(10)))
         );
+    }
+
+    #[test]
+    fn vertex_error_note_retains_all_fields_and_keeps_a_null_comment() {
+        let mut e = ErrorInfo::<H>::new(Some(H(9)));
+        let first = Point3::new(1.0, 2.0, 3.0);
+        e.note_vertex_error(
+            Some(H(4)),
+            Some(first),
+            FilStatus::Failure,
+            FilletErrorType::CornerUnsupported,
+            Some("Corner case not implemented"),
+        );
+        assert_eq!(e.vertex, Some(H(4)));
+        assert_eq!(e.location, Some(first));
+        assert_eq!((e.status, e.code), (2, 9));
+        assert_eq!(e.comment, "Corner case not implemented");
+        // The port keeps its existing codes 0..=8 (pinned 0..=7 plus `NoRoom` = 8)
+        // and gives the new code 9.
+        assert_eq!(FilletErrorType::CornerUnsupported as i32, 9);
+        assert_eq!(FilletErrorType::NoRoom as i32, 8);
+        // No edge field is touched by the vertex overload.
+        assert_eq!((e.edge, e.edges.len(), e.surfaces.len()), (None, 0, 0));
+
+        // A null comment keeps the old text (the fork's `if (cComment != NULL)`), but
+        // every other field is replaced.
+        let second = Point3::new(-1.0, 0.5, 7.0);
+        e.note_vertex_error(
+            Some(H(5)),
+            Some(second),
+            FilStatus::Processed,
+            FilletErrorType::BadTrim,
+            None,
+        );
+        assert_eq!(e.vertex, Some(H(5)));
+        assert_eq!(e.location, Some(second));
+        assert_eq!((e.status, e.code), (1, 6));
+        assert_eq!(e.comment, "Corner case not implemented");
+
+        // A null vertex records nothing, as the pinned overload returns early.
+        e.note_vertex_error(
+            None,
+            Some(first),
+            FilStatus::Failure,
+            FilletErrorType::BadMerge,
+            Some("ignored"),
+        );
+        assert_eq!(e.vertex, Some(H(5)));
+        assert_eq!(e.location, Some(second));
+        assert_eq!((e.status, e.code), (1, 6));
+        assert_eq!(e.comment, "Corner case not implemented");
+    }
+
+    #[test]
+    fn create_corners_notes_an_unsupported_vertex_only_when_opted_in() {
+        use crate::blend::fillet_executive::p3::VertexEntry;
+
+        let point = Point3::new(4.0, 5.0, 6.0);
+        for (fix, expected) in [(false, (0, None, None)), (true, (9, Some(H(3)), None))] {
+            let mut k = Kernel::default();
+            k.fixes.fillet_vertex_error_diagnostics = fix;
+            let mut executive = corner_creation_executive();
+            executive.filleted_vertices = vec![Some(H(3))];
+            executive
+                .vertex_corner_map
+                .insert(Some(H(3)), VertexEntry::SolverEdgeuses(vec![H(20)]));
+            let mut info = ErrorInfo::new(None);
+            info.code = 99;
+            executive
+                .create_fillet_corners_recording_vertex_errors(
+                    &k,
+                    |_, _, vertex, _| {
+                        assert_eq!(vertex, Some(H(3)));
+                        Ok(CornerCreation::Unsupported {
+                            location: Some(point),
+                        })
+                    },
+                    Some(&mut info),
+                )
+                .unwrap();
+            // The optional out-parameter copy follows upstream `operator=`, which does
+            // not copy the location, comment or entity name.
+            assert_eq!((info.code, info.vertex, info.location), expected);
+            assert_eq!(info.comment, "<no comment>\n");
+            if fix {
+                assert_eq!(info.status, 2);
+                assert_eq!(executive.error.status, 2);
+                assert_eq!(executive.error.location, Some(point));
+                assert_eq!(executive.error.comment, "Corner case not implemented");
+            } else {
+                // The pinned default: no note, so the executive's own info is untouched.
+                assert_eq!(
+                    (
+                        executive.error.code,
+                        executive.error.status,
+                        executive.error.vertex,
+                        executive.error.location
+                    ),
+                    (0, 0, None, None)
+                );
+                assert_eq!(executive.error.comment, "<no comment>\n");
+            }
+            // Diagnostics only: the pending entry and the corner list are unchanged.
+            assert!(executive.corners.is_empty());
+            assert_eq!(
+                executive.vertex_corner_map.get(&Some(H(3))),
+                Some(&VertexEntry::SolverEdgeuses(vec![H(20)]))
+            );
+        }
+    }
+
+    #[test]
+    fn create_corners_original_factory_shape_still_notes_without_a_location() {
+        use crate::blend::fillet_executive::p3::VertexEntry;
+
+        let mut k = Kernel::default();
+        k.fixes.fillet_vertex_error_diagnostics = true;
+        let mut executive = corner_creation_executive();
+        executive.filleted_vertices = vec![Some(H(3))];
+        executive
+            .vertex_corner_map
+            .insert(Some(H(3)), VertexEntry::SolverEdgeuses(vec![H(20)]));
+        executive
+            .create_fillet_corners(&k, |_, _, _, _| Ok(None), None)
+            .unwrap();
+        assert_eq!(
+            (
+                executive.error.code,
+                executive.error.vertex,
+                executive.error.location
+            ),
+            (9, Some(H(3)), None)
+        );
+        // The `None` error-info argument still leaves the executive's own record
+        // readable, with the fork's status and comment.
+        assert_eq!(executive.error.status, 2);
+        assert_eq!(executive.error.comment, "Corner case not implemented");
     }
 
     fn corner_creation_executive() -> FilletExecutive<H> {

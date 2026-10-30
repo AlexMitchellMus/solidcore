@@ -6,8 +6,8 @@
 //!
 //! The topology objects are those of the shim's `SmApiCreateBox(0, 1, 1, 1)` B-rep (face,
 //! edge, vertex and region: the first of `GetFaces`, `GetEdges`, `GetVertices`,
-//! `GetRegions`). The Rust side imports the same box through unit `heal.stitch_p1`'s
-//! export (`topology.brep_p1`'s importer) and resolves the handles to it through the
+//! `GetRegions`). The Rust side builds the same box with the Rust kernel (unit
+//! `heal.stitch_p1`'s `own_unit_box`, no C++ export) and resolves the handles to it through the
 //! `ClassGeometry` hooks, so their tolerances, points and topology are the ported ones.
 //! Each case works on a fresh copy of that box (the shim builds one per case), and
 //! `MergeInterval` edits it through `MergeIntervalBrep`; a merge also reports the box
@@ -22,8 +22,6 @@
 use crate::{Case, CaseContext, CaseSource, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::cell::OnceCell;
-use std::rc::Rc;
 use solidcore::curve::curve::p2::Curve;
 use solidcore::curve::ellipse::{Ellipse, EllipseOptions};
 use solidcore::curve::line::{BoundedLineOptions, Line};
@@ -46,11 +44,15 @@ use solidcore::topology::face::p2 as topo_face;
 use solidcore::topology::vertex as topo_vertex;
 use solidcore::topology::Brep;
 use solidcore::{EntityRef, SolidError};
-use solidcore_ffi::units::topology_brep_p1::counts;
 use solidcore_ffi::units::intersect_curve_class_p6 as ffi;
+use std::cell::OnceCell;
+use std::rc::Rc;
 
 /// Curve-classification part 6 oracle.
 pub struct Runner;
+
+#[path = "intersect_curve_class_p6/paired_fillet.rs"]
+mod paired_fillet;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Fixture {
@@ -107,10 +109,7 @@ struct Geometry {
     curve: Curve,
     brep: Brep,
     first: [EntityRef; 4],
-    records: std::collections::BTreeMap<
-        solidcore::geom::attribute::ObjectKey,
-        solidcore::topology::topology::Topology,
-    >,
+    records: solidcore::topology::topology::NotifyRecords,
     attributes: solidcore::geom::attribute::AttributeStore,
 }
 /// The box B-rep and its faces, edges, vertices and regions (in `GetFaces`, `GetEdges`,
@@ -223,12 +222,8 @@ fn box_topology() -> Result<Rc<BoxTopology>, HarnessError> {
 /// The shim's box (`SmApiCreateBox(0, 1, 1, 1)`, the same call as `heal.stitch_p1`'s box
 /// block) and its faces, edges, vertices and regions.
 fn build_box() -> Result<BoxTopology, HarnessError> {
-    let ex = super::heal_stitch_p1::export(&super::heal_stitch_p1::StitchBrep::Box {
-        p: [0.0; 3],
-        size: [1.0; 3],
-    })?;
-    let (_, graph_at) = counts(&ex).ok_or_else(|| h("box export failed"))?;
-    let (b, _) = super::topology_brep_p1::import(&ex, graph_at)?;
+    // built by the Rust kernel (no C++ export reaches the Rust side)
+    let b = super::heal_stitch_p1::own_unit_box([0.0; 3])?;
     let e = |e: SolidError| h(e.to_string());
     let faces = brep_p1::faces(&b, None).map_err(e)?;
     let edges = brep_p1::edges(&b, None).map_err(e)?;
@@ -328,7 +323,7 @@ fn geometry(k: &Kernel, kind: i32, scale: f64, pick: [i32; 4]) -> Result<Geometr
         curve: c,
         brep: b.0.clone(),
         first,
-        records: std::collections::BTreeMap::new(),
+        records: solidcore::topology::topology::NotifyRecords::new(),
         attributes: solidcore::geom::attribute::AttributeStore::default(),
     })
 }
@@ -419,7 +414,7 @@ fn put_pc(out: &mut Vec<f64>, pc: &PointClassification<Handle>, g: &Geometry) {
 fn status(e: &SolidError) -> f64 {
     match e {
         SolidError::Upstream { code, .. } => f64::from(*code),
-        SolidError::InvalidInput { .. } => 1007.0,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007.0,
         _ => -1.0,
     }
 }
@@ -564,10 +559,15 @@ impl UnitDiff for Runner {
         "intersect.curve_class_p6"
     }
     fn run_cpp(&self, case: &Case) -> Result<Output, HarnessError> {
+        if case.inputs.get("paired_fillet").and_then(Value::as_bool) == Some(true) {
+            return paired_fillet::cpp(paired_fillet::Mode::Metadata);
+        }
+        if let Some(mode) = paired_fillet::Mode::from_input(&case.inputs) {
+            return paired_fillet::cpp(mode);
+        }
         let i: Fixture = case.parse()?;
         let result = ffi::run_picked(
-            i.op, i.kind, i.scale, i.tol, i.flags, i.index, &i.a, &i.b, &i.input, i.pick,
-            i.editing,
+            i.op, i.kind, i.scale, i.tol, i.flags, i.index, &i.a, &i.b, &i.input, i.pick, i.editing,
         );
         if i.expected_rejection {
             return rejected(result);
@@ -577,6 +577,12 @@ impl UnitDiff for Runner {
             .map_err(|e| h(e.to_string()))
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
+        if case.inputs.get("paired_fillet").and_then(Value::as_bool) == Some(true) {
+            return paired_fillet::rust(paired_fillet::Mode::Metadata);
+        }
+        if let Some(mode) = paired_fillet::Mode::from_input(&case.inputs) {
+            return paired_fillet::rust(mode);
+        }
         let i: Fixture = case.parse()?;
         let validation = ffi::validate_picked(
             i.op, i.kind, i.scale, i.tol, i.flags, i.index, &i.a, &i.b, &i.input, i.pick,
@@ -598,7 +604,10 @@ impl UnitDiff for Runner {
         let [x, y, z] = *point;
         let mut a = classification(&k, &i.a, i.tol, &g.first)?;
         let mut b = classification(&k, &i.b, i.tol, &g.first)?;
-        a.set_fillet_data((i.flags & 2 != 0).then_some(Handle::Other), i.flags & 2 != 0);
+        a.set_fillet_data(
+            (i.flags & 2 != 0).then_some(Handle::Other),
+            i.flags & 2 != 0,
+        );
         let result = match i.op {
             // a surf/surf/surf point combined into a vertex boundary moves the box's
             // vertex (SmVertex::SetPoint), as the shim's InsertCurveInterval does
@@ -651,6 +660,24 @@ impl UnitDiff for Runner {
     }
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
         let mut out = crate::runner::default_cases(self, ctx)?;
+        out.push(Case {
+            unit: self.id().into(),
+            name: "paired-fillet-real-boxes".into(),
+            source: CaseSource::Inline,
+            inputs: serde_json::json!({"paired_fillet":true}),
+        });
+        for (name, mode) in [
+            ("linked", "linked"),
+            ("legacy-no-peer", "legacy-none"),
+            ("linked-disabled", "linked-disabled"),
+        ] {
+            out.push(Case {
+                unit: self.id().into(),
+                name: format!("paired-fillet-real-boxes-{name}"),
+                source: CaseSource::Inline,
+                inputs: serde_json::json!({"paired_fillet":mode}),
+            });
+        }
         for kind in 0..5 {
             // Competing classifications exercise receiver/argument order, gap
             // precedence and saved-point propagation, rather than only assigning
@@ -780,7 +807,14 @@ impl UnitDiff for Runner {
             // a degenerate chord: one vertex loop
             ("face_point", 7, 1e-12, [0, 0, 0, 0], [2, 2, 2], [0.0, 1.0]),
             // edge -> edge -> edge along the edge (1,0,1)-(1,1,1): its end vertices
-            ("edge_coincident", 6, 1.0, [0, 0, 0, 0], [3, 3, 3], [0.0, 1.0]),
+            (
+                "edge_coincident",
+                6,
+                1.0,
+                [0, 0, 0, 0],
+                [3, 3, 3],
+                [0.0, 1.0],
+            ),
             // part of that edge: splits it at both ends
             ("edge_inner", 6, 0.5, [0, 0, 0, 0], [3, 3, 3], [0.0, 0.5]),
             // region -> region -> region: a wire edge between two shell vertices

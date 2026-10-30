@@ -7,8 +7,9 @@ A short summary of where the port stands. Per-unit detail lives elsewhere:
 - **`plan/PROGRESS.md`:** the generated checklist. CI regenerates it; never edit it by
   hand. The copy on `main` was last regenerated on 2026-10-21 and lags the site.
 - **`plan/units/<id>.toml`:** each unit's status and notes.
-- **`plan/findings.md`:** Rust-vs-C++ disagreements, harness notes and handoffs
-  (append-only). **`plan/upstream-issues.md`:** upstream C++ defects.
+- **`plan/findings/`:** Rust-vs-C++ disagreements, harness notes and handoffs, one file
+  each (never edited later; updates are addendum files). **`plan/upstream-issues/`:**
+  upstream C++ defects, one file each.
 - **`plan/STATUS-history.md`:** this file's earlier contents (2026-10-12 to 2026-10-22),
   archived unchanged.
 
@@ -21,7 +22,7 @@ From the difftest reports of CI run 40029966086 on `main` (the merge of PR #670)
 - **Cases:** 554,873 in all: 550,446 pass, **0 fail**, 4,186 deferred (they reach a call
   the port still stubs), 234 rejected by FFI guards (inputs that are undefined or crash
   in C++), 7 known mismatches.
-- **Known mismatches** (`crates/difftest/known_mismatches.toml`, each with a findings
+- **Known mismatches** (`crates/difftest/known_mismatches/<unit id>.toml`, each with a findings
   entry): `blend.fillet_intersector` `rv_next_clipped_step` (the clipped `StepSolve`
   branch differs by a few ULP), and six `topology.brep_p3` TurnToNURBS tracker cases
   (upstream curve and surface edits send `SM_NO_PRE_EDIT`/`SM_NO_POST_EDIT`
@@ -118,18 +119,4 @@ first (`cpp-guard:` / `cpp-crash-guard:` = inputs kept away from a C++ crash, `h
 
 Refresh the snapshot from a recent main CI run (`gh run list --branch main`, then
 `gh run download <id> -n difftest-reports`) instead of appending "latest" lines. Handoff
-notes and investigations belong in `plan/findings.md` or the PR, not here.
-
-## Curvature validity follow-up (#475, PR #677, 2026-10-24)
-
-`nurbs.b_spline_curve_p3` reads the completed minimum-radius analysis before tests
-13/14. The unit is partial: five explicit C++ correctness mismatches plus two
-known Rust false-zero reports until solver fix #668 (#481) lands. The separate
-combined native probe has 2204 cases, 2199 exact passes and five C++ mismatches;
-merge #668 before #677 and then remove the two dependency entries. See findings.md,
-“Minimum curvature radius validity and solver dependency”.
-
-On #677 rebased to e33985411, all 2076 kernel tests, fmt, default/native Clippy,
-wasm and default difftest46+1 tests pass. Standalone native counts on d7abe913e:
-2204 cases / 2197 exact passes / 5 C++ and 2 #481 dependency mismatches; the line
-and ellipse caller units pass 2103/2103 and 2031/2031 exactly.
+notes and investigations belong in a new `plan/findings/<slug>.md` or the PR, not here.

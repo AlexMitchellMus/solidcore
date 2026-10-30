@@ -38,7 +38,7 @@ struct Inputs {
 fn error(e: &SolidError) -> f64 {
     match e {
         SolidError::Upstream { code, .. } => f64::from(*code),
-        SolidError::InvalidInput { .. } => 1007.,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007.,
         _ => 1001.,
     }
 }
@@ -82,6 +82,7 @@ fn options(f: &[f64]) -> SweepOptions {
         move_profile_center_to_path: f[2] != 0.,
         orient_profile_perpendicular_to_path: f[3] != 0.,
         move_to_profile: f[4] != 0.,
+        profile_at_path_start: false,
     }
 }
 
@@ -485,7 +486,7 @@ impl UnitDiff for Runner {
         // as curve.curve_p1: draw again when the native guard refuses the input
         for _ in 0..64 {
             let (op, data) = generated(rng);
-            if ffi::validate(op, &data).is_err() {
+            if ffi::generator_refuses(op, &data) {
                 continue;
             }
             return serde_json::to_value(Inputs {

@@ -11,6 +11,7 @@
 pub mod baseline;
 pub mod case;
 pub mod compare;
+pub mod constructor;
 pub mod export_memo;
 pub mod fixtures;
 pub mod fuzz;
@@ -18,12 +19,18 @@ pub mod jobs;
 pub mod json;
 pub mod known;
 pub mod output;
+#[cfg(feature = "cpp")]
+pub(crate) mod own_builder;
+#[cfg(feature = "cpp")]
+pub(crate) mod own_reader;
 pub mod plan;
+pub mod platform;
 pub mod report;
 pub mod rng;
 pub mod runner;
 pub mod solidcraft;
 pub mod ssi;
+pub mod step;
 pub mod util;
 
 pub use case::{Case, CaseContext, CaseSource};

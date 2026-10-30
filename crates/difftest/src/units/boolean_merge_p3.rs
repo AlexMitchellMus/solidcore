@@ -4,6 +4,10 @@
 //! read from the actual Rust B-rep. Native result graphs are freshly imported and
 //! projected to the same digest. Curve/surface values and adjacency are not compared.
 //! Geometric merges remain deferred at the exact missing dependency call.
+//! Family 2's lists may hold surface operands (`Operand::surface`, planes and spheres):
+//! upstream copies them with the base copy constructor, so a surface list fails with
+//! `SM_ERR` (WR-196) and a list with B-reps ignores its surfaces; the fixture
+//! `surface-operands.json` compares both.
 //! Family 6 runs `NonManifoldBoolean` through `DependencyMerge::with_engine` against a
 //! context-only native `SmMerge` with the same explicit members and at most one
 //! operand: it compares the NER status, the restored manifold flag, the lamina mode
@@ -28,9 +32,15 @@ use solidcore::boolean::topology_intersector::p1::TopologyIntersector;
 use solidcore::geom::a_object::BooleanOperation;
 use solidcore::geom::attribute::{ids, Attribute, AttributeStore, Behavior, ObjectKey};
 use solidcore::geom::context::MarkLock;
+use solidcore::geom::extent2d::Extent2d;
 use solidcore::kernel::Kernel;
+use solidcore::math::{Point3, Vec3};
+use solidcore::surface::plane::Plane;
+use solidcore::surface::sphere::{Sphere, SphereOptions};
+use solidcore::surface::surface::Surface;
 use solidcore::topology::brep_cache::{arena_identity, CacheObject};
-use solidcore::topology::{brep::p1 as bp, Brep, FaceId};
+use solidcore::topology::topology_traverser::Marks;
+use solidcore::topology::{brep::p1 as bp, Brep, FaceId, NamingScheme};
 use solidcore::SolidError;
 use solidcore_ffi::units::boolean_merge_p3 as ffi;
 
@@ -41,6 +51,20 @@ struct Operand {
     point: [f64; 3],
     #[serde(default)]
     size: Option<[f64; 3]>,
+    /// A surface operand of a `BooleanLists` list (family 2; shim kinds 2 and 3): `point`
+    /// is its origin (plane) or centre (sphere). A list with B-rep operands ignores its
+    /// surfaces, as upstream reads the surface list only when the B-rep list is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    surface: Option<SurfaceOperand>,
+}
+/// The surface kinds a list operand can be.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SurfaceOperand {
+    /// `SmPlane(origin, normal)`: the infinite plane through the point.
+    Plane { normal: [f64; 3] },
+    /// `SmSphere(centre, X, Y, [0, 360] x [-90, 90] degrees, radius)`.
+    Sphere { radius: f64 },
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Inputs {
@@ -82,10 +106,26 @@ fn encode(i: &Inputs) -> Vec<f64> {
         i.b.len() as f64,
     ];
     for operand in i.a.iter().chain(&i.b) {
-        data.push(f64::from(u8::from(operand.size.is_some())));
-        data.extend(operand.point);
-        if let Some(size) = operand.size {
-            data.extend(size);
+        match (&operand.surface, operand.size) {
+            (Some(SurfaceOperand::Plane { normal }), _) => {
+                data.push(2.0);
+                data.extend(operand.point);
+                data.extend(*normal);
+            }
+            (Some(SurfaceOperand::Sphere { radius }), _) => {
+                data.push(3.0);
+                data.extend(operand.point);
+                data.extend([*radius, 0.0, 0.0]);
+            }
+            (None, Some(size)) => {
+                data.push(1.0);
+                data.extend(operand.point);
+                data.extend(size);
+            }
+            (None, None) => {
+                data.push(0.0);
+                data.extend(operand.point);
+            }
         }
     }
     data.push(i.tree.len() as f64);
@@ -125,7 +165,7 @@ fn engine_output(status: i64, manifold: bool, lamina: u64, result: bool) -> Outp
 /// The engine mirrors the native `EngineAccess`: the context-only constructor's
 /// members (`KernelManifoldIntersector::new`), the same explicit tolerances and
 /// `SetMergeOptions`, manifold flag true and lamina mode 0 before the call.
-fn engine_probe(i: &Inputs, pool: &mut Pool) -> Result<Output, HarnessError> {
+fn engine_probe(k: &mut Kernel, i: &Inputs, pool: &mut Pool) -> Result<Output, HarnessError> {
     let mut breps = std::mem::take(&mut pool.breps).into_iter();
     let mut primary = if i.a.is_empty() { None } else { breps.next() };
     let mut other = if i.b.is_empty() { None } else { breps.next() };
@@ -139,11 +179,10 @@ fn engine_probe(i: &Inputs, pool: &mut Pool) -> Result<Output, HarnessError> {
         state: ManifoldState::default(),
         attributes: AttributeStore::default(),
     });
-    let mut k = Kernel::default();
     let mut manifold = true;
     let mut lamina = 0;
     let result = port::non_manifold_boolean(
-        &mut k,
+        k,
         &mut driver,
         &mut primary,
         &mut other,
@@ -201,7 +240,7 @@ fn options(mask: u8) -> MergeOptions {
 }
 fn status(error: &SolidError) -> i64 {
     match error {
-        SolidError::InvalidInput { .. } => 1007,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007,
         SolidError::Upstream { code, .. } => i64::from(*code),
         _ => -1,
     }
@@ -380,6 +419,11 @@ fn list_result(result: &port::BooleanListsResult, values: &mut Vec<f64>) -> soli
 
 struct Pool {
     breps: Vec<Brep>,
+    /// The first list's B-rep operands are `breps[..first_breps]`.
+    first_breps: usize,
+    /// The first and the second list's surface operands (family 2).
+    surfaces_a: Vec<Surface>,
+    surfaces_b: Vec<Surface>,
     original_count: usize,
     retired: BTreeSet<usize>,
     attributes: AttributeStore,
@@ -390,53 +434,85 @@ struct Pool {
     engine: Option<port::MergeEngine>,
 }
 impl Pool {
-    fn load(i: &Inputs) -> Result<Self, HarnessError> {
+    fn load(k: &mut Kernel, i: &Inputs) -> Result<Self, HarnessError> {
         let mut breps = Vec::new();
+        let mut first_breps = 0;
+        let mut surfaces_a = Vec::new();
+        let mut surfaces_b = Vec::new();
 
-        for operand in i.a.iter().chain(&i.b) {
-            let exported = ffi::eval(&encode(&Inputs {
-                family: 5,
-                operation: 0,
-                options: None,
-                a: vec![operand.clone()],
-                b: Vec::new(),
-                tree: Vec::new(),
-                expected_refusal: None,
-            }))
-            .map_err(|error| harness(&error))?;
-            // export_graph starts at validate_only; vertexuse import expects a
-            // leading success tag. Geometry comes only from fixture construction.
-            let mut tagged = vec![0.0];
-            tagged.extend(&exported);
-            let (mut brep, _) = super::topology_vertexuse::import(&tagged)?;
-            // The vertexuse importer predates canonical arena owner keys. Preserve
-            // its native owned/unowned flag, but translate existing owners so
-            // canonical GetSurfaces sees the same standalone surfaces as C++.
-            let faces: Vec<_> = brep.faces().ids().collect();
-            for face in faces {
-                if let Some(surface) = brep
-                    .face_mut(face)
-                    .map_err(|error| harness(&error))?
-                    .surface
-                    .as_mut()
-                {
-                    if surface.owner().is_some() {
-                        surface.set_owner(Some(arena_identity(CacheObject::Face(face))));
+        let lists = i.a.iter().map(|o| (true, o)).chain(i.b.iter().map(|o| (false, o)));
+        for (first, operand) in lists {
+            let [x, y, z] = operand.point;
+            let point = Point3::new(x, y, z);
+            if let Some(surface) = &operand.surface {
+                let surface = match surface {
+                    SurfaceOperand::Plane { normal } => {
+                        let [nx, ny, nz] = *normal;
+                        Surface::from(Plane::from_normal(point, Vec3::new(nx, ny, nz)))
                     }
+                    SurfaceOperand::Sphere { radius } => Surface::from(
+                        Sphere::new(
+                            k,
+                            point,
+                            Vec3::new(1.0, 0.0, 0.0),
+                            Vec3::new(0.0, 1.0, 0.0),
+                            Extent2d::from_bounds(0.0, -90.0, 360.0, 90.0),
+                            *radius,
+                            SphereOptions {
+                                swap_uv: false,
+                                inside_out: false,
+                                circle_nurb: None,
+                            },
+                        )
+                        .map_err(|error| harness(&error))?,
+                    ),
+                };
+                if first {
+                    surfaces_a.push(surface);
+                } else {
+                    surfaces_b.push(surface);
                 }
-                // a new owner key drops the cached face tolerance: record it again
-                brep.sync_face_surface_tolerance(face)
-                    .map_err(|error| harness(&error))?;
+                continue;
             }
+            let mut brep = if let Some([dx, dy, dz]) = operand.size {
+                solidcore::primitive::api_primitives::create_box(k, point, dx, dy, dz)
+                    .map_err(|error| harness(&error))?
+            } else {
+                let mut b = empty_brep(
+                    k,
+                    solidcore::geom::tol::USE_DEFAULT,
+                    solidcore::geom::tol::USE_DEFAULT,
+                    None,
+                )
+                .map_err(|error| harness(&error))?;
+                let inf = b.infinite_region();
+                let mut state = solidcore::topology::brep::p2::ArenaNotifyState::new(&b);
+                solidcore::topology::brep::p9::make_shell_vertex(
+                    &mut b,
+                    inf,
+                    point,
+                    &mut state.env(Some(&mut k.context)),
+                )
+                .map_err(|error| harness(&error))?;
+                b
+            };
+            brep.use_arena_naming().map_err(|error| harness(&error))?;
             breps.push(brep);
+            if first {
+                first_breps += 1;
+            }
         }
+        let original_count = breps.len();
         Ok(Self {
             breps,
-            original_count: i.a.len() + i.b.len(),
+            first_breps,
+            surfaces_a,
+            surfaces_b,
+            original_count,
             retired: BTreeSet::new(),
             attributes: AttributeStore::new(),
             primary: Some(0),
-            other: Some(i.a.len()),
+            other: Some(first_breps),
             manifold: true,
             engine: None,
         })
@@ -657,6 +733,14 @@ impl PiecewiseAccess for Pool {
         (self.primary, self.other)
     }
     fn set_operands(&mut self, a: Option<usize>, b: Option<usize>) {
+        if let Some(engine) = self.engine.as_mut() {
+            if self.primary != a {
+                engine.state.primary_marks = Marks::default();
+            }
+            if self.other != b {
+                engine.state.other_marks = Marks::default();
+            }
+        }
         self.primary = a;
         self.other = b;
     }
@@ -679,7 +763,8 @@ impl PiecewiseAccess for Pool {
                 a,
                 b,
                 &mut engine.attributes,
-            )
+            )?;
+            engine.adopt_operand_owners(Some(a), Some(b))
         })
     }
     fn clear_relationships(&mut self) -> solidcore::Result<()> {
@@ -752,6 +837,7 @@ impl PiecewiseAccess for Pool {
         let tolerance = self.brep(source)?.tolerance();
         set_tolerance(k, &mut result, tolerance, true, true)?;
         result.set_editing_enabled(true);
+        result.set_naming(NamingScheme::Arena);
         let id = self.breps.len();
         self.breps.push(result); // append only: a handle is never reused
         Ok(id)
@@ -784,7 +870,8 @@ impl PiecewiseAccess for Pool {
                 lock.mark_type1(),
                 lock.mark_type2(),
                 &mut keep,
-            )
+            )?;
+            engine.adopt_operand_owners(Some(a), Some(b))
         })
     }
     fn release_marks(&mut self, k: &mut Kernel, lock: &mut MarkLock) -> solidcore::Result<()> {
@@ -907,11 +994,11 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         return Err(harness("fixture-only family is not a unit operation"));
     }
     ffi::validate(&encode(i)).map_err(|error| harness(&error))?;
-    let mut pool = Pool::load(i)?;
-    if i.family == ENGINE_PROBE {
-        return engine_probe(i, &mut pool);
-    }
     let mut k = Kernel::default();
+    let mut pool = Pool::load(&mut k, i)?;
+    if i.family == ENGINE_PROBE {
+        return engine_probe(&mut k, i, &mut pool);
+    }
     let opts = i.options.map(options);
     let mut values = vec![0.0];
     let result: solidcore::Result<()> = match i.family {
@@ -942,13 +1029,13 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
         2 => port::boolean_lists(
             &mut k,
             pool.breps
-                .get(..i.a.len())
+                .get(..pool.first_breps)
                 .ok_or_else(|| harness("bad first list"))?,
-            &[],
+            &pool.surfaces_a,
             pool.breps
-                .get(i.a.len()..)
+                .get(pool.first_breps..)
                 .ok_or_else(|| harness("bad second list"))?,
-            &[],
+            &pool.surfaces_b,
             i.operation,
             opts.as_ref(),
         )
@@ -1063,6 +1150,7 @@ impl UnitDiff for Runner {
         let mut operand = || Operand {
             point: rng.point3(-scale, scale),
             size: None,
+            surface: None,
         };
         let a: Vec<_> = (0..n).map(|_| operand()).collect();
         let b: Vec<_> = (0..m).map(|_| operand()).collect();
@@ -1111,10 +1199,12 @@ mod tests {
             a: vec![Operand {
                 point: [0.0, 0.0, 0.0],
                 size: Some([2.0, 3.0, 4.0]),
+                surface: None,
             }],
             b: vec![Operand {
                 point: [5.0, 0.0, 0.0],
                 size: None,
+                surface: None,
             }],
             tree: Vec::new(),
             expected_refusal: None,
@@ -1159,9 +1249,43 @@ mod tests {
         }
     }
 
+    /// Surface operands: both engines refuse a surface list the same way (the base-sliced
+    /// copy, WR-196) and ignore surfaces next to B-reps the same way (a real result).
+    #[cfg(feature = "cpp")]
+    #[test]
+    fn surface_operand_fixtures_agree_with_the_native_engine() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/boolean.merge_p3/surface-operands.json"
+        );
+        let text = std::fs::read_to_string(path).unwrap();
+        let fixtures: Value = serde_json::from_str(&text).unwrap();
+        for fixture in fixtures["cases"].as_array().unwrap() {
+            let name = &fixture["name"];
+            let input: Inputs = serde_json::from_value(fixture["inputs"].clone()).unwrap();
+            let expected = fixture["expected_status"].as_i64().unwrap();
+            let native = native_output(&ffi::eval(&encode(&input)).unwrap(), input.family).unwrap();
+            let rust = rust(&input).unwrap();
+            for result in [&rust, &native] {
+                assert!(result.deferred.is_none(), "{name}: {:?}", result.deferred);
+                assert!(result.rejected.is_none(), "{name}: {:?}", result.rejected);
+            }
+            if expected == 0 {
+                assert_eq!(rust.ints["status"], [0], "{name}: {:?}", rust.error);
+                assert_eq!(native.ints["status"], [0], "{name}: {:?}", native.error);
+                assert_eq!(rust.ints["topology_counts"], native.ints["topology_counts"], "{name}");
+                assert!(!rust.values["record"].is_empty(), "{name}");
+            } else {
+                let status = format!("status={expected}");
+                assert_eq!(rust.error.as_deref(), Some(status.as_str()), "{name}");
+                assert_eq!(native.error, rust.error, "{name}");
+            }
+        }
+    }
+
     #[test]
     fn single_success_records_compare_rust_geometry_controls_and_nulls() {
-        let mut pool = Pool::load(&inputs()).unwrap();
+        let mut pool = Pool::load(&mut Kernel::default(), &inputs()).unwrap();
         let graph = fixture_graph();
         let mut native = vec![0.0, 1.0, 1.0, 1.0, 0.0, graph.len() as f64];
         native.extend(&graph);
@@ -1197,7 +1321,7 @@ mod tests {
 
     #[test]
     fn list_success_records_compare_actual_outputs_and_surface_count() {
-        let pool = Pool::load(&inputs()).unwrap();
+        let pool = Pool::load(&mut Kernel::default(), &inputs()).unwrap();
         let graph = fixture_graph();
         let mut native = vec![0.0, 1.0, -1.0, graph.len() as f64];
         native.extend(&graph);
@@ -1213,9 +1337,9 @@ mod tests {
             native_output(&native, 2).unwrap()
         );
         result.surfaces.push(
-            solidcore::surface::plane::Plane::from_normal(
-                solidcore::math::Vec3::ZERO,
-                solidcore::math::Vec3::new(0.0, 0.0, 1.0),
+            Plane::from_normal(
+                Vec3::ZERO,
+                Vec3::new(0.0, 0.0, 1.0),
             )
             .into(),
         );
@@ -1236,8 +1360,8 @@ mod tests {
         fn engine(pool: &Pool) -> &KernelManifoldIntersector {
             &pool.engine.as_ref().unwrap().intersector
         }
-        let mut pool = Pool::load(&inputs()).unwrap();
         let mut k = Kernel::default();
+        let mut pool = Pool::load(&mut k, &inputs()).unwrap();
         pool.construct(&mut k, &mut Some(0), &mut Some(1), 0.0, 0.0, None)
             .unwrap();
         assert_eq!(pool.surfaces(0).unwrap().len(), 6);
@@ -1275,8 +1399,8 @@ mod tests {
 
     #[test]
     fn piecewise_dependency_errors_name_the_next_missing_owner() {
-        let mut pool = Pool::load(&inputs()).unwrap();
         let mut k = Kernel::default();
+        let mut pool = Pool::load(&mut k, &inputs()).unwrap();
         // without SmMerge's constructor the pool holds no m_vTI
         assert!(matches!(
             pool.clear_relationships(),

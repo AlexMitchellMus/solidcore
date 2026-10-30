@@ -2,23 +2,37 @@
 //! `DeleteVertex`, `ShrinkGeometry`, `StitchFaces` and `~SmBrep` on real B-reps.
 //!
 //! The B-rep comes from the shared fixture (`sc_topology_fixture.h`): the C++ side
-//! builds it, the Rust side imports the `topology.topology_traverser` export of the same
-//! block record by record (with the vertex use lists), so the target indices name the
-//! same objects on both sides. Compared: the status, and on success (for the edits also
+//! builds it; the Rust side builds the same source with the Rust kernel
+//! ([`crate::own_builder`]) or reads an `.smb` file with the Rust reader, renumbered into
+//! the shim's walk order, so the target indices name the same objects on both sides. No
+//! C++ state reaches the Rust side: its vertex use lists are in the Rust build's order.
+//! Compared: the status, and on success (for the edits also
 //! after a failed status, which can come after part of the topology changed) the ten
 //! record counts of the B-rep afterwards (`StitchFaces` adds its outputs; the
 //! destructor its context flag) and every record of the B-rep, field by field (see
 //! [`Rec`]): links
 //! (labels), lists in their order, orientations, flags, domains, tolerances, points,
 //! intervals, UV points. Cases whose Rust path reaches an unported callee are deferred.
+//! A source the Rust kernel fails to build reports that failure (the shim's NULL build
+//! reports its status).
 //!
 //! **Record naming.** A record that existed before the operation keeps the index of
 //! the first walk on both sides (the Rust arena id; the shim tags the C++ object).
 //! Records the operation made are renumbered by [`canonicalize`] (the same function on
 //! both sides) from their contents and links, so the order the two sides created or
 //! reached them in does not matter. The `Check` operation runs nothing and compares
-//! the imported model with the C++ records, which proves the encodings agree while the
-//! operations still defer.
+//! the Rust-built B-rep with the C++ records.
+//!
+//! Deviations: the runner-local native record decoder validates finite,
+//! nonnegative integral counts below the exclusive `2^usize::BITS` bound and
+//! checks available tokens before iterating records or lists. Storage grows
+//! incrementally; valid record ordering, labels and float bits are unchanged.
+
+#[path = "fixtures/topology_brep_records.rs"]
+mod records;
+
+use records::{parse_records, Model, Rec};
+
 use super::topology_vertexuse::{self as shared, BrepIn};
 use crate::case::CaseContext;
 use crate::output::Topology;
@@ -37,10 +51,8 @@ use solidcore::surface::surface::Surface;
 use solidcore::topology::brep::p4::{self, DeleteEnv};
 use solidcore::topology::brep_cache::{arena_identity, CacheObject};
 use solidcore::topology::shell::ShellMembers;
-use solidcore::topology::topology::Topology as SmTopologyRecord;
 use solidcore::topology::{
-    ArenaId, Brep, EdgeId, EdgeuseOwner, FaceId, LoopuseStart, ShellId, VertexId, VertexuseId,
-    VertexuseOwner,
+    ArenaId, Brep, EdgeId, EdgeuseOwner, FaceId, LoopuseStart, ShellId, VertexId, VertexuseOwner,
 };
 use solidcore_ffi::units::topology_brep_p4::{self as ffi, Damage, Op, Request, NULL_DEREFERENCE};
 use solidcore_ffi::units::topology_vertexuse::counts;
@@ -188,17 +200,25 @@ fn request(i: &Inputs) -> Request {
     }
 }
 
-/// The imported fixture with the vertex use lists in their raw order.
-pub(crate) fn import(
-    f: &solidcore_ffi::units::topology_topology_traverser::Fixture,
-) -> Result<Brep, HarnessError> {
-    let (mut b, _) = shared::import(&f.graph)?;
-    for (i, list) in f.vertexuses.iter().enumerate() {
-        b.vertex_mut(VertexId::from_index(i as u32))
-            .map_err(|e| err(&e))?
-            .vertexuses = list.iter().map(|&j| VertexuseId::from_index(j)).collect();
-    }
-    Ok(b)
+/// The Rust side's B-rep: the case's source built by the Rust kernel as the shim builds
+/// it ([`crate::own_builder::build_as`]), or its `.smb` file read by the Rust reader
+/// ([`crate::own_builder::read_with`]), renumbered into the shim's walk order under
+/// `Conventions::EDGEUSE_GRAPH` (the fixture's walk; face and edge geometry owned under
+/// their arena identities, which `GetSurfaces` / `GetCurves` test the owner against).
+/// The vertex use lists are in the order the Rust build made them. A failed build is
+/// its output (an unported callee's deferral, else its status).
+fn own_brep(k: &mut Kernel, src: &BrepIn) -> Result<Result<Brep, Output>, HarnessError> {
+    use crate::own_builder::{build_as, failed_output, read_with, Built, Conventions};
+    let conv = &Conventions::EDGEUSE_GRAPH;
+    let built = match src {
+        BrepIn::File { rebuild, .. } => read_with(k, &path_of(src)?, *rebuild, false, false, conv)?,
+        other => build_as(k, other, false, false, conv)?
+            .ok_or_else(|| err("B-rep source not built"))?,
+    };
+    Ok(match built {
+        Built::Brep(b) => Ok(*b),
+        Built::Failed(e) => Err(failed_output(&e)),
+    })
 }
 
 /// The record counts of the shim's walk, in its kind order.
@@ -235,123 +255,6 @@ const KINDS: [&str; 10] = [
     "vertexuses",
     "vertices",
 ];
-
-/// A field of a record: a plain integer, a link to a record of a kind, a list of such
-/// links (a count, then the labels) or a real.
-#[derive(Clone, Copy)]
-enum Slot {
-    I,
-    R(usize),
-    L(usize),
-    F,
-}
-use Slot::{F, I, L, R};
-
-/// The fields of each kind, in the order the shim writes them (`emit_records`).
-const LAYOUT: [&[Slot]; 10] = [
-    // region: in the B-rep, shells (in list order from the head)
-    &[I, L(1)],
-    // shell: region, type (`m_tShellType`), has a list head (`m_pList`), the head as a face
-    // use, as an edge use, as a vertex use (by the type; `-1` for the other two)
-    &[R(0), I, I, R(2), R(6), R(8)],
-    // face use: shell, face, mate, orientation, loop uses
-    &[R(1), R(3), R(2), I, L(4)],
-    // face: face use, domain (u0 v0 u1 v1), rectangular trim, tolerance, has a surface,
-    // surface owned by the face, natural domain of the surface (u0 v0 u1 v1), the surface
-    // point at the centre of that domain (evaluated: 1/0, then x y z)
-    &[R(2), F, F, F, F, I, F, I, I, F, F, F, F, I, F, F, F],
-    // loop use: face use, loop, mate, start type, start edge use, start vertex use,
-    // orientation
-    &[R(2), R(5), R(4), I, R(6), R(8), I],
-    // loop: loop use
-    &[R(4)],
-    // edge use: edge, owner type, owner loop use, owner shell, cw, ccw, vertex use,
-    // orientation, has a UV trim curve
-    &[R(7), I, R(4), R(1), R(6), R(6), R(8), I, I],
-    // edge: tolerance, interval, edge uses, has a curve, natural interval of the curve
-    &[F, F, F, L(6), I, F, F],
-    // vertex use: vertex, owner type, owner edge use, loop use, shell, UV point
-    &[R(9), I, R(6), R(4), R(1), F, F],
-    // vertex: point, tolerance, vertex uses
-    &[F, F, F, F, L(8)],
-];
-
-/// One record: its label, its integer fields (links are labels, `-1` null; a list is
-/// its count and its labels), the kind each integer links to (if it does) and its reals.
-#[derive(Debug, Clone, PartialEq)]
-struct Rec {
-    label: i64,
-    ints: Vec<i64>,
-    links: Vec<Option<usize>>,
-    floats: Vec<f64>,
-}
-
-impl Rec {
-    fn new(label: i64) -> Self {
-        Self {
-            label,
-            ints: Vec::new(),
-            links: Vec::new(),
-            floats: Vec::new(),
-        }
-    }
-    fn i(&mut self, x: i64) {
-        self.ints.push(x);
-        self.links.push(None);
-    }
-    fn r(&mut self, kind: usize, x: i64) {
-        self.ints.push(x);
-        self.links.push(Some(kind));
-    }
-    fn l(&mut self, kind: usize, xs: &[i64]) {
-        self.i(xs.len() as i64);
-        for &x in xs {
-            self.r(kind, x);
-        }
-    }
-    fn f(&mut self, x: f64) {
-        self.floats.push(x);
-    }
-}
-
-type Model = [Vec<Rec>; 10];
-
-/// The records the shim wrote (`emit_records`), as given by [`LAYOUT`].
-fn parse_records(v: &[f64]) -> Result<Model, HarnessError> {
-    let mut at = 0usize;
-    let mut next = || -> Result<f64, HarnessError> {
-        let x = *v.get(at).ok_or_else(|| err("short record output"))?;
-        at += 1;
-        Ok(x)
-    };
-    let mut model: Model = Default::default();
-    for (slots, out) in LAYOUT.iter().zip(model.iter_mut()) {
-        let n = next()? as usize;
-        for _ in 0..n {
-            let mut rec = Rec::new(next()? as i64);
-            for slot in *slots {
-                match *slot {
-                    I => rec.i(next()? as i64),
-                    R(k) => rec.r(k, next()? as i64),
-                    L(k) => {
-                        let count = next()? as usize;
-                        let mut xs = Vec::new();
-                        for _ in 0..count {
-                            xs.push(next()? as i64);
-                        }
-                        rec.l(k, &xs);
-                    }
-                    F => rec.f(next()?),
-                }
-            }
-            out.push(rec);
-        }
-    }
-    if at != v.len() {
-        return Err(err("trailing record output"));
-    }
-    Ok(model)
-}
 
 /// The label of record `index` of a kind with `pre` records before the operation.
 fn label(pre: usize, index: u32) -> i64 {
@@ -451,7 +354,8 @@ fn rust_records(b: &Brep, pre: [usize; 10]) -> Model {
         let owned = f.surface.as_ref().and_then(Surface::owner) == Some(face_owner(id.index()));
         rec.i(i64::from(owned));
         let natural = f.surface.as_ref().map_or([0.0; 4], |s| {
-            let d = s.natural_uv_domain();
+            // (runner helper without a kernel in scope)
+            let d = s.natural_uv_domain_if_built();
             [d.min().x, d.min().y, d.max().x, d.max().y]
         });
         for x in natural {
@@ -459,7 +363,8 @@ fn rust_records(b: &Brep, pre: [usize; 10]) -> Model {
         }
         // the surface point at the centre of the natural domain (the shim's `EvaluatePoint`)
         let point = f.surface.as_ref().and_then(|s| {
-            let d = s.natural_uv_domain();
+            // (runner helper without a kernel in scope)
+            let d = s.natural_uv_domain_if_built();
             let c = Point2::new((d.min().x + d.max().x) * 0.5, (d.min().y + d.max().y) * 0.5);
             s.evaluate_point(&Kernel::default(), c).ok()
         });
@@ -712,35 +617,13 @@ fn face_owner(index: u32) -> ObjectRef {
     arena_identity(CacheObject::Face(FaceId::from_index(index)))
 }
 
-/// The importer names an owned surface's face `1 + index`; the B-rep names it by its
-/// arena identity ([`face_owner`]). Surfaces the C++ face owns stay owned.
-pub(crate) fn own_surfaces(b: &mut Brep) -> Result<(), HarnessError> {
+/// Each face's tolerance recorded on its surface, as the face upstream answers
+/// `GetTolerance` with. The geometry owners are the ones the build gave (no owner is
+/// added).
+pub(crate) fn sync_face_tolerances(b: &mut Brep) -> Result<(), HarnessError> {
     let ids: Vec<FaceId> = b.faces().ids().collect();
     for f in ids {
-        let imported = ObjectRef {
-            type_code: solidcore::topology::face::p2::TYPE,
-            key: ObjectKey(1 + u64::from(f.index())),
-        };
-        if let Some(s) = b.face_mut(f).map_err(|e| err(&e))?.surface.as_mut() {
-            if s.owner() == Some(imported) {
-                let _ = s.set_owner(Some(face_owner(f.index())));
-            }
-        }
-        // the face's tolerance, as the face upstream answers GetTolerance with
         b.sync_face_surface_tolerance(f).map_err(|e| err(&e))?;
-    }
-    // the edge curves' owners (`SmCurve::GetOwner`/`GetEdge`, set by the B-rep build
-    // upstream): the edge's arena identity, which `SmBrep::GetCurves`
-    // (`topology::brep::p1::curves`) tests the owner against; `ShrinkGeometry` trims the
-    // curves that name an edge
-    let edges: Vec<EdgeId> = b.edges().ids().collect();
-    for e in edges {
-        if let Some(c) = b.edge_mut(e).map_err(|e| err(&e))?.curve.as_mut() {
-            let _ = c.set_owner(
-                Some(arena_identity(CacheObject::Edge(e))),
-                Some(arena_identity(CacheObject::Brep)),
-            );
-        }
     }
     Ok(())
 }
@@ -783,7 +666,7 @@ fn key_of(e: EntityRef) -> ObjectRef {
         EntityRef::Vertex(x) => (2, u64::from(x.index())),
         EntityRef::Edgeuse(x) => (3, u64::from(x.index())),
         EntityRef::Vertexuse(x) => (4, u64::from(x.index())),
-        // the owner the importer gives a face's surface (`import` in `topology_vertexuse`)
+        // the owner the build gives a face's surface (`Conventions::EDGEUSE_GRAPH`)
         EntityRef::Face(x) => return face_owner(x.index()),
         _ => (6, 0),
     };
@@ -837,31 +720,18 @@ impl UnitDiff for Runner {
 
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
         let i: Inputs = case.parse()?;
-        let (path, blk) = block(&i.brep)?;
-        let f = ffi::export(&path, &blk).map_err(|e| err(&e))?;
-        if counts(&f.graph).is_none() {
-            return Ok(Output::new());
-        }
-        let mut b = import(&f)?;
-        own_surfaces(&mut b)?;
-        // reading a file heals the B-rep during a Boolean operation, which leaves its
-        // face surfaces with trimmed caches whose trees are not built (and that later
-        // smsurf_GetSurfaceCache calls reuse): the face surfaces' cache states as the
-        // C++ read left them
-        if let BrepIn::File { .. } = &i.brep {
-            use super::topology_edgeuse_p1 as eu1;
-            let file = eu1::BrepIn::File {
-                file: String::new(),
-                rebuild: false,
-            };
-            let blk = eu1::brep_block_of(Some(&file), false, false)?;
-            eu1::seed_cache_tree_states(&b, &path, &blk)?;
-        }
+        let mut k = Kernel::default();
+        // the B-rep built (or read) by the Rust kernel; a read keeps the face surfaces'
+        // cache states the Rust read left (the renumbered copy keeps their slots)
+        let mut b = match own_brep(&mut k, &i.brep)? {
+            Ok(b) => b,
+            Err(o) => return Ok(o),
+        };
+        sync_face_tolerances(&mut b)?;
         damage(&mut b, i.damage)?;
         b.set_editing_enabled(i.editing);
         let pre = record_counts(&b);
-        let mut k = Kernel::default();
-        let mut records: BTreeMap<ObjectKey, SmTopologyRecord> = BTreeMap::new();
+        let mut records: solidcore::topology::topology::NotifyRecords = solidcore::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let mut env = DeleteEnv {
             records: &mut records,

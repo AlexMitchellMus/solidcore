@@ -386,7 +386,7 @@ fn ext(d: &[[f64; 3]; 2]) -> Extent3d {
 /// cannot return.
 fn status(e: &SolidError) -> f64 {
     match e {
-        SolidError::InvalidInput { .. } => 1007.0,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007.0,
         SolidError::Upstream { code, .. } => f64::from(*code),
         _ => -1.0,
     }
@@ -767,6 +767,10 @@ fn gen_case(rng: &mut Rng) -> Inputs {
 }
 
 impl UnitDiff for Runner {
+    fn reference_platform(&self) -> Option<crate::platform::ReferencePlatform> {
+        Some(crate::platform::X86_64_TWIST_CASTS)
+    }
+
     fn id(&self) -> &'static str {
         "surface.twist_volume"
     }

@@ -41,6 +41,10 @@
 //!   fails (upstream status ignored): the previous gap, as upstream's reused local.
 //!   Upstream reads an uninitialised local when the very first call fails; the port
 //!   returns [`SolidError::Upstream`] `SM_ERR` there.
+//! - `test_and_split_edge` records the live edge's zone tolerance on its curve for
+//!   the drop's cache, which cannot dereference the owning B-rep. The independent
+//!   stitch/snap tolerance is unchanged; no curve copy or extra arena lookup is
+//!   needed.
 //! - `StitchVertexPairs` indexes its sorted index arrays with the unsorted counts, which
 //!   reads past them upstream when a list holds null entries; the port returns
 //!   [`SolidError::InvalidInput`] there. Its rescan of a vertex after gluing a closer
@@ -72,8 +76,6 @@
 //!   is `topology::brep::p2::notify` on an empty notify state (no B-rep cache, no
 //!   attribute state on the heal path).
 
-use std::collections::BTreeMap;
-
 use crate::boolean::merge::p1::MergeState;
 use crate::boolean::merge::p2::MergeOperand;
 use crate::boolean::topology_intersector::p1::TopologyIntersector;
@@ -97,6 +99,7 @@ use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::edgeuse::p3::{self as eu3, BinormalOptions};
 use crate::topology::face::p1 as fp1;
 use crate::topology::face::p2 as fp2;
+#[cfg(test)]
 use crate::topology::topology::Topology;
 use crate::topology::topology_traverser::{Entity, Marks};
 use crate::topology::{
@@ -597,8 +600,16 @@ fn test_and_split_edge_with(
         new_edge: None,
     };
 
-    let curve = edge::curve(b, e)?.ok_or_else(|| ner("edge without curve"))?;
-    let domain = edge::interval(b, e)?;
+    let record = b.edge_mut(e)?;
+    let zone_tol_3d = record.tolerance;
+    let curve = record
+        .curve
+        .as_mut()
+        .ok_or_else(|| ner("edge without curve"))?;
+    // The drop's cache uses half the owning edge's zone tolerance, not the
+    // independent stitch/snap tolerance. Retain the actual curve and its memo.
+    curve.set_owner_zone_tol_3d(Some(zone_tol_3d));
+    let domain = record.interval;
     // This can't be too big. [B448]
     let dropped = curve.drop_point(
         k,
@@ -612,7 +623,7 @@ fn test_and_split_edge_with(
     out.dist_to_edge = dropped.distance;
 
     // Check far from curve.
-    let this_tol = smos_max(tol, edge::tolerance(b, e)?);
+    let this_tol = smos_max(tol, zone_tol_3d);
     if !dropped.success || dropped.distance > this_tol {
         out.reason = SplitReason::FarFromGeom;
         return Ok(out);
@@ -706,7 +717,7 @@ pub(crate) trait StitchEditContext {
 /// New split-curve identities must be registered by the owner or refused explicitly.
 pub(crate) struct BorrowedStitchEdits<'a, 'e> {
     pub env: &'a mut edge::NotifyEnv<'e>,
-    pub curve_ref: &'a dyn Fn(EdgeId, i64) -> Result<ObjectRef>,
+    pub curve_identity: crate::topology::brep::p9::CurveIdentity<'a>,
 }
 
 impl StitchEditContext for BorrowedStitchEdits<'_, '_> {
@@ -790,13 +801,13 @@ impl StitchEditContext for BorrowedStitchEdits<'_, '_> {
         e: EdgeId,
         t: f64,
     ) -> Result<(Option<EdgeId>, Option<EdgeId>, Option<VertexId>)> {
-        let out = crate::topology::brep::p9::make_vertex_split_edge_with_identity(
+        let out = crate::topology::brep::p9::make_vertex_split_edge_with_curve_identity(
             k,
             b,
             e,
             t,
-            &mut edge::NotifyState::from_env(self.env),
-            self.curve_ref,
+            self.env,
+            self.curve_identity,
         )?;
         if !out.split {
             return Err(SolidError::sm_err(OP));
@@ -2323,7 +2334,7 @@ pub(crate) fn sort_by_param(
 /// `SmVertex::SetPoint`: the change notification (on records local to the call), then
 /// the new position.
 pub(crate) fn set_point(k: &mut Kernel, b: &mut Brep, v: VertexId, point: Point3) -> Result<()> {
-    let mut records: BTreeMap<ObjectKey, Topology> = BTreeMap::new();
+    let mut records = crate::topology::topology::NotifyRecords::new();
     let mut attributes = AttributeStore::default();
     let this = arena_identity(CacheObject::Vertex(v));
     let vertexuse_ref = |vu: crate::topology::VertexuseId| ObjectRef {
@@ -2424,8 +2435,9 @@ pub(crate) fn glue_edges_general(
     delete: EdgeId,
     inside_faceuses: Option<&[FaceuseId]>,
 ) -> Result<()> {
-    let mut state = crate::topology::brep::p2::ArenaNotifyState::new(b);
-    Context::with_notification_context(k, |k, context| {
+    // (not upstream) with `b`'s own attributes, given back afterwards
+    let mut state = crate::topology::brep::p2::ArenaNotifyState::with_attributes_of(b);
+    let r = Context::with_notification_context(k, |k, context| {
         let mut env = state.env(Some(context));
         crate::topology::brep::p7::glue_edges_general(
             k,
@@ -2438,7 +2450,10 @@ pub(crate) fn glue_edges_general(
             inside_faceuses,
             &mut env,
         )
-    })?
+    });
+    let restored = state.restore_attributes(b);
+    r??;
+    restored
 }
 
 /// `SmBrep::SqueezeEdge(edge, keep)` (unit `topology.brep_p3`,
@@ -2463,37 +2478,33 @@ pub(crate) fn squeeze_edge_to(
 }
 
 /// `SmBrep::MakeVertexSplitEdge(edge, t, rpE1, rpE2, rpNewV)` (unit `topology.brep_p9`),
-/// with its notifications on records local to the call (as [`set_point`]). A refused
-/// split (`SM_ERR` with the nearby endpoint) is an `SM_ERR` error: the caller only
-/// tests for `SM_SUCCESS`.
+/// with its notifications on an arena-only state local to the call
+/// ([`crate::topology::brep::p2::ArenaNotifyState`]). A refused split (`SM_ERR` with
+/// the nearby endpoint) is an `SM_ERR` error: the caller only tests for `SM_SUCCESS`.
+///
+/// (not upstream) The state holds `b`'s own attributes for the split and gives them
+/// back afterwards, so both pieces of a split edge keep its attributes
+/// (`SM_NO_SPLIT_IN_BREP`), as upstream's live on the edge.
 pub(crate) fn make_vertex_split_edge(
     k: &mut Kernel,
     b: &mut Brep,
     e: EdgeId,
     t: f64,
 ) -> Result<(Option<EdgeId>, Option<EdgeId>, Option<VertexId>)> {
-    let mut records: BTreeMap<ObjectKey, Topology> = BTreeMap::new();
-    let mut attributes = AttributeStore::default();
-    let key_of = |entity: EntityRef| match entity {
-        EntityRef::Edge(id) => arena_identity(CacheObject::Edge(id)),
-        EntityRef::Face(id) => arena_identity(CacheObject::Face(id)),
-        EntityRef::Vertex(id) => arena_identity(CacheObject::Vertex(id)),
-        EntityRef::Edgeuse(id) => local_identity(crate::topology::edgeuse::p1::TYPE, id.index()),
-        EntityRef::Vertexuse(id) => local_identity(vertexuse::TYPE, id.index()),
-        EntityRef::Loopuse(id) => local_identity(crate::topology::loopuse::TYPE, id.index()),
-        _ => local_identity(crate::topology::topology::TYPE, 0),
-    };
+    // a default record per object (upstream every object has its `SmTopology` part)
+    let mut state = crate::topology::brep::p2::ArenaNotifyState::with_attributes_of(b);
     // The kernel's context is the split's own `k`; no separate object context.
-    let mut env = edge::NotifyEnv {
-        records: &mut records,
-        attributes: &mut attributes,
-        context: None,
-        key_of: &key_of,
-    };
-    let out =
-        crate::topology::brep::p9::make_vertex_split_edge(k, b, e, t, &mut env, &|edge, kind| {
-            local_identity(kind, edge.index())
-        })?;
+    let out = crate::topology::brep::p9::make_vertex_split_edge(
+        k,
+        b,
+        e,
+        t,
+        &mut state.env(None),
+        &|edge, kind| local_identity(kind, edge.index()),
+    );
+    let restored = state.restore_attributes(b);
+    let out = out?;
+    restored?;
     if !out.split {
         return Err(SolidError::sm_err(OP));
     }
@@ -2774,6 +2785,112 @@ mod tests {
     use crate::topology::EdgeuseOwner;
 
     #[test]
+    fn actual_stitch_split_keeps_curve_identity_and_refusal_prefix() {
+        use crate::curve::curve::Curve;
+        use crate::geom::attribute::{ids, Attribute, Behavior};
+        use crate::topology::brep::{p3, p9};
+        use crate::topology::edge::notification_test_support as callbacks;
+        use std::cell::RefCell;
+        for refuse_copy in [false, true] {
+            let mut k = Kernel::default();
+            let mut b = crate::primitive::api_primitives::create_box(
+                &mut k,
+                Point3::ZERO,
+                10.0,
+                20.0,
+                30.0,
+            )
+            .unwrap();
+            b.set_editing_enabled(true);
+            let edge = b.edge_list()[0];
+            let serial = b.notify_serial().unwrap();
+            let key_of = |entity| p3::topology_ref(serial, entity);
+            let interval = b.edge(edge).unwrap().interval;
+            let parameter = interval.evaluate(0.5);
+            let original = b.edge_mut(edge).unwrap().curve.as_mut().unwrap();
+            let original_key = k
+                .context
+                .geometry_key(original.notify_identity_slot())
+                .unwrap();
+            let before = (b.edge_list().len(), b.vertex_list().len());
+            let mut records = crate::topology::topology::NotifyRecords::new();
+            p3::seed_records(&mut records, &b, &key_of);
+            let mut attributes = AttributeStore::default();
+            let marker = attributes
+                .insert(Attribute::long(ids::USER_1, 73, Behavior::Copy))
+                .unwrap();
+            attributes.add_attribute(original_key, marker).unwrap();
+            let events = callbacks::install(&mut k.context);
+            let issued = RefCell::new(Vec::new());
+            let issuer = |id: EdgeId, curve: &mut Curve, env: &mut edge::NotifyEnv<'_>| {
+                assert!(env.context.as_deref().unwrap().doing_boolean());
+                if refuse_copy && id != edge {
+                    assert_eq!(curve.notify_key(), None);
+                    return Err(SolidError::invalid_input(
+                        "test stitch issuer",
+                        "refused actual copy",
+                    ));
+                }
+                let identity = p9::issue_curve_identity(id, curve, env)?;
+                issued.borrow_mut().push((id, identity));
+                Ok(identity)
+            };
+            k.context.set_doing_boolean(true);
+            let result = Context::with_notification_context(&mut k, |k, context| {
+                let mut env = edge::NotifyEnv {
+                    records: &mut records,
+                    attributes: &mut attributes,
+                    context: Some(context),
+                    key_of: &key_of,
+                };
+                let mut edits = BorrowedStitchEdits {
+                    env: &mut env,
+                    curve_identity: p9::CurveIdentity::Actual(&issuer),
+                };
+                edits.split_edge(k, &mut b, edge, parameter)
+            })
+            .unwrap();
+            assert!(k.context.doing_boolean());
+            callbacks::assert_installed(&k.context, &events);
+            assert_eq!(
+                (b.edge_list().len(), b.vertex_list().len()),
+                (before.0 + 1, before.1 + 1)
+            );
+            assert_eq!(issued.borrow()[0].1.key, original_key);
+            let new_edge = *b.edge_list().last().unwrap();
+            if refuse_copy {
+                assert!(result.is_err());
+                assert_eq!(issued.borrow().len(), 1);
+                assert!(b.edge(new_edge).unwrap().curve.is_none());
+                assert!(!events
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|event| event.operation == NotifyOperation::Split));
+            } else {
+                let (_, Some(created), Some(_)) = result.unwrap() else {
+                    panic!("missing real split outputs")
+                };
+                assert_eq!(created, new_edge);
+                let key = issued.borrow()[1].1.key;
+                assert_ne!(key, original_key);
+                assert_ne!(key, key_of(EntityRef::Edge(created)).key);
+                let curve = b.edge(created).unwrap().curve.as_ref().unwrap();
+                assert_eq!(curve.notify_key(), Some(key));
+                assert_eq!(curve.owner(), Some(key_of(EntityRef::Edge(created))));
+                let copied = attributes.find_attribute(key, ids::USER_1).unwrap();
+                assert_ne!(copied, marker);
+                assert_eq!(attributes.get(copied).unwrap().long_value(), Some(73));
+                assert!(events
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|event| event.operation == NotifyOperation::Split));
+            }
+        }
+    }
+
+    #[test]
     fn sort_by_param_matches_insertion_order() {
         let p = [3.0, 1.0, 2.0, 1.0, 5.0];
         let s = sort_by_param(5, |_| false, &p).unwrap();
@@ -2814,7 +2931,7 @@ mod tests {
             .unwrap();
         attributes.add_attribute(face_key, marker).unwrap();
         attributes.add_attribute(vertex_key, marker).unwrap();
-        let mut records = BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         records.insert(face_key, Topology::new());
         records.insert(copied_face_key, Topology::new());
         records.insert(vertex_key, Topology::new());
@@ -2833,7 +2950,7 @@ mod tests {
             };
             let mut edits = BorrowedStitchEdits {
                 env: &mut env,
-                curve_ref: &reject_curve,
+                curve_identity: crate::topology::brep::p9::CurveIdentity::Checked(&reject_curve),
             };
             let mut callback = DefaultStitchCallback::new();
             let mut stitch = Stitch::new(&mut callback, 0.01, true, true);

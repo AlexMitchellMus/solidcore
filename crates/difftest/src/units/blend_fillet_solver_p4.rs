@@ -16,11 +16,10 @@
 //!   call (80 values, whatever the status) and both offset distances. Surfaces of
 //!   revolution are built as unit `surface.surf_of_revolution_p1` builds them (cylinder,
 //!   cone, sphere and torus shapes from line and circle generators); the build status is
-//!   compared when one fails. Before every case that can reach the finite-difference
-//!   block (finite-difference solver, incoming `SM_IP_TANGENT_POINT`, or a previous point)
-//!   the C++ `sdStaticStep` is probed ([`ffi::static_step`], which latches it with `1e-5`
-//!   when nothing has) and the case's [`Kernel::fillet_point_step`] is seeded with it, so
-//!   both sides step with the same value whatever ran earlier in the process (ND-3).
+//!   compared when one fails. Every case's C++ side runs in a fresh child process, where
+//!   the library's `sdStaticStep` starts unlatched as on a first call, and every Rust case
+//!   on a fresh [`Kernel`]; the step each side leaves latched is compared
+//!   (`fillet_point_step`; the C++ one read by [`ffi::static_step`] in the child, ND-3).
 //! - `calc_geom`: `CalcFilletGeom` on a rectangle sheet's edge (see the ffi module):
 //!   a non-B-spline (`SmHermiteCurve`) edge curve, and a B-spline edge curve with the
 //!   solver's bare fillet geometry (the one the `SmFilletSolver` constructor adds; no
@@ -63,7 +62,6 @@ use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_solver_p4::{self as ffi};
 
 use super::surface_surf_of_revolution_p1 as rev;
-use super::topology_edgeuse_p1::import;
 use crate::case::CaseContext;
 use crate::runner::default_cases;
 use crate::util::{p2, v3};
@@ -321,19 +319,27 @@ fn calc_output(rec: &[f64], n_in: usize) -> Result<Output, HarnessError> {
 
 // ---- C++ side -----------------------------------------------------------------------------
 
+/// Compared key: the `sdStaticStep` latch (ND-3) after the case.
+const POINT_STEP: &str = "fillet_point_step";
+
+/// Every case's C++ side runs in a fresh child process ([`ffi::with_fresh_static_step`]),
+/// where `sdStaticStep` starts unlatched; the step it leaves is compared, never seeded.
 fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
-    match i {
+    let (out, step) = match i {
         Inputs::PointValues(p) => {
-            let rec = ffi::point_values(&ffi_point_program(p)?)
+            let program = ffi_point_program(p)?;
+            let (rec, step) = ffi::with_fresh_static_step(|| ffi::point_values(&program))
                 .map_err(|e| harness(format!("C++: {e}")))?;
-            point_output(&rec)
+            (point_output(&rec)?, step)
         }
         Inputs::CalcGeom(c) => {
-            let rec =
-                ffi::calc_geom(&ffi_calc_program(c)).map_err(|e| harness(format!("C++: {e}")))?;
-            calc_output(&rec, c.g1.len())
+            let program = ffi_calc_program(c);
+            let (rec, step) = ffi::with_fresh_static_step(|| ffi::calc_geom(&program))
+                .map_err(|e| harness(format!("C++: {e}")))?;
+            (calc_output(&rec, c.g1.len())?, step)
         }
-    }
+    };
+    Ok(out.values(POINT_STEP, vec![step]))
 }
 
 // ---- Rust side ----------------------------------------------------------------------------
@@ -362,7 +368,7 @@ fn setup<T>(r: solidcore::Result<T>, what: &str) -> Result<T, Fail> {
 /// cannot return.
 fn status(e: &SolidError) -> i64 {
     match e {
-        SolidError::InvalidInput { .. } => 1007,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007,
         SolidError::Upstream { code, .. } => i64::from(*code),
         _ => -1,
     }
@@ -608,7 +614,7 @@ impl FilletSolverOps for ShimSolver {
     fn load_initial_values(
         &mut self,
         k: &Kernel,
-        brep: Option<&Brep>,
+        brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         surface1: &mut OffsetSurface,
@@ -631,7 +637,12 @@ impl FilletSolverOps for ShimSolver {
         )
     }
 
-    fn set_extension_flags(&mut self, b: &Brep) -> solidcore::Result<()> {
+    fn set_extension_flags(
+        &mut self,
+        k: &Kernel,
+        b: &Brep,
+        corners: &dyn solidcore::blend::fillet_solver::p1::ExtensionCorners,
+    ) -> solidcore::Result<()> {
         match self.extend {
             Some([before, after]) => {
                 let s = self.inner.solver_mut();
@@ -639,26 +650,19 @@ impl FilletSolverOps for ShimSolver {
                 s.extend_after = after;
                 Ok(())
             }
-            None => self.inner.set_extension_flags(b),
+            None => self.inner.set_extension_flags(k, b, corners),
         }
     }
 }
 
-fn rust_point_case(i: &PointCase) -> Result<Output, Fail> {
-    let k = Kernel::default();
-    let may_step =
-        i.fd || i.point.t == IntersectionPointType::TangentPoint.code() as u8 || i.prev.is_some();
-    if may_step {
-        let step = ffi::static_step().map_err(|e| harness(format!("static step probe: {e}")))?;
-        k.fillet_point_step.set(Some(step));
-    }
-    let a = match rust_surface(&k, &i.a)? {
+fn rust_point_case(k: &Kernel, i: &PointCase) -> Result<Output, Fail> {
+    let a = match rust_surface(k, &i.a)? {
         Ok(s) => s,
         Err(b) => return Ok(Output::new().int("build", b)),
     };
     let b = match &i.b {
         None => None,
-        Some(s) => match rust_surface(&k, s)? {
+        Some(s) => match rust_surface(k, s)? {
             Ok(s) => Some(s),
             Err(b) => return Ok(Output::new().int("build", b)),
         },
@@ -666,7 +670,7 @@ fn rust_point_case(i: &PointCase) -> Result<Output, Fail> {
     let b_id = u32::from(b.is_some());
     let bs = b.unwrap_or_else(|| a.clone());
     let inner = cr_solver(
-        &k,
+        k,
         i.tol,
         i.ang_tol,
         i.tangency_tol,
@@ -688,7 +692,7 @@ fn rust_point_case(i: &PointCase) -> Result<Output, Fail> {
     };
     let r = FilletSolver::compute_point_values(
         &mut ops,
-        &k,
+        k,
         i.uv.map(p2),
         &ext(i.dom1),
         &ext(i.dom2),
@@ -714,11 +718,56 @@ fn rust_point_case(i: &PointCase) -> Result<Output, Fail> {
         .values("offsets", offsets))
 }
 
-fn rust_calc_case(c: &CalcCase) -> Result<Output, Fail> {
-    let k = Kernel::default();
-    let ex = ffi::calc_target(c.w, c.h, c.tol, c.uv_curves)
-        .map_err(|e| harness(format!("C++ target: {e}")))?;
-    let mut target = import(&ex)?;
+/// The shim's `p4_rectangle` built by the Rust kernel: `CreateRectangle(ctx, tol, w, h,
+/// SmAxis2Placement())`, with `uv_curves` then `CreateUVTrimCurves(FALSE, ...)` on each
+/// face in traversal order (status ignored), renumbered into the shim's export traversal
+/// order ([`crate::own_builder::finish`]). No C++ state reaches the Rust side.
+///
+/// # Errors
+///
+/// The Rust build's error (an unported callee stays visible); a harness error when the
+/// renumbering fails.
+pub(crate) fn own_rectangle(
+    w: f64,
+    h: f64,
+    tol: f64,
+    uv_curves: bool,
+) -> Result<Result<Brep, SolidError>, HarnessError> {
+    use crate::own_builder::{finish, walk, Built, Conventions};
+    let mut k = Kernel::default();
+    let raw = (|| -> Result<Brep, SolidError> {
+        let mut b = solidcore::primitive::primitive_creation::p1::create_rectangle(
+            &mut k,
+            tol,
+            w,
+            h,
+            &solidcore::geom::axis2_placement::Axis2Placement::default(),
+        )?;
+        if uv_curves {
+            for f in walk(&b)?.faces.items {
+                // status ignored, as the shim; an unported callee stays visible
+                if let Err(e) =
+                    solidcore::topology::face::p3::create_uv_trim_curves(&k, &mut b, f, false, None)
+                {
+                    if e.is_unported() {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        Ok(b)
+    })();
+    Ok(
+        match finish(&mut k, raw, false, false, &Conventions::EDGEUSE_GRAPH)? {
+            Built::Brep(b) => Ok(*b),
+            Built::Failed(e) => Err(e),
+        },
+    )
+}
+
+fn rust_calc_case(k: &Kernel, c: &CalcCase) -> Result<Output, Fail> {
+    let mut target = own_rectangle(c.w, c.h, c.tol, c.uv_curves)?
+        .map_err(|e| harness(format!("rust target: {e}")))?;
     let edge_id = EdgeId::from_index(u32::try_from(c.edge).map_err(|_| harness("edge"))?);
     let edge = target
         .edge(edge_id)
@@ -760,7 +809,7 @@ fn rust_calc_case(c: &CalcCase) -> Result<Output, Fail> {
             .map_err(|e| harness(format!("edge: {e}")))?
             .curve = Some(Curve::from(HermiteCurve::new(pa, t, pb, t, 3)));
     }
-    let mut inner = cr_solver(&k, 1e-5, 0.1, 0.03, c.radii, c.orient, srf.clone(), srf, 0)?;
+    let mut inner = cr_solver(k, 1e-5, 0.1, 0.03, c.radii, c.orient, srf.clone(), srf, 0)?;
     inner.solver.edgeuses = [Some(eu0), Some(eu1)];
     inner.solver.g1_knots.clone_from(&knots_in);
     let mut fb = FilletBrep::new();
@@ -769,7 +818,7 @@ fn rust_calc_case(c: &CalcCase) -> Result<Output, Fail> {
         // shim sets), with the solver's offset surfaces (`FinishConstruction`)
         let mut g = setup(
             FilletGeom::new(
-                &k,
+                k,
                 Some((FilletSolverId(0), &inner.solver)),
                 FilletGeomType::Default,
             ),
@@ -786,7 +835,7 @@ fn rust_calc_case(c: &CalcCase) -> Result<Output, Fail> {
     };
     // the executive's solver table (this solver, id 0), as the shim's executive holds
     let table = vec![ops.inner.solver.clone()];
-    let r = FilletSolver::calc_fillet_geom(&mut ops, &k, &mut target, &mut fb, &table);
+    let r = FilletSolver::calc_fillet_geom(&mut ops, k, &mut target, &mut fb, &table);
     let st = op_status(r)?;
     let s = ops.solver();
     Ok(Output::new()
@@ -800,13 +849,16 @@ fn rust_calc_case(c: &CalcCase) -> Result<Output, Fail> {
         .values("knots_in", knots_in))
 }
 
+/// Every case runs on a fresh kernel, whose `sdStaticStep` latch sets itself.
 fn rust(i: &Inputs) -> Result<Output, HarnessError> {
+    let k = Kernel::default();
     let r = match i {
-        Inputs::PointValues(p) => rust_point_case(p),
-        Inputs::CalcGeom(c) => rust_calc_case(c),
+        Inputs::PointValues(p) => rust_point_case(&k, p),
+        Inputs::CalcGeom(c) => rust_calc_case(&k, c),
     };
     match r {
-        Ok(o) => Ok(o),
+        // read as the C++ probe reads `sdStaticStep` (its crossing point latches 1e-5)
+        Ok(o) => Ok(o.values(POINT_STEP, vec![k.fillet_point_step.get().unwrap_or(1.0e-5)])),
         Err(Fail::Deferred(d)) => Ok(*d),
         Err(Fail::Harness(e)) => Err(e),
     }
@@ -1029,7 +1081,8 @@ fn gen_surface(rng: &mut Rng, s: f64) -> SurfaceIn {
 /// The natural UV domain the Rust surface reports (`umin vmin umax vmax`).
 fn natural(k: &Kernel, s: &SurfaceIn) -> Option<[f64; 4]> {
     let srf = rust_surface(k, s).ok()?.ok()?;
-    let d = srf.natural_uv_domain();
+    // (runner helper that does not return Result)
+    let d = srf.natural_uv_domain_if_built();
     Some([d.min().x, d.min().y, d.max().x, d.max().y])
 }
 
@@ -1570,8 +1623,8 @@ mod tests {
     /// values once the Rust side lands), and the probe names one of the two steps.
     #[test]
     fn cpp_outcomes() {
-        let step = ffi::static_step().expect("probe");
-        assert!(step == 1e-3 || step == 1e-5, "{step}");
+        let (_, step) = ffi::with_fresh_static_step(|| Ok(vec![])).expect("probe");
+        assert_eq!(step, 1e-5, "a fresh process latches the probe's own step");
         let mut rng = Rng::new(11);
         let (mut ok, mut total) = (0, 0);
         let mut statuses = std::collections::BTreeMap::new();

@@ -50,6 +50,12 @@
 //! - **Bounded loops.** The start point loop pops one start point per pass; no pass
 //!   adds start points (`TraceCurve` adds none), so it ends after at most as many
 //!   passes as `FindBoundaryStartPoints` made points.
+//! - **Opt-in fix (WR-76, #392).** With
+//!   [`UpstreamFixes::ssi_trace_tangent_curves_once`](crate::kernel::UpstreamFixes::ssi_trace_tangent_curves_once)
+//!   a traced curve removes, before it is flushed, the start points left in a tangent
+//!   cluster with either of its ends (`SurfaceIntersector::remove_end_tangent_clusters`);
+//!   the SolidCraft fork's tangency-labs/smlib@0ce09f2. Off by default (upstream
+//!   behaviour).
 //! - **Not ported here.** The `SM_DEBUG_CODE` blocks (graphics, dumps, the start
 //!   point reordering experiment), `SmCacheCheckOutIn` (the caches are owned by the
 //!   caller), the unused context argument and the `SM_ASSERT`s.
@@ -493,6 +499,8 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
         trees_ready: bool,
     ) -> Result<SurfaceIntersection> {
         let mut result = SurfaceIntersection::default();
+        // filled by FindInteriorCurves, read by the tangential curve pass (WR-75)
+        self.tangent_curve_seeds.clear();
 
         if let Some(t) = opt_approx_tol_3d {
             self.base.this_approx_tol_3d = t;
@@ -539,7 +547,7 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
         let caches: &'t [SurfaceCache<O>] = caches;
         let cache1 = caches.first().ok_or(SolidError::null_pointer(OP_DI))?;
         let cache2 = caches.get(1).unwrap_or(cache1);
-        self.set_surface_caches(cache1, cache2)?;
+        self.bind_caches(cache1, cache2)?;
 
         // no work - root treeNode bounding boxes are disjoint
         let root_box = |c: &SurfaceCache<O>| -> Result<Extent3d> {
@@ -650,9 +658,13 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
         }
 
         // get StartPoints = Surf1->NaturalBoundaryCurve/Surf2 Intersections and
-        // Surf1/Surf2->NaturalBoundaryCurve Intersections (on copies of the caches)
+        // Surf1/Surf2->NaturalBoundaryCurve Intersections (on copies of the caches:
+        // exact ones, since upstream searches its own caches)
         if !self.base.doing_self_intersection {
-            let mut boundary_caches = caches.to_vec();
+            let mut boundary_caches = caches
+                .iter()
+                .map(SurfaceCache::clone_for_evaluation)
+                .collect::<Result<Vec<_>>>()?;
             self.base.find_boundary_start_points_with_queries(
                 k,
                 &mut boundary_caches,
@@ -687,7 +699,13 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
                         && (sp.v_param_type(srf) == ExtentPointType::Inside
                             || is_zero_to_tol(sp.uv_deriv(srf).y, EFF_ZERO))
                 };
-                if !self.base.curve_is_closed
+                // (opt-in, WR-80: a trace that added no point, its start already on a
+                // found curve, has nothing to trace back from; upstream reverses the empty
+                // list and fails with SM_ERR_NULL_POINTER)
+                let traced =
+                    !k.fixes.ssi_no_reverse_of_empty_trace || !self.base.curve_points.is_empty();
+                if traced
+                    && !self.base.curve_is_closed
                     && input_trace_direction == self.base.curve_trace_direction
                     && along(SrfIndex::First)
                     && along(SrfIndex::Second)
@@ -700,6 +718,13 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
                     // restore the curve direction (upstream multiplies by 1.0)
                     self.base.curve_trace_direction *= 1.0;
                     self.base.reverse_curve_direction()?;
+                }
+
+                // opt-in fix (WR-76, #392): a traced curve that ends on a boundary
+                // inside a tangential contact consumes the start points of that
+                // contact's boundary cluster
+                if k.fixes.ssi_trace_tangent_curves_once {
+                    self.base.remove_end_tangent_clusters(k)?;
                 }
 
                 // create the curves from the points in m_vCurvePoints
@@ -722,6 +747,44 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
             deviations: core::mem::take(&mut out.deviations),
         };
         self.find_interior_curves(k, &mut interior)?;
+
+        // not upstream (WR-75, opt-in; the fork's FindTangentCurves): trace the
+        // tangential curves the marcher above cannot follow
+        let mut tangent_nodes = Vec::new();
+        if k.fixes.ssi_tangent_curve_tracer {
+            let size = crate::math::min2(root1.size().length(), root2.size().length());
+            let seeds = core::mem::take(&mut self.tangent_curve_seeds);
+            let mut curves = TsectCurves {
+                curves_3d: core::mem::take(&mut interior.curves_3d),
+                uv_curves: [
+                    core::mem::take(&mut interior.surface1_uv_curves),
+                    core::mem::take(&mut interior.surface2_uv_curves),
+                ],
+                curve_types: core::mem::take(&mut interior.curve_types),
+                deviations: core::mem::take(&mut interior.deviations),
+            };
+            let traced = super::tangent_curves::find_tangent_curves(
+                k,
+                &mut self.base,
+                size,
+                &seeds,
+                &mut curves,
+            );
+            let TsectCurves {
+                curves_3d,
+                uv_curves: [surface1_uv_curves, surface2_uv_curves],
+                curve_types,
+                deviations,
+            } = curves;
+            interior = InteriorCurves {
+                curves_3d,
+                surface1_uv_curves,
+                surface2_uv_curves,
+                curve_types,
+                deviations,
+            };
+            tangent_nodes = traced?;
+        }
         let InteriorCurves {
             mut curves_3d,
             mut surface1_uv_curves,
@@ -759,6 +822,21 @@ impl<'t, O: SolutionObject + Copy + PartialEq + 't> AdvSurfaceIntersector<'_, 't
                 }
             }
             ii += 1;
+        }
+
+        // not upstream (WR-75, opt-in; the fork's AddTangentNodes): report the singular
+        // points where crossing branches meet
+        if k.fixes.ssi_tangent_curve_tracer {
+            super::tangent_curves::add_tangent_nodes(
+                k,
+                &self.base,
+                &tangent_nodes,
+                &mut curves_3d,
+                &mut surface1_uv_curves,
+                &mut surface2_uv_curves,
+                &mut curve_types,
+                &mut deviations,
+            )?;
         }
 
         // set outputs

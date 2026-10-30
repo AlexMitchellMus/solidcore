@@ -117,52 +117,23 @@ pub(crate) enum SrfIn {
     },
 }
 
-fn numbers(path: &str) -> Result<Vec<f64>, HarnessError> {
-    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
-    text.split_whitespace()
-        .map(|t| t.parse::<f64>().map_err(|e| harness(format!("{path}: {e}"))))
-        .collect()
-}
-
-fn int(path: &str, v: f64) -> Result<usize, HarnessError> {
-    if v.fract() != 0.0 || v < 0.0 {
-        return Err(harness(format!("{path}: bad count {v}")));
-    }
-    Ok(v as usize)
-}
+#[path = "fixtures/surface_surface_p7_sms.rs"]
+mod sms;
 
 /// Reads an upstream `.sms` text file (as unit `surface.surface_p2`): `n m`, `p q`,
 /// rational flag, `(n+1)(m+1)` points (`x y z`, or `wx wy wz w` when rational, v index
 /// fastest), `n+p+2` u knots, `m+q+2` v knots.
 fn read_sms(path: &str) -> Result<BssIn, HarnessError> {
-    let v = numbers(path)?;
-    let mut it = v.into_iter();
-    let mut num = || it.next().ok_or_else(|| harness(format!("{path}: truncated")));
-    let n = int(path, num()?)?;
-    let m = int(path, num()?)?;
-    let p = int(path, num()?)?;
-    let q = int(path, num()?)?;
-    let rat = num()? != 0.0;
-    let mut net = Vec::new();
-    for _ in 0..=n {
-        let mut row = Vec::new();
-        for _ in 0..=m {
-            let (x, y, z) = (num()?, num()?, num()?);
-            let w = if rat { num()? } else { NOW };
-            row.push([x, y, z, w]);
-        }
-        net.push(row);
-    }
-    let u = (0..n + p + 2).map(|_| num()).collect::<Result<Vec<_>, _>>()?;
-    let v = (0..m + q + 2).map(|_| num()).collect::<Result<Vec<_>, _>>()?;
+    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
+    let parsed = sms::parse(path, &text, NOW).map_err(harness)?;
     Ok(BssIn {
         oob: false,
         form: default_form(),
-        net,
-        p,
-        q,
-        u,
-        v,
+        net: parsed.net,
+        p: parsed.p,
+        q: parsed.q,
+        u: parsed.u,
+        v: parsed.v,
     })
 }
 
@@ -697,7 +668,7 @@ pub(crate) fn req_of(v: u8) -> Result<SolutionRequested, HarnessError> {
 /// cannot return.
 pub(crate) fn status(e: &SolidError) -> f64 {
     match e {
-        SolidError::InvalidInput { .. } => 1007.0,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007.0,
         SolidError::Upstream { code, .. } => f64::from(*code),
         _ => -1.0,
     }
@@ -774,7 +745,8 @@ fn surface_handle(id: u8, s: &Surface) -> Handle {
     Handle {
         id,
         interval: None,
-        domain: Some(s.natural_uv_domain()),
+        // (runner helper without a kernel in scope)
+        domain: Some(s.natural_uv_domain_if_built()),
     }
 }
 
@@ -1124,7 +1096,7 @@ fn rust_run(k: &Kernel, i: &Inputs) -> Result<Vec<f64>, Fail> {
                 .collect();
             let cur = Curve::new(pw, curve.p, curve.u.clone())
                 .map_err(|e| harness(format!("curve input: {e}")))?;
-            let bc = BSplineCurve::from_nurb(cur, curve.dim, false);
+            let bc = SmCurve::from(BSplineCurve::from_nurb(cur, curve.dim, false));
             let k = Kernel::default();
             match st(s.create_parallel_projection_curves(&k, &dom_of(*dom), &bc, v3(*vec), *dist, None, None))? {
                 Ok((c3d, _)) => o.extend([0.0, c3d.len() as f64]),
@@ -1395,7 +1367,8 @@ pub(crate) fn natural(s: &SrfIn) -> [f64; 4] {
         SrfIn::Plane { .. } | SrfIn::Revolution { .. } => {
             let d = surface_of(s).map_or_else(
                 |_| Extent2d::from_points(Point2::new(0.0, 0.0), Point2::new(1.0, 1.0)),
-                |x| x.natural_uv_domain(),
+                // (runner helper without a kernel in scope)
+                |x| x.natural_uv_domain_if_built(),
             );
             [d.min().x, d.min().y, d.max().x, d.max().y]
         }
@@ -1873,5 +1846,4 @@ mod tests {
         assert!(stats.len() >= 22, "{}", stats.len());
     }
 }
-
 

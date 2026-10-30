@@ -13,6 +13,13 @@
 //! documented in the ffi module (status first). A Rust error maps to its `SmStatus` (`1007`
 //! for `InvalidInput`, `-1` for one upstream cannot return); `Unported` defers the case.
 //!
+//! `CoverOtherCoincidentSurface` also runs on planes and on real `SmCylinder` / `SmCone` /
+//! `SmSphere` / `SmTorus` surfaces (`{"analytic": {"kind": ..}}`, built as `--ssi-corpus`
+//! builds them; the Rust side with [`crate::ssi::kernel::rust_surface`]): the
+//! `cover_analytic.json` fixtures pair them with each other, planes and B-splines, so the
+//! plane, bilinear, `SM_CAST_PTR(SmBSplineSurface)` and fallback candidates are each
+//! reached. Each such C++ case runs in a fresh process.
+//!
 //! Deferred cases: every `LocalPointSolve` of an operation but `SM_SO_INTERSECT`/`MAXIMIZE`
 //! (`LocalPointSolve_1`, `surface.surface_point_solve_p3`), the Newton solve of
 //! `LocalPointSolve_0` (`SmFindPSNormalENFO`), `IsSingularity` away from a singularity
@@ -54,6 +61,8 @@ use solidcore::surface::surface::p7::SpGlobalSolver;
 use solidcore::surface::surface::Surface;
 use solidcore::SolidError;
 use solidcore_ffi::units::surface_surface_p5::{self as ffi, Op};
+
+use crate::ssi::case::SurfaceSpec;
 
 use crate::case::CaseContext;
 use crate::runner::default_cases;
@@ -106,56 +115,183 @@ enum SrfIn {
         basis: Box<SrfIn>,
         implicit: bool,
     },
+    /// An analytic surface (`CoverOtherCoincidentSurface` only).
+    Analytic(Box<AnalyticIn>),
 }
 
-fn numbers(path: &str) -> Result<Vec<f64>, HarnessError> {
-    let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
-    text.split_whitespace()
-        .map(|t| {
-            t.parse::<f64>()
-                .map_err(|e| harness(format!("{path}: {e}")))
-        })
-        .collect()
+/// A real `SmCylinder` / `SmCone` / `SmSphere` / `SmTorus` (the `--ssi-corpus`
+/// construction, `harness/cpp/shim/sc_analytic_surface.h`; angles in degrees).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+enum AnalyticIn {
+    Cylinder {
+        origin: [f64; 3],
+        x: [f64; 3],
+        y: [f64; 3],
+        radius: f64,
+        angle: [f64; 2],
+        height: [f64; 2],
+    },
+    Cone {
+        apex: [f64; 3],
+        x: [f64; 3],
+        y: [f64; 3],
+        half_angle_deg: f64,
+        height: [f64; 2],
+    },
+    Sphere {
+        center: [f64; 3],
+        x: [f64; 3],
+        y: [f64; 3],
+        radius: f64,
+        lon: [f64; 2],
+        lat: [f64; 2],
+    },
+    Torus {
+        center: [f64; 3],
+        x: [f64; 3],
+        y: [f64; 3],
+        major_radius: f64,
+        minor_radius: f64,
+        major: [f64; 2],
+        minor: [f64; 2],
+    },
 }
 
-fn int(path: &str, v: f64) -> Result<usize, HarnessError> {
-    if v.fract() != 0.0 || v < 0.0 {
-        return Err(harness(format!("{path}: bad count {v}")));
+impl AnalyticIn {
+    /// The shim's block: the kind `4..=7` and its values.
+    fn push(&self, o: &mut Vec<f64>) {
+        match self {
+            AnalyticIn::Cylinder {
+                origin,
+                x,
+                y,
+                radius,
+                angle,
+                height,
+            } => {
+                o.push(4.0);
+                o.extend(origin.iter().chain(x).chain(y));
+                o.push(*radius);
+                o.extend(angle.iter().chain(height));
+            }
+            AnalyticIn::Cone {
+                apex,
+                x,
+                y,
+                half_angle_deg,
+                height,
+            } => {
+                o.push(5.0);
+                o.extend(apex.iter().chain(x).chain(y));
+                o.push(*half_angle_deg);
+                o.extend(height);
+            }
+            AnalyticIn::Sphere {
+                center,
+                x,
+                y,
+                radius,
+                lon,
+                lat,
+            } => {
+                o.push(6.0);
+                o.extend(center.iter().chain(x).chain(y));
+                o.push(*radius);
+                o.extend(lon.iter().chain(lat));
+            }
+            AnalyticIn::Torus {
+                center,
+                x,
+                y,
+                major_radius,
+                minor_radius,
+                major,
+                minor,
+            } => {
+                o.push(7.0);
+                o.extend(center.iter().chain(x).chain(y));
+                o.extend([*major_radius, *minor_radius]);
+                o.extend(major.iter().chain(minor));
+            }
+        }
     }
-    Ok(v as usize)
+
+    /// The `--ssi-corpus` description.
+    fn spec(&self) -> SurfaceSpec {
+        match self.clone() {
+            AnalyticIn::Cylinder {
+                origin,
+                x,
+                y,
+                radius,
+                angle,
+                height,
+            } => SurfaceSpec::Cylinder {
+                origin,
+                xaxis: x,
+                yaxis: y,
+                radius,
+                angle,
+                height,
+            },
+            AnalyticIn::Cone {
+                apex,
+                x,
+                y,
+                half_angle_deg,
+                height,
+            } => SurfaceSpec::Cone {
+                apex,
+                xaxis: x,
+                yaxis: y,
+                half_angle_deg,
+                height,
+            },
+            AnalyticIn::Sphere {
+                center,
+                x,
+                y,
+                radius,
+                lon,
+                lat,
+            } => SurfaceSpec::Sphere {
+                center,
+                xaxis: x,
+                yaxis: y,
+                radius,
+                lon,
+                lat,
+            },
+            AnalyticIn::Torus {
+                center,
+                x,
+                y,
+                major_radius,
+                minor_radius,
+                major,
+                minor,
+            } => SurfaceSpec::Torus {
+                center,
+                xaxis: x,
+                yaxis: y,
+                major_radius,
+                minor_radius,
+                major,
+                minor,
+            },
+        }
+    }
 }
+
+#[path = "fixtures/surface_surface_p5_sms.rs"]
+mod sms;
 
 /// Reads an upstream `.sms` text file (as unit `surface.surface_p2`): `n m`, `p q`,
 /// rational flag, `(n+1)(m+1)` points (`x y z`, or `wx wy wz w` when rational, v index
 /// fastest), `n+p+2` u knots, `m+q+2` v knots.
 fn read_sms(path: &str) -> Result<BssIn, HarnessError> {
-    let v = numbers(path)?;
-    let mut it = v.into_iter();
-    let mut num = || {
-        it.next()
-            .ok_or_else(|| harness(format!("{path}: truncated")))
-    };
-    let n = int(path, num()?)?;
-    let m = int(path, num()?)?;
-    let p = int(path, num()?)?;
-    let q = int(path, num()?)?;
-    let rat = num()? != 0.0;
-    let mut net = Vec::new();
-    for _ in 0..=n {
-        let mut row = Vec::new();
-        for _ in 0..=m {
-            let (x, y, z) = (num()?, num()?, num()?);
-            let w = if rat { num()? } else { NOW };
-            row.push([x, y, z, w]);
-        }
-        net.push(row);
-    }
-    let u = (0..n + p + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    let v = (0..m + q + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
+    let sms::ParsedSurface { net, p, q, u, v } = sms::read_sms(path)?;
     Ok(BssIn {
         oob: false,
         form: default_form(),
@@ -311,6 +447,7 @@ fn shape(s: &BssIn) -> Result<(usize, usize), HarnessError> {
 fn push_srf(o: &mut Vec<f64>, s: &SrfIn) -> Result<(), HarnessError> {
     match &resolve(s)? {
         SrfIn::Sms(_) => return Err(harness("unresolved surface file")),
+        SrfIn::Analytic(a) => a.push(o),
         SrfIn::Bounded { basis, implicit } => {
             o.push(2.0);
             push_srf(o, basis)?;
@@ -528,12 +665,20 @@ fn dom_of(d: [f64; 4]) -> Extent2d {
 fn surface_of(s: &SrfIn) -> Result<Surface, HarnessError> {
     match &resolve(s)? {
         SrfIn::Sms(_) => Err(harness("unresolved surface file")),
-        SrfIn::Bounded { basis, implicit } => Ok(Surface::from(CurveBoundedSurface::new(
-            surface_of(basis)?,
-            Vec::new(),
-            Vec::new(),
-            *implicit,
-        ).map_err(|e| HarnessError::new(e.to_string()))?)),
+        // the shim's construction, its NURB made as its GetNaturalUVDomain() makes it (a
+        // default kernel: the construction reads only the default tolerances)
+        SrfIn::Analytic(a) => match crate::ssi::kernel::rust_surface(&Kernel::default(), &a.spec()) {
+            Ok(Ok(srf)) => Ok(srf),
+            Ok(Err(d)) => Err(harness(format!(
+                "analytic surface: unported {} ({})",
+                d.symbol, d.unit
+            ))),
+            Err(e) => Err(harness(format!("analytic surface: {e}"))),
+        },
+        SrfIn::Bounded { basis, implicit } => Ok(Surface::from(
+            CurveBoundedSurface::new(surface_of(basis)?, Vec::new(), Vec::new(), *implicit)
+                .map_err(|e| HarnessError::new(e.to_string()))?,
+        )),
         SrfIn::Plane { o, n } => Ok(Surface::from(Plane::from_normal(v3(*o), v3(*n)))),
         SrfIn::Bspline(bs) => {
             let net = bs
@@ -600,7 +745,7 @@ fn status(e: &SolidError) -> f64 {
         eprintln!("rust error: {e:?}");
     }
     match e {
-        SolidError::InvalidInput { .. } => 1007.0,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007.0,
         SolidError::Upstream { code, .. } => f64::from(*code),
         _ => -1.0,
     }
@@ -827,7 +972,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
         OpIn::Cover { other, tol, merged } => {
             let mut this = s.clone();
             let mut other = surface_of(other)?;
-            match st(this.cover_other_coincident_surface(&k, &mut other, *tol, None, None, *merged))?
+            match st(this.cover_other_coincident_surface_deferring_trims(&k, &mut other, *tol, None, None, *merged))?
             {
                 Ok(r) => {
                     let which = r.covering_is_other.map_or(-1.0, b);
@@ -950,7 +1095,7 @@ fn rust_run(i: &Inputs) -> Result<Vec<f64>, Fail> {
             ));
             let mut base = GlobalSolver::with_tree(&tree, if *kind < 2 { 2 } else { 3 });
             base.tolerance_3d = *tol;
-            let dom = s.natural_uv_domain();
+            let dom = s.natural_uv_domain_with_nurb(&k).map_err(|e| HarnessError::new(e.to_string()))?;
             let (pair, pref) = match kind {
                 0 => must(
                     SpGlobalSolver {
@@ -1205,6 +1350,11 @@ fn gen_surface(rng: &mut Rng) -> SrfIn {
     }
 }
 
+/// Whether a surface input is a plain B-spline (a B-spline block or an `.sms` file).
+fn is_bspline_input(s: &SrfIn) -> bool {
+    matches!(s, SrfIn::Bspline(_) | SrfIn::Sms(_))
+}
+
 /// The natural domain `[u0, v0, u1, v1]` of a surface input.
 fn natural(s: &SrfIn) -> [f64; 4] {
     match s {
@@ -1218,6 +1368,8 @@ fn natural(s: &SrfIn) -> [f64; 4] {
         ],
         // the natural domain of a plane is about +-1.2e6: generated cases use a small window
         SrfIn::Plane { .. } => [-4.0, -4.0, 4.0, 4.0],
+        // (Cover only, never generated: no domain is read)
+        SrfIn::Analytic(_) => [0.0, 0.0, 1.0, 1.0],
     }
 }
 
@@ -1242,7 +1394,9 @@ fn gen_uv(rng: &mut Rng, s: &SrfIn) -> [f64; 2] {
     };
     let (ku, kv) = match base {
         SrfIn::Bspline(bs) => (Some(bs.u.as_slice()), Some(bs.v.as_slice())),
-        SrfIn::Plane { .. } | SrfIn::Sms(_) | SrfIn::Bounded { .. } => (None, None),
+        SrfIn::Plane { .. } | SrfIn::Sms(_) | SrfIn::Bounded { .. } | SrfIn::Analytic(_) => {
+            (None, None)
+        }
     };
     [gen_param(rng, u0, u1, ku), gen_param(rng, v0, v1, kv)]
 }
@@ -1330,7 +1484,7 @@ fn unit_scale(s: &SrfIn) -> bool {
             (0.5..=100.0).contains(&max)
         }
         // planes drop analytically (and generated ones work in a small window); files are unit sized
-        SrfIn::Plane { .. } | SrfIn::Sms(_) => true,
+        SrfIn::Plane { .. } | SrfIn::Sms(_) | SrfIn::Analytic(_) => true,
         SrfIn::Bounded { basis, .. } => unit_scale(basis),
     }
 }
@@ -1393,7 +1547,8 @@ fn gen_line(rng: &mut Rng) -> CrvIn {
 /// normal, where a plane's analytic drop stays inside the domain.
 fn gen_point_over(k: &Kernel, rng: &mut Rng, s: &SrfIn, offset: f64) -> Option<[f64; 3]> {
     let surface = surface_of(s).ok()?;
-    let dom = surface.natural_uv_domain();
+    // (runner helper that does not return Result)
+    let dom = surface.natural_uv_domain_if_built();
     let uv = dom.evaluate(rng.uniform(0.1, 0.9), rng.uniform(0.1, 0.9));
     let p = surface.evaluate_point(k, uv).ok()?;
     let n = surface
@@ -1634,6 +1789,13 @@ impl UnitDiff for Runner {
             };
             if ffi::validate(op, &input).is_err() {
                 continue;
+            }
+            // the generator's acceptance before planes and analytic surfaces reached
+            // Cover (fixtures only): B-spline surfaces on both sides
+            if let OpIn::Cover { other, .. } = &i.op {
+                if !(is_bspline_input(&i.surface) && is_bspline_input(other)) {
+                    continue;
+                }
             }
             if let Err(Fail::Harness(_)) = rust_run(&i) {
                 continue;

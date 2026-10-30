@@ -24,8 +24,8 @@
 //! wrong edge kind, jittered points; the C++ stores into a fresh `SmFilletGeom` with two
 //! rails, the Rust side compares the built parts, [`FilletSolver::cylinder_fillet_geom_parts`]
 //! etc.), `GetFilletCorner` above index 1 (`corner`) and `RecordFilletError`
-//! (`record`: the shim skips it, upstream reaches the `NULL` executive; the Rust side
-//! defers at `SmFilletGeom::GetFilletSurface`, unit `blend.fillet_geom_p1`).
+//! (`record`: compares the recorded `SmFilletErrorInfo` fields across rail-0, WR-190
+//! rail-1, dual-rail deduplication and empty-tsect modes).
 //!
 //! B-rep cases build the C++ B-rep, export it through unit `topology.edgeuse_p1` and
 //! import the same records on the Rust side; entity selectors are resolved modulo the
@@ -37,14 +37,16 @@ use serde_json::Value;
 use solidcore::blend::fillet_custom_solver::{
     InitialValues, JacobianLoad, OffsetSurface, SurfaceId,
 };
+use solidcore::blend::fillet_executive::p3::ErrorInfo;
 use solidcore::blend::fillet_geom::p1::{
-    FilStatus, FilletBrep, FilletEdgeType, FilletEdgeuse, FilletGeom, FilletGeomId, FilletGeomType,
-    FilletVertex, FilletVertexType, FilletVertexuse,
+    FilStatus, FilletBrep, FilletEdgeType, FilletEdgeuse, FilletErrorType, FilletGeom,
+    FilletGeomId, FilletGeomType, FilletVertex, FilletVertexType, FilletVertexuse,
 };
 use solidcore::blend::fillet_solver::p1::{
     FilletExecutiveRef, FilletSolver, FilletSolverOps, FilletSurfaceGenerator,
     OffsetSurfaceSlot,
 };
+use solidcore::blend::fillet_solver::p2::SolverErrorObject;
 use solidcore::curve::curve::Curve;
 use solidcore::curve::ellipse::Ellipse;
 use solidcore::curve::line::Line;
@@ -222,6 +224,25 @@ struct BrepCase {
     block: Vec<f64>,
     counts: [usize; 10],
     brep: Brep,
+}
+
+/// The Rust side's case: the source read by the Rust reader or built by the Rust kernel
+/// in the shim's traversal order ([`crate::own_reader::edgeuse_graph_brep`]), never
+/// imported from the C++ export; `Err(output)` when the Rust build fails, as
+/// [`brep_case`] reports the shim's failed build.
+fn own_case(brep: &BrepIn) -> Result<Result<BrepCase, Output>, HarnessError> {
+    let path = path_of(Some(brep))?;
+    let block = brep_block_of(Some(brep), false, false)?;
+    let brep = match crate::own_reader::edgeuse_graph_brep(&mut Kernel::default(), brep)? {
+        Ok(b) => b,
+        Err(e) => return Ok(Err(crate::own_builder::failed_output(&e))),
+    };
+    Ok(Ok(BrepCase {
+        path,
+        block,
+        counts: crate::own_builder::counts(&brep),
+        brep,
+    }))
 }
 
 /// Builds the case's B-rep on both sides; `Err(output)` when it cannot be built.
@@ -443,7 +464,7 @@ fn cpp(i: &Inputs) -> Result<Output, HarnessError> {
 
 fn status(e: &SolidError) -> f64 {
     match e {
-        SolidError::InvalidInput { .. } => 1007.0,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007.0,
         SolidError::Upstream { code, .. } => f64::from(*code),
         _ => -1.0,
     }
@@ -519,7 +540,7 @@ impl FilletSolverOps for TestSolver {
     fn load_initial_values(
         &mut self,
         _k: &Kernel,
-        _brep: Option<&Brep>,
+        _brep: Option<&mut Brep>,
         do_surf2_calcs: bool,
         rail_index: usize,
         _surface1: &mut OffsetSurface,
@@ -534,7 +555,8 @@ impl FilletSolverOps for TestSolver {
             let dom = slot_mut(&mut self.base, other)?
                 .surface
                 .base_surface()
-                .natural_uv_domain();
+                // (runner helper without a kernel in scope)
+                .natural_uv_domain_if_built();
             let idx2 = guess_t.len();
             set_ext(
                 intervals,
@@ -715,7 +737,8 @@ fn put_crv(k: &Kernel, o: &mut Vec<f64>, c: Option<&Curve>) {
 /// `put_srf` of the shim: `1 u0 v0 u1 v1` and the 3 x 3 grid of points.
 fn put_srf(k: &Kernel, o: &mut Vec<f64>, s: &Surface) {
     o.push(1.0);
-    let d = s.natural_uv_domain();
+    // (runner helper that does not return Result)
+    let d = s.natural_uv_domain_if_built();
     o.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
     for a in [0.0, 0.5, 1.0] {
         for bb in [0.0, 0.5, 1.0] {
@@ -738,7 +761,7 @@ fn put_stored(
 ) -> Result<(), SolidError> {
     let geom = fb.geom(g)?;
     let surface = geom
-        .fillet_surface()?
+        .fillet_surface(None)?
         .ok_or_else(|| SolidError::invalid_input("difftest", "no fillet surface"))?;
     put_srf(k, o, surface);
     let rails = [
@@ -1008,7 +1031,7 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             rail,
             ptype,
         } => {
-            let Ok(mut c) = brep_case(brep)? else {
+            let Ok(mut c) = own_case(brep)? else {
                 return Err(harness("B-rep failed on the Rust side only"));
             };
             o.push(0.0);
@@ -1117,7 +1140,7 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             let (target, n_eus) = if let Some(a) = analytic {
                 (analytic_brep(&k, a)?, WIRE_EDGEUSES)
             } else {
-                let Ok(c) = brep_case(brep)? else {
+                let Ok(c) = own_case(brep)? else {
                     return Err(harness("B-rep failed on the Rust side only"));
                 };
                 let n = n_eu(&c);
@@ -1176,7 +1199,7 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             )?;
             let empty = Brep::new();
             let index = usize::try_from(*index).map_err(|_| harness("index"))?;
-            match fs.base.fillet_corner(&empty, index) {
+            match fs.base.fillet_corner(&empty, index, &solidcore::blend::fillet_geom::p3::NoCorners) {
                 Ok(c) => {
                     o.push(b(c.is_none()));
                     o.push(fs.jacobian_size().unwrap_or(0) as f64);
@@ -1186,10 +1209,11 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
             }
         }
         Inputs::Record { cfg, brep, eu } => {
-            let Ok(c) = brep_case(brep)? else {
+            let Ok(c) = own_case(brep)? else {
                 return Err(harness("B-rep failed on the Rust side only"));
             };
             o.push(0.0);
+            let h = |e: SolidError| harness(e.to_string());
             let mut fs = solver_of(
                 cfg,
                 &Surfs {
@@ -1199,18 +1223,134 @@ fn rust_run(i: &Inputs, o: &mut Vec<f64>) -> Result<Result<(), SolidError>, Harn
                     orient: [1.0, 1.0],
                 },
             )?;
-            fs.base.edgeuses = [eu_id(sel(*eu, n_eu(&c))), None];
-            // the executive is not modelled: the report to it is the stop
-            // (`SmFilletExecutive::NoteFilletError`, deferred)
+            let eu0_idx = sel(*eu, n_eu(&c));
+            let eu0 = eu_id(eu0_idx).ok_or_else(|| harness("record edge use"))?;
+            let filleted = solidcore::topology::edgeuse::p1::edge(&c.brep, eu0).map_err(h)?;
+            fs.base.edgeuses = [Some(eu0), None];
+            fs.base.status = if eu0_idx % 2 == 0 {
+                FilStatus::SurfTracingFailure
+            } else {
+                FilStatus::Unprocessed
+            };
+            let err_code = if eu0_idx % 3 == 0 {
+                FilletErrorType::EdgeProblem
+            } else {
+                FilletErrorType::BadInt
+            };
             fs.base.executive = Some(FilletExecutiveRef);
-            let (fb, _) = fillet_geom_model(&k, None)?;
-            let pts = [TsectPnt::default()];
-            match fs
-                .base
-                .record_fillet_error(&c.brep, &fb, 5, &pts, "difftest")
-            {
+
+            let (mut fb, g) = fillet_geom_model(&k, None)?;
+            fs.base.fillet_geoms = vec![g];
+            let rail0 = fb
+                .geom(g)
+                .map_err(h)?
+                .rail(0)
+                .ok_or_else(|| harness("rail 0"))?;
+            let rail1 = fb
+                .geom(g)
+                .map_err(h)?
+                .rail(1)
+                .ok_or_else(|| harness("rail 1"))?;
+
+            let mut pts = Vec::new();
+            if cfg.target < -1.5 {
+                let r0 = Curve::from(
+                    solidcore::nurbs::b_spline_curve::BSplineCurve::create_line_segment(
+                        3,
+                        Vec3::ZERO,
+                        Vec3::new(1.0, 0.0, 0.0),
+                    )
+                    .map_err(h)?,
+                );
+                fb.brep_mut().edge_mut(rail0).map_err(h)?.curve = Some(r0);
+                let mut t = TsectPnt::default();
+                *t.crv_pos_mut() = Vec3::new(cfg.target, cfg.radius, fs.base.approx_tol_3d);
+                pts.push(t);
+            } else if cfg.target < 0.0 {
+                let r1 = Curve::from(
+                    solidcore::nurbs::b_spline_curve::BSplineCurve::create_line_segment(
+                        3,
+                        Vec3::ZERO,
+                        Vec3::new(0.0, 1.0, 0.0),
+                    )
+                    .map_err(h)?,
+                );
+                fb.brep_mut().edge_mut(rail1).map_err(h)?.curve = Some(r1);
+                let mut plane = solidcore::surface::plane::Plane::from_normal(
+                    Vec3::ZERO,
+                    Vec3::new(0.0, 0.0, 1.0),
+                );
+                plane.make_nurb().map_err(h)?;
+                fb.geom_mut(g)
+                    .map_err(h)?
+                    .set_fillet_surface(Some(Surface::from(plane)));
+                let cl = solidcore::nurbs::b_spline_curve::BSplineCurve::create_line_segment(
+                    3,
+                    Vec3::ZERO,
+                    Vec3::new(2.0, 0.0, 0.0),
+                )
+                .map_err(h)?;
+                fb.geom_mut(g).map_err(h)?.center_line_curve = Some(Curve::from(cl));
+                let mut t = TsectPnt::default();
+                *t.crv_pos_mut() = Vec3::new(cfg.target, -cfg.radius, fs.base.approx_tol_3d);
+                pts.push(t);
+            } else if cfg.target < 1.5 {
+                let r0 = Curve::from(
+                    solidcore::nurbs::b_spline_curve::BSplineCurve::create_line_segment(
+                        3,
+                        Vec3::ZERO,
+                        Vec3::new(1.0, 0.0, 0.0),
+                    )
+                    .map_err(h)?,
+                );
+                let r1 = Curve::from(
+                    solidcore::nurbs::b_spline_curve::BSplineCurve::create_line_segment(
+                        3,
+                        Vec3::ZERO,
+                        Vec3::new(0.0, 1.0, 0.0),
+                    )
+                    .map_err(h)?,
+                );
+                fb.brep_mut().edge_mut(rail0).map_err(h)?.curve = Some(r0);
+                fb.brep_mut().edge_mut(rail1).map_err(h)?.curve = Some(r1);
+                pts.push(TsectPnt::default());
+            }
+
+            let mut ei = ErrorInfo::default();
+            match fs.base.record_fillet_error_in(
+                &c.brep,
+                &fb,
+                err_code,
+                &pts,
+                Some("difftest"),
+                Some(&mut ei),
+            ) {
                 Ok(()) => {
-                    o.push(-2.0);
+                    o.push(f64::from(ei.code));
+                    o.push(f64::from(ei.status));
+                    o.push(f64::from(ei.edge_type));
+                    o.push(b(ei.edge == filleted.map(SolverErrorObject::FilletedEdge)));
+                    o.push(ei.surfaces.len() as f64);
+                    o.push(b(
+                        ei.surfaces.as_slice() == [Some(SolverErrorObject::FilletSurface(g))]
+                    ));
+                    o.push(ei.curves.len() as f64);
+                    o.push(b(
+                        ei.curves.as_slice() == [Some(SolverErrorObject::CenterLineCurve(g))]
+                    ));
+                    o.push(ei.edges.len() as f64);
+                    o.push(b(
+                        ei.edges.as_slice() == [Some(SolverErrorObject::FilletEdge(rail0))]
+                    ));
+                    let loc = ei.location.unwrap_or(Vec3::UNDEF);
+                    o.push(b(loc.is_initialized()));
+                    if loc.is_initialized() {
+                        o.extend([loc.x, loc.y, loc.z]);
+                    }
+                    o.push(ei.comment.len() as f64);
+                    for byte in ei.comment.bytes() {
+                        o.push(f64::from(byte));
+                    }
                     Ok(())
                 }
                 Err(e) => Err(e),
@@ -1223,7 +1363,7 @@ fn rust(i: &Inputs) -> Result<Output, HarnessError> {
     check_sizes(i)?;
     // the C++ side reports a B-rep that cannot be built
     if let Some(brep) = i.brep() {
-        if let Err(out) = brep_case(brep)? {
+        if let Err(out) = own_case(brep)? {
             return Ok(out);
         }
     }

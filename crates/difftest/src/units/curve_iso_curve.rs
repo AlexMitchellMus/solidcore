@@ -18,6 +18,16 @@
 //! (`SmSurface::CalculateContinuities`, `surface.surface_p6`), the UV iso line of a
 //! constant-`u` curve (`SmLine`, `curve.line`) and reading (`SmSurface::ReadFromDB`,
 //! `surface.surface_p2`). Every run has at least [`MIN_GENERATED`] generated cases.
+//!
+//! Deviations: the runner-local SMS reader rejects non-finite, non-integral,
+//! negative and unrepresentable counts (the exclusive `2^usize::BITS` bound),
+//! checks dimension and payload arithmetic and available tokens before
+//! constructing the net, and grows storage incrementally instead of from
+//! header-declared dimensions. Valid point order, weights, knots and consumed-only
+//! float parsing are unchanged; unconsumed trailing text is ignored.
+
+#[path = "fixtures/iso_curve_sms.rs"]
+mod sms;
 
 use std::fmt::Write as _;
 
@@ -176,41 +186,14 @@ struct Inputs {
 /// `m+q+2` v knots.
 fn read_sms(path: &str) -> Result<InlineSrf, HarnessError> {
     let text = std::fs::read_to_string(path).map_err(|e| harness(format!("{path}: {e}")))?;
-    let mut it = text.split_whitespace();
-    let mut num = || -> Result<f64, HarnessError> {
-        it.next()
-            .ok_or_else(|| harness(format!("{path}: truncated")))?
-            .parse::<f64>()
-            .map_err(|e| harness(format!("{path}: {e}")))
-    };
-    let int = |v: f64| -> Result<usize, HarnessError> {
-        if v.fract() != 0.0 || v < 0.0 {
-            return Err(harness(format!("{path}: bad count {v}")));
-        }
-        Ok(v as usize)
-    };
-    let n = int(num()?)?;
-    let m = int(num()?)?;
-    let p = int(num()?)?;
-    let q = int(num()?)?;
-    let rat = num()? != 0.0;
-    let mut net = Vec::with_capacity(n + 1);
-    for _ in 0..=n {
-        let mut row = Vec::with_capacity(m + 1);
-        for _ in 0..=m {
-            let (x, y, z) = (num()?, num()?, num()?);
-            let w = if rat { num()? } else { NOW };
-            row.push([x, y, z, w]);
-        }
-        net.push(row);
-    }
-    let u = (0..n + p + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    let v = (0..m + q + 2)
-        .map(|_| num())
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(InlineSrf { net, p, q, u, v })
+    let s = sms::parse_sms(&text, path)?;
+    Ok(InlineSrf {
+        net: s.net,
+        p: s.p,
+        q: s.q,
+        u: s.u,
+        v: s.v,
+    })
 }
 
 fn resolve(s: &SrfIn) -> Result<InlineSrf, HarnessError> {
@@ -400,19 +383,20 @@ fn surf_param(code: i32) -> Result<SurfParamType, HarnessError> {
 }
 
 fn make(
+    k: &solidcore::kernel::Kernel,
     srf: impl Into<solidcore::surface::surface::Surface>,
     p: &Params0,
 ) -> Result<IsoCurve, HarnessError> {
-    IsoCurve::from_surface(srf.into(), surf_param(p.sp)?, p.iso, p.from_left, p.clamp)
+    IsoCurve::from_surface(k, srf.into(), surf_param(p.sp)?, p.iso, p.from_left, p.clamp)
         .map_err(|e| harness(e.to_string()))
 }
 
-fn build(c: &CurveIn) -> Result<IsoCurve, HarnessError> {
+fn build(k: &solidcore::kernel::Kernel, c: &CurveIn) -> Result<IsoCurve, HarnessError> {
     let srf = match &c.srf {
         Some(s) => to_surface(s)?,
         None => BSplineSurface::new(),
     };
-    make(srf, &c.params)
+    make(k, srf, &c.params)
 }
 
 fn flag(b: bool) -> f64 {
@@ -443,7 +427,7 @@ fn state(o: &mut Vec<f64>, c: &Curve) -> Result<(), HarnessError> {
 /// The `SmStatus` of a Rust error; `-1` for one upstream cannot return.
 fn status(e: &SolidError) -> f64 {
     match e {
-        SolidError::InvalidInput { .. } => 1007.0,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007.0,
         SolidError::Upstream { code, .. } => f64::from(*code),
         _ => -1.0,
     }
@@ -495,7 +479,7 @@ fn rust_op(k: &solidcore::kernel::Kernel, i: &Inputs, o: &mut Vec<f64>) -> Resul
         return Ok(());
     }
     let ci = i.curve.as_ref().ok_or_else(|| harness("missing curve"))?;
-    let iso = build(ci)?;
+    let iso = build(k, ci)?;
     let c = Curve::from(iso.clone());
     match &i.op {
         OpIn::State => state(o, &c)?,
@@ -535,11 +519,11 @@ fn rust_op(k: &solidcore::kernel::Kernel, i: &Inputs, o: &mut Vec<f64>) -> Resul
         OpIn::Eq { other } => match other {
             OtherIn::Itself => o.push(flag(c.approx_eq(k, &c)?)),
             OtherIn::Own(b) => {
-                let b = Curve::from(build(b)?);
+                let b = Curve::from(build(k, b)?);
                 o.extend([flag(c.approx_eq(k, &b)?), flag(b.approx_eq(k, &c)?)]);
             }
             OtherIn::SameSurface(p) => {
-                let b = Curve::from(make(iso.surface().clone(), p)?);
+                let b = Curve::from(make(k, iso.surface().clone(), p)?);
                 o.extend([flag(c.approx_eq(k, &b)?), flag(b.approx_eq(k, &c)?)]);
             }
         },
@@ -551,7 +535,7 @@ fn rust_op(k: &solidcore::kernel::Kernel, i: &Inputs, o: &mut Vec<f64>) -> Resul
             o.extend(c.class_string().bytes().map(f64::from));
         }
         OpIn::UvIsoLine => {
-            let line = iso.create_uv_iso_line()?;
+            let line = iso.create_uv_iso_line_with_nurb(k)?;
             o.push(0.0);
             o.extend([line.type_code() as f64, line.dim() as f64]);
             let ivl = line.natural_interval();

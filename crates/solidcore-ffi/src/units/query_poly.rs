@@ -42,7 +42,45 @@ mod sys {
             cap: i64,
             out_len: *mut i64,
         ) -> i32;
+        pub fn sc_query_poly_original_copy(
+            input: *const f64,
+            n_in: i64,
+            out: *mut f64,
+            cap: i64,
+            out_len: *mut i64,
+        ) -> i32;
     }
+}
+
+/// Real face-to-poly-face attribute propagation, isolated from legacy fake labels.
+///
+/// Each step is `(source, propagate)`, with source `0` null or `1..=2` a real face.
+/// `composite` constructs an actual `SmCPolyFace` around the initial plain face.
+/// Returns snapshots of original identity, flags, marks, payloads, user counts and
+/// source/destination aliasing, including mutation and source-list lifetime effects.
+///
+/// # Errors
+/// Rejects an empty/oversized sequence or an unknown source before native execution.
+pub fn original_copy(steps: &[(u8, bool)], composite: bool) -> Result<Vec<f64>, FfiError> {
+    if steps.is_empty() || steps.len() > 16 || steps.iter().any(|(s, _)| *s > 2) {
+        return Err(bad("original_copy requires 1..=16 valid source steps"));
+    }
+    let mut input = vec![steps.len() as f64, f64::from(composite)];
+    for &(source, propagate) in steps {
+        input.extend([f64::from(source), f64::from(propagate)]);
+    }
+    call_with_buffer(1024, |buf, len| {
+        // SAFETY: validated input; the helper provides a live output slice and length.
+        unsafe {
+            sys::sc_query_poly_original_copy(
+                input.as_ptr(),
+                input.len() as i64,
+                buf.as_mut_ptr(),
+                buf.len() as i64,
+                &raw mut *len,
+            )
+        }
+    })
 }
 
 /// One loop of a face.
@@ -323,6 +361,13 @@ pub struct Section {
     /// Values.
     pub values: Vec<f64>,
 }
+
+/// Shim status: the shim declined an input that is undefined in upstream C++. An
+/// `IsDegenerate` call on an edge whose poly face has an original-face label that is not
+/// a real `SmFace`, while the back pointers hold, reaches `SmFace::GetSurface` through
+/// the label (`SmPoly.cpp:21281-21283`). Decided by the shim from the built model before
+/// any call; no result is inspected.
+pub const STATUS_UNDEFINED_INPUT: i32 = -1101;
 
 /// Largest shell count of one region the wrapper accepts. The shim converts each count
 /// with `(int64_t)` and allocates that many shells, so a fuzzed `2^63 - 1` wraps to a

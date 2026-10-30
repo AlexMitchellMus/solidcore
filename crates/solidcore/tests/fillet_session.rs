@@ -347,7 +347,10 @@ fn smooth_prelude_requires_live_tangent_context_for_multiple_solvers() {
     assert_eq!(session.executive().solvers.len(), 2);
     let solvers = session.executive().solvers.clone();
     let error = session.process_smooth_edge_sequences(&mut k).unwrap_err();
-    assert!(error.is_unported());
+    assert!(matches!(error, solidcore::SolidError::InvalidInput { .. }));
+    assert_eq!(session.executive().solvers, solvers);
+    session.create_corners(&k, None).unwrap();
+    session.process_smooth_edge_sequences(&mut k).unwrap();
     assert_eq!(session.executive().solvers, solvers);
 }
 
@@ -357,7 +360,7 @@ fn actual_target_extension_map_retains_native_containing_surface() {
     let mut target = create_box(&mut k, Point3::ZERO, 10.0, 20.0, 30.0).unwrap();
     let face = target.faces().ids().next().unwrap();
     let surface = target.face(face).unwrap().surface.as_ref().unwrap().clone();
-    let domain = surface.natural_uv_domain();
+    let domain = surface.natural_uv_domain_if_built();
     let duplicate = surface.clone();
     let mut session = FilletSession::new(&mut k, &mut target).unwrap();
     assert!(session.extended_surface(face).is_none());
@@ -370,7 +373,7 @@ fn actual_target_extension_map_retains_native_containing_surface() {
         .unwrap();
     let actual = session.extended_surface(face).unwrap();
     assert_eq!(std::ptr::from_ref(actual), retained);
-    assert_eq!(actual.natural_uv_domain(), domain);
+    assert_eq!(actual.natural_uv_domain_if_built(), domain);
 }
 
 #[test]
@@ -548,7 +551,34 @@ fn actual_box_face_stage_constructs_a_distinct_intermediate_body() {
                     .unwrap()
             )
         );
-        assert!(geometry.fillet_surface().unwrap_err().is_unported());
+        // `GetFilletSurface()` after `MakeFaceBrep`: the face's surface in the owning
+        // intermediate body, refused without it or with another body.
+        let owner = solidcore::blend::fillet_geom::p1::FilletSurfaceOwner {
+            identity: session
+                .intermediate_identity(EntityRef::Brep(solidcore::topology::BrepId::from_index(0)))
+                .unwrap(),
+            body,
+        };
+        let resolved = geometry.fillet_surface(Some(owner)).unwrap().unwrap();
+        assert!(core::ptr::eq(source, resolved));
+        assert!(core::ptr::eq(
+            resolved,
+            body.face(face).unwrap().surface.as_ref().unwrap()
+        ));
+        assert!(matches!(
+            geometry.fillet_surface(None).unwrap_err(),
+            solidcore::SolidError::InvalidInput { .. }
+        ));
+        let foreign = solidcore::blend::fillet_geom::p1::FilletSurfaceOwner {
+            identity: session
+                .intermediate_identity(EntityRef::Face(face))
+                .unwrap(),
+            body,
+        };
+        assert!(matches!(
+            geometry.fillet_surface(Some(foreign)).unwrap_err(),
+            solidcore::SolidError::InvalidInput { .. }
+        ));
     }
     let edge_keys: Vec<_> = solidcore::topology::brep::p1::edges(body, None)
         .unwrap()
@@ -575,7 +605,7 @@ fn actual_box_face_stage_constructs_a_distinct_intermediate_body() {
         .fillet_surface(geom)
         .unwrap()
         .unwrap()
-        .natural_uv_domain();
+        .natural_uv_domain_if_built();
     assert_eq!((before.min().x, before.max().x), (0.0, 1.0));
     let context = k.context.doing_boolean();
     session.shrink_fillet_faces(&mut k).unwrap();
@@ -584,7 +614,7 @@ fn actual_box_face_stage_constructs_a_distinct_intermediate_body() {
         .fillet_surface(geom)
         .unwrap()
         .unwrap()
-        .natural_uv_domain();
+        .natural_uv_domain_if_built();
     // Independent native direct-component baseline; default trim options.
     assert_eq!((after.min().x, after.max().x), (0.25, 0.75));
     assert_eq!((after.min().y, after.max().y), (0.0, 1.0));
@@ -632,7 +662,7 @@ fn actual_box_shared_constructor_builds_and_stitches_native_intermediate_body() 
                 .unwrap()
         )
     );
-    let domain = surface.natural_uv_domain();
+    let domain = surface.natural_uv_domain_if_built();
     assert_eq!((domain.min().x, domain.max().x), (0.0, 1.0));
     let Some(FilletObject::Attribute(marker)) = session.executive().edge_attribute else {
         panic!("constructor must retain actual executive edge attribute");

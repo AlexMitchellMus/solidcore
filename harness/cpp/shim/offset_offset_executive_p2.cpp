@@ -23,12 +23,15 @@
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
+#include <SmAttribute.h>
 #include <SmBSplineCurve.h>
 #include <SmBSplineSurface.h>
 #include <SmBrep.h>
 #include <SmContext.h>
+#include <SmCylinder.h>
 #include <SmEdge.h>
 #include <SmEdgeuse.h>
+#include <SmGap.h>
 #include <SmFace.h>
 #include <SmFaceuse.h>
 #include <SmLine.h>
@@ -41,16 +44,22 @@
 #include <SmRegion.h>
 #include <SmShell.h>
 #include <SmVertex.h>
+#include <SmVertexuse.h>
 #include <nurbs.h>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
 constexpr int64_t max_selections = 1024;
 constexpr int64_t max_input = 4096;
+constexpr int64_t max_file_path = 1024;
+// Selection bound for a file fixture, whose face count is known only once read.
+constexpr int64_t max_file_faces = 1024;
 constexpr size_t max_output = 262144;
 constexpr size_t no_allocation = static_cast<size_t>(-1);
 struct Argument {};
@@ -83,12 +92,23 @@ void interval(double a, double b, bool strict) {
 struct Spec {
     int kind = 0;
     std::array<double, 15> v{};
-    int64_t faces() const { return kind == 3 ? 1 : kind == 4 ? 6 : 0; }
+    std::string path; // kind 7: an ASCII .smb file
+    int64_t faces() const {
+        return kind == 3 ? 1 : kind == 4 ? 6 : kind == 5 ? 3 : kind == 6 ? 1
+            : kind == 7 ? max_file_faces : kind == 8 ? 1 : 0;
+    }
 };
 Spec read_spec(Reader& rd) {
     Spec s;
-    s.kind = (int)rd.integer(0, 4);
-    int n = s.kind == 2 ? 10 : s.kind == 3 ? 15 : s.kind == 4 ? 6 : 0;
+    s.kind = (int)rd.integer(0, 8);
+    if (s.kind == 7) {
+        // the byte count, then one value per byte (no NUL)
+        int64_t n = rd.integer(1, max_file_path);
+        for (int64_t i=0; i<n; ++i) s.path.push_back((char)rd.integer(1, 255));
+        return s;
+    }
+    int n = s.kind == 2 ? 10 : s.kind == 3 ? 15 : s.kind == 4 ? 6 : s.kind == 5 ? 5
+        : s.kind == 6 ? 4 : s.kind == 8 ? 5 : 0;
     for (int i=0; i<n; ++i) s.v[i] = rd.number();
     const auto& v = s.v;
     if (s.kind == 2) {
@@ -110,6 +130,17 @@ Spec read_spec(Reader& rd) {
         finite(v[10]*v[12]); finite(v[10]*v[14]);
     } else if (s.kind == 4) {
         for (int i=0; i<3; ++i) { finite(v[i]+v[i+3]); finite(v[i+3]*v[i+3]); }
+    } else if (s.kind == 5 || s.kind == 6) {
+        // Cylinder (origin, radius, height) or sphere (origin, radius): every
+        // coordinate plus or minus the radius (and the top) stays finite.
+        for (int i=0; i<3; ++i) { finite(v[i]+v[3]); finite(v[i]-v[3]); }
+        finite(v[3]*v[3]);
+        if (s.kind == 5) finite(v[2]+v[4]);
+    } else if (s.kind == 8) {
+        // Cylinder sheet (origin, radius, height): positive radius and height.
+        for (int i=0; i<3; ++i) { finite(v[i]+v[3]); finite(v[i]-v[3]); }
+        finite(v[3]*v[3]); finite(v[2]+v[4]);
+        if (!(v[3] > 0) || !(v[4] > 0)) throw Argument{};
     }
     return s;
 }
@@ -122,6 +153,7 @@ struct Program {
     SmBoolean inset, extend, merge, solid, skip;
     Spec source, foreign;
     std::vector<Selection> selections;
+    int attributed = -1; // -1: no attributes, else the tags' SmAttributeBehaviorType
     bool member() const { return operation == 2 || operation == 3; }
     bool can_extend() const {
         // Called only after the whole DTO is parsed and every index validated.
@@ -154,12 +186,13 @@ Program read_program(Reader& rd) {
     // Parse everything before allocating native geometry. No input-sized reserve.
     for (int64_t i=0; i<count; ++i) {
         int origin = (int)rd.integer(0, 2);
-        int64_t index = rd.integer(-1, 6);
+        int64_t index = rd.integer(-1, max_file_faces);
         if (origin == 2) { if (index != -1) throw Argument{}; }
         else if (index < 0 || index >= (origin == 0 ? p.source.faces() : p.foreign.faces()))
             throw Argument{};
         p.selections.push_back({origin, index});
     }
+    p.attributed = (int)rd.integer(-1, 4);
     if (rd.pos != rd.size) throw Argument{};
     // All scalars remain finite and all selectors remain bounds-checked, even
     // for proven early returns. Only the unused fivefold product is exempted.
@@ -237,22 +270,6 @@ template<class T> struct PendingGeometry {
 SmPoint3d point(const std::array<double, 15>& v, size_t i) {
     return SmPoint3d(v[i], v[i+1], v[i+2]);
 }
-void representable_topology(SmBrep* brep, ULONG face_count, ULONG loop_count,
-                            ULONG edge_count, ULONG edgeuse_count, ULONG vertex_count) {
-    SmTArray<SmFace*> faces;
-    SmTArray<SmLoop*> loops;
-    SmTArray<SmEdge*> edges;
-    SmTArray<SmEdgeuse*> edgeuses;
-    SmTArray<SmVertex*> vertices;
-    brep->GetFaces(faces); brep->GetLoops(loops); brep->GetEdges(edges);
-    brep->GetEdgeuses(edgeuses); brep->GetVertices(vertices);
-    // Only DTO-projected counts are required; native shell/region scaffolding
-    // intentionally differs. The allocation observer owns rejection cleanup.
-    if (faces.GetSize() != face_count || loops.GetSize() != loop_count ||
-        edges.GetSize() != edge_count || edgeuses.GetSize() != edgeuse_count ||
-        vertices.GetSize() != vertex_count)
-        throw Rejected{SM_ERR};
-}
 SmBrep* build(const Spec& s, SmContext& ctx, double tolerance) {
     if (!s.kind) return nullptr;
     const auto& v = s.v;
@@ -268,12 +285,27 @@ SmBrep* build(const Spec& s, SmContext& ctx, double tolerance) {
         result->GetFaces(faces);
         result->GetEdges(edges);
         result->GetVertices(vertices);
-        if (faces.GetSize() != 6 || edges.GetSize() != 12 || vertices.GetSize() != 8)
-            throw Rejected{SM_ERR};
+        // Tiny / far-translated boxes come back as an EMPTY B-rep (0 faces): a
+        // defined native result, not a crash, so it is built and compared as is.
+        result->SetTolerance(tolerance, FALSE);
+        return result;
+    }
+    if (s.kind == 5 || s.kind == 6) {
+        // The real primitive constructors (compared in primitive.api_primitives),
+        // then the fixture tolerance, as for the box.
+        SmVector3d origin(v[0], v[1], v[2]);
+        if (s.kind == 5) constructed(SmApiCreateCylinder(origin, v[3], v[4], result));
+        else constructed(SmApiCreateSphere(origin, v[3], result));
+        if (!result) throw std::runtime_error("successful primitive constructor returned null");
         result->SetTolerance(tolerance, FALSE);
         return result;
     }
     result = new (ctx) SmBrep();
+    if (s.kind == 7) {
+        // smOffsetTest.cpp ShellBrep: ReadFromFile, keeping the file's tolerance.
+        constructed(result->ReadFromFile(ctx, s.path.c_str(), SM_ASCII));
+        return result;
+    }
     result->SetTolerance(tolerance, FALSE);
     if (s.kind == 2) {
         SmExtent1d domain(v[6], v[7]), trim(v[8], v[9]);
@@ -293,8 +325,18 @@ SmBrep* build(const Spec& s, SmContext& ctx, double tolerance) {
         // MakeWireEdge may attach the curve before returning an error. The
         // pending guard only deletes it if it still has no native topology owner.
         constructed(result->MakeWireEdge(nullptr, first, second, line, trim, SM_OT_SAME, edge));
-        representable_topology(result, 0, 0, 1, 2, 2);
         if (!edge) throw std::runtime_error("successful wire constructor returned null");
+    } else if (s.kind == 8) {
+        // A cylinder sheet: CreateFaceFromSurface on a bounded SmCylinder over its
+        // natural domain (closed round along a seam edge).
+        PendingGeometry<SmSurface> pending{
+            new (ctx) SmCylinder(point(v,0), SmVector3d(1,0,0), SmVector3d(0,1,0), v[3],
+                                 0.0, 360.0, v[4], FALSE, FALSE, FALSE, &ctx)
+        };
+        SmExtent2d domain = pending.ptr->GetNaturalUVDomain();
+        SmFace* face = nullptr;
+        constructed(result->CreateFaceFromSurface(pending.ptr, domain, face));
+        if (!face) throw std::runtime_error("successful sheet constructor returned null");
     } else if (s.kind == 3) {
         SmExtent2d domain(SmPoint2d(v[11],v[12]), SmPoint2d(v[13],v[14]));
         PendingGeometry<SmSurface> pending{
@@ -303,9 +345,8 @@ SmBrep* build(const Spec& s, SmContext& ctx, double tolerance) {
         SmFace* face = nullptr;
         constructed(result->CreateFaceFromSurface(pending.ptr, domain, face));
         // CreateFaceFromSurface may succeed after tolerance-driven boundary
-        // merges/removal. Reject unrepresentable topology before any selectors
-        // or executive/API calls, without imposing a size or tolerance cutoff.
-        representable_topology(result, 1, 1, 4, 8, 4);
+        // merges/removal, leaving a degenerate face; that is a defined native
+        // result and is built and compared as is.
         if (!face) throw std::runtime_error("successful sheet constructor returned null");
     }
     return result;
@@ -371,8 +412,29 @@ int curve_kind(SmCurve* curve) {
 }
 struct Block {
     bool present = false;
-    std::vector<double> integers, values;
+    std::vector<double> integers, values, caches;
 };
+// The lazily filled topology caches the Rust purity check also sees (its whole B-rep
+// state): per vertex use (GetVertexuses order) the vertex/edge gap's init flag and edge
+// parameter and the vertex/face gap's init flag and face UV, per edge use (GetEdgeuses
+// order) the max edge/face gap's init flag. Read through the const getters only when
+// already initialised, so observing never fills a cache.
+void put_caches(std::vector<double>& out, SmBrep* brep,
+                const SmTArray<SmEdgeuse*>& edgeuses) {
+    SmTArray<SmVertexuse*> uses;
+    brep->GetVertexuses(uses);
+    if ((size_t)uses.GetSize() + edgeuses.GetSize() > max_output/64)
+        throw std::length_error("native snapshot cache budget");
+    for (ULONG i=0; i<uses.GetSize(); ++i) {
+        SmVertexuse* vu = uses[i];
+        SmVertexEdgeGap* edge = vu->IsVertexEdgeGapInit() ? vu->GetVertexEdgeGap() : nullptr;
+        SmVertexFaceGap* face = vu->IsVertexFaceGapInit() ? vu->GetVertexFaceGap() : nullptr;
+        out.insert(out.end(), {edge ? 1.0 : 0.0, edge ? edge->GetEdgeT() : 0.0,
+            face ? 1.0 : 0.0, face ? face->GetFaceUV().x : 0.0, face ? face->GetFaceUV().y : 0.0});
+    }
+    for (ULONG i=0; i<edgeuses.GetSize(); ++i)
+        out.push_back(edgeuses[i]->IsMaxEdgeFaceGapInit() ? 1.0 : 0.0);
+}
 template<class T> void put_ids(std::vector<double>& out, const SmTArray<T*>& list,
                               const SmTArray<T*>& traversal) {
     out.push_back((double)list.GetSize());
@@ -480,6 +542,7 @@ Block snapshot(SmBrep* brep) {
         put_point(vals,vertices[i]->GetPoint());
         vals.push_back((double)vertices[i]->GetTolerance());
     }
+    put_caches(block.caches,brep,edgeuses);
     return block;
 }
 void put_block(std::vector<double>& out, const Block& block) {
@@ -491,6 +554,69 @@ void put_block(std::vector<double>& out, const Block& block) {
     out.insert(out.end(),block.integers.begin(),block.integers.end());
     out.push_back((double)block.values.size());
     out.insert(out.end(),block.values.begin(),block.values.end());
+    if (block.caches.size() + out.size() + 1 > max_output)
+        throw std::length_error("native snapshot output budget");
+    out.push_back((double)block.caches.size());
+    out.insert(out.end(),block.caches.begin(),block.caches.end());
+}
+
+// Attributed cases (#1462): every source face (GetFaces order) and edge (GetEdges order)
+// gets its own SmLongAttribute, id = value = attribute_base + index (+ 500 for an edge).
+constexpr ULONG attribute_base = 10007;
+void tag_source(SmBrep* b, SmContext& ctx, SmAttributeBehaviorType behavior) {
+    SmTArray<SmFace*> faces;
+    b->GetFaces(faces);
+    for (ULONG i=0; i<faces.GetSize(); ++i) {
+        ULONG id = attribute_base + i;
+        faces[i]->AddAttribute(new (ctx) SmLongAttribute(id, (long)id, behavior));
+    }
+    SmTArray<SmEdge*> edges;
+    b->GetEdges(edges);
+    for (ULONG i=0; i<edges.GetSize(); ++i) {
+        ULONG id = attribute_base + 500 + i;
+        edges[i]->AddAttribute(new (ctx) SmLongAttribute(id, (long)id, behavior));
+    }
+}
+// One object's row: `n`, then per attribute `id behavior value` (value: an
+// SmLongAttribute's, else 0), the attributes in ascending order.
+std::vector<double> attribute_row(const SmAObject* obj) {
+    SmTArray<SmAttribute*> attrs;
+    obj->GetAttributes(attrs);
+    std::vector<std::array<double, 3>> entries;
+    for (ULONG i=0; i<attrs.GetSize(); ++i) {
+        SmAttribute* a = attrs[i];
+        SmLongAttribute* l = dynamic_cast<SmLongAttribute*>(a);
+        entries.push_back({(double)a->GetAttributeID(), (double)a->GetBehavior(),
+            l ? (double)l->GetValue() : 0.0});
+    }
+    std::sort(entries.begin(), entries.end());
+    std::vector<double> row{(double)entries.size()};
+    for (const auto& e : entries) row.insert(row.end(), e.begin(), e.end());
+    return row;
+}
+template<class T> void put_rows(std::vector<double>& out, const SmTArray<T*>& objects) {
+    std::vector<std::vector<double>> rows;
+    for (ULONG i=0; i<objects.GetSize(); ++i) rows.push_back(attribute_row(objects[i]));
+    std::sort(rows.begin(), rows.end());
+    out.push_back((double)rows.size());
+    for (const auto& row : rows) out.insert(out.end(), row.begin(), row.end());
+}
+// `present`, then `count` and the result's face rows then edge rows, each sorted (the
+// sets are compared, not the lists' order).
+void put_attributes(std::vector<double>& out, SmBrep* brep) {
+    out.push_back(brep ? 1.0 : 0.0);
+    if (!brep) return;
+    SmTArray<SmFace*> faces;
+    SmTArray<SmEdge*> edges;
+    brep->GetFaces(faces);
+    brep->GetEdges(edges);
+    std::vector<double> rows;
+    put_rows(rows, faces);
+    put_rows(rows, edges);
+    if (rows.size() + out.size() + 1 > max_output)
+        throw std::length_error("native attribute output budget");
+    out.push_back((double)rows.size());
+    out.insert(out.end(), rows.begin(), rows.end());
 }
 
 std::vector<double> observe_selectors(const SmTArray<SmFace*>& selectors, SmBrep* source,
@@ -523,6 +649,7 @@ void run(const Program& p, std::vector<double>& out) {
     size_t source_token = allocations.token(source), foreign_token = allocations.token(foreign);
     SmTArray<SmFace*> source_faces, foreign_faces, selectors;
     SmTArray<const SmFace*> api_selectors;
+    if (source && p.attributed >= 0) tag_source(source, ctx, (SmAttributeBehaviorType)p.attributed);
     if (source) source->GetFaces(source_faces);
     if (foreign) foreign->GetFaces(foreign_faces);
     for (const auto& selection : p.selections) {
@@ -532,8 +659,11 @@ void run(const Program& p, std::vector<double>& out) {
             // Expected construction counts are not permission to index an
             // unexpectedly different native topology. This is a layout error,
             // never a fabricated constructor rejection or native operation status.
+            // A constructor can legitimately leave fewer faces than the DTO
+            // expects (an empty tiny box): there is then no face to select and
+            // nothing to run on either side, which is a fixture rejection.
             if (selection.index < 0 || (ULONG)selection.index >= list.GetSize())
-                throw std::runtime_error("native fixture face traversal differs from DTO");
+                throw Rejected{SM_ERR};
             face = list[(ULONG)selection.index];
         }
         selectors.Add(face);
@@ -607,6 +737,7 @@ void run(const Program& p, std::vector<double>& out) {
     put_block(out,snapshot(foreign_live ? foreign : nullptr));
     put_block(out,snapshot(result));
     put_block(out,snapshot(offset));
+    if (p.attributed >= 0) put_attributes(out, result);
     // Executive destruction owns offset; then allocation scope reclaims every
     // remaining distinct B-rep (source/foreign/result/unreturned native working data).
     executive.reset();

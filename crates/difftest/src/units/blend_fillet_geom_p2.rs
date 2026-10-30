@@ -553,7 +553,7 @@ fn rust(i: &Inputs) -> Result<Rec, HarnessError> {
                         return Ok(Rec::Flat(o));
                     }
                 };
-                let domain = surface.natural_uv_domain();
+                let domain = surface.natural_uv_domain_with_nurb(&k).map_err(|e| HarnessError::new(e.to_string()))?;
                 let shell = rm.target.add_shell().map_err(h)?;
                 let f: FaceId = rm.target.add_face(shell).map_err(h)?;
                 let fr = rm.target.face_mut(f).map_err(h)?;
@@ -744,7 +744,8 @@ fn gen_pair(k: &Kernel, rng: &mut Rng, scale: f64) -> (SurfIn, SurfIn) {
             let p = surface_of(&s)
                 .ok()
                 .and_then(|rs| {
-                    let d = rs.natural_uv_domain();
+                    // (runner helper that does not return Result)
+                    let d = rs.natural_uv_domain_if_built();
                     rs.evaluate_point(k, d.evaluate(rng.uniform(0.2, 0.8), rng.uniform(0.2, 0.8)))
                         .ok()
                 })
@@ -1013,7 +1014,8 @@ fn gen_rail_rail(rng: &mut Rng) -> Option<Inputs> {
         _ => SurfIn::Analytic(gen_analytic(rng, scale)),
     };
     let rs = surf(&k, &face).ok()?.ok()?;
-    let d = rs.natural_uv_domain();
+    // (runner helper that does not return Result)
+    let d = rs.natural_uv_domain_if_built();
     let at = |a: f64, b: f64| -> Option<([f64; 3], [f64; 2])> {
         let uv = d.evaluate(a, b);
         rs.evaluate_point(&k, uv)
@@ -1278,6 +1280,27 @@ impl UnitDiff for Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// HANG-29: `--fuzz 30000` fuzz09135, `RailRail` whose original face has a control
+    /// point of `-1e300` (no native result in 60 s). Both sides refuse it.
+    #[test]
+    fn rail_rail_refuses_an_original_face_in_the_overflow_range() {
+        let recorded: Value = serde_json::from_str(include_str!(
+            "../../tests/fuzz_regressions/blend.fillet_geom_p2.json"
+        ))
+        .unwrap();
+        for recorded in recorded["cases"].as_array().unwrap() {
+            let case = Case {
+                unit: "blend.fillet_geom_p2".into(),
+                name: recorded["name"].as_str().unwrap().into(),
+                source: crate::case::CaseSource::Inline,
+                inputs: recorded["inputs"].clone(),
+            };
+            for error in [Runner.run_cpp(&case), Runner.run_rust(&case)] {
+                assert!(error.is_err(), "{}: {error:?}", case.name);
+            }
+        }
+    }
 
     /// Tallies the Rust outcome of every case per query (status `0`, an upstream error
     /// status, a deferral): with no failed case, the passes' success-path / error-path

@@ -82,6 +82,9 @@ use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::object::{NotifyOperation, ObjectRef, Shape};
 use crate::geom::solution_array::Solution;
 use crate::heal::face_props::HealerOpType;
+use crate::intersect::curve_class::p5::ClassGeometryMut;
+use crate::intersect::curve_class::p6::{MergeContext, MergeIntervalBrep};
+use crate::intersect::point_class::ClassGeometry;
 use crate::intersect::topology_solver::p1::{CurveRef, TopologySolver};
 use crate::intersect::topology_solver::p2::TopologySolveOptions;
 use crate::kernel::Kernel;
@@ -89,14 +92,16 @@ use crate::math::{max2, Point3, Vec3, BIG_DOUBLE, EFF_ZERO};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::query::brep::{self as qbrep, BoundingBoxOptions};
+use crate::query::face::p2::{CurveOnClassifyBrep, CurveOnClassifyObjects, FaceBrep};
 use crate::surface::surface::Surface;
 use crate::topology::brep::p1;
 use crate::topology::brep::p4;
 use crate::topology::brep::p6;
-use crate::topology::brep_cache::{make_brep_cache, BrepObjects, CacheObject, CacheSource};
+use crate::topology::brep_cache::{make_brep_cache, CacheObject, CacheSource};
 use crate::topology::brep_data::{BrepData, TopologyData, NO_OBJECT, UNSURE};
 use crate::topology::edge::NotifyEnv;
 use crate::topology::edgeuse::p1 as eu1;
+use crate::topology::face::p3::{IntersectObject, IntersectObjects};
 use crate::topology::shell::{ShellMembers, ShellType};
 use crate::topology::topology::Topology;
 use crate::topology::topology_traverser::Marks;
@@ -105,7 +110,6 @@ use crate::topology::{
     FaceuseId, Loop, LoopId, Loopuse, LoopuseId, LoopuseStart, Region, RegionId, Shell, ShellId,
     Vertex, VertexId, Vertexuse, VertexuseId, VertexuseOwner,
 };
-use std::collections::BTreeMap;
 
 const OP_MAKE: &str = "topology::brep::p10::make_topology_from_data";
 const OP_PROJECT: &str = "topology::brep::p10::project_and_trim";
@@ -166,7 +170,7 @@ pub struct TopologyEnv<'a> {
     pub key_of: &'a dyn Fn(EntityRef) -> ObjectRef,
     /// The `SmTopology` records (flags, user values) of the topology objects, by
     /// identity; one is added for each object built.
-    pub records: &'a mut BTreeMap<ObjectKey, Topology>,
+    pub records: &'a mut crate::topology::topology::NotifyRecords,
     /// The next free identity for a geometry copy; incremented per copy.
     pub next_key: u64,
 }
@@ -227,13 +231,13 @@ fn new_record(env: &mut TopologyEnv<'_>, entity: EntityRef) {
 fn set_topology(env: &mut TopologyEnv<'_>, entity: EntityRef, t: &TopologyData) {
     set_flags(env, entity, t.flags, t.user_index1, t.user_index2);
     let key = (env.key_of)(entity).key;
-    env.records.entry(key).or_default().set_user_ptr1(0);
+    env.records.or_default(key).set_user_ptr1(0);
 }
 
 /// `SetAllFlags`, `SetUserIndex1`, `SetUserIndex2`.
 fn set_flags(env: &mut TopologyEnv<'_>, entity: EntityRef, flags: u64, user1: u64, user2: u64) {
     let key = (env.key_of)(entity).key;
-    let r = env.records.entry(key).or_default();
+    let r = env.records.or_default(key);
     r.set_all_flags(flags);
     r.set_user_index1(user1);
     r.set_user_index2(user2);
@@ -290,6 +294,10 @@ fn new_edgeuse(
 ) -> Result<EdgeuseId> {
     let id = b.add_edgeuse_record(rec)?;
     new_record(env, EntityRef::Edgeuse(id));
+    // the edge use owns its UV trim curve under the caller's key (`SetOwner(m_pEdgeuse)`
+    // here and in `SetUVTrimCurve`), recorded for the trims made later
+    let owner = (env.key_of)(EntityRef::Edgeuse(id));
+    b.set_geometry_owner_key(EntityRef::Edgeuse(id), Some(owner));
     Ok(id)
 }
 
@@ -495,6 +503,10 @@ fn make_topology(
             None,
             options.make_uv_trim_curves,
         )?;
+        // UV trim curves created inside the healer (Make_UVTrimCurves and
+        // ClassifyLoops' snapshot write-back) have no caller owner yet; bind them to
+        // their edge uses as upstream's SetUVTrimCurve(this) does.
+        bind_uv_trim_owners(b, env.key_of)?;
     }
     let _ = options.check_uv_trim_curves; // SM_REF1: not used
     Ok(())
@@ -724,7 +736,7 @@ fn build_faces(
 
         let tol = b.tolerance();
         let rec = b.face_mut(f)?;
-        let natural = surface.natural_uv_domain();
+        let natural = surface.natural_uv_domain_with_nurb(k)?;
         rec.surface = Some(surface);
         rec.rectangular_trim = rf.rectangular_trim;
         rec.uv_domain = rf.uv_domain;
@@ -1642,9 +1654,11 @@ fn set_primary_edgeuses(b: &mut Brep, data: &BrepData, built: &Built) -> Result<
         // This takes care of next/last pointers.
         match edge::reset_primary_edgeuse(b, e, prim) {
             Err(err) if err.is_unported() => return Err(err),
-            Err(err @ (SolidError::InvalidInput { .. } | SolidError::NotFound { .. })) => {
-                return Err(err)
-            }
+            Err(
+                err @ (SolidError::InvalidInput { .. }
+                | SolidError::PortInvariant { .. }
+                | SolidError::NotFound { .. }),
+            ) => return Err(err),
             // the status is ignored upstream
             Ok(()) | Err(_) => {}
         }
@@ -1696,7 +1710,7 @@ struct ProjectionCurves {
 fn create_parallel_projection_curves(
     k: &Kernel,
     b: &mut Brep,
-    curve: &BSplineCurve,
+    curve: &Curve,
     direction: Vec3,
     tol: f64,
     angle_tol: Option<f64>,
@@ -1726,121 +1740,289 @@ fn create_parallel_projection_curves(
     })
 }
 
-/// A classification handle over the B-rep's cache: what `query.brep`'s cache world will
-/// name (no value exists until then).
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum CacheHandle {}
+/// The classification objects of [`merge_curves_on_surface`] over the B-rep the curves
+/// merge into: the handles are those of [`IntersectObjects`] over one B-rep (side
+/// `false`), curve `i` being [`IntersectObject::Curve`]`(i)` and its UV curve
+/// [`IntersectObject::UvCurve`]`(i, false)`. Upstream's `MergeIntervals` edits the B-rep
+/// through the classification's `SmFace*`, `SmEdge*` and `SmVertex*` pointers, so the
+/// adapter holds the B-rep mutably and hands the classification read-only views of it;
+/// `CurveOnClassify` classifies on that B-rep in place ([`CurveOnClassifyBrep`]).
+struct MergeCurvesWorld<'a, 'e> {
+    b: &'a mut Brep,
+    curves_3d: Vec<Curve>,
+    uv: Vec<Option<Curve>>,
+    env: &'a mut NotifyEnv<'e>,
+    curve_ref: &'a dyn Fn(EdgeId, i64) -> ObjectRef,
+    /// The surfaces behind [`IntersectObject::FreeSurface`] (the intersection surface).
+    free_surfaces: Vec<Surface>,
+}
 
-impl crate::intersect::point_class::ClassObject for CacheHandle {
-    fn class_kind(&self) -> crate::intersect::point_class::ClassObjectKind {
-        match *self {}
+impl MergeCurvesWorld<'_, '_> {
+    /// The read-only objects over the same B-rep and curves.
+    fn view(&self) -> IntersectObjects<'_> {
+        IntersectObjects {
+            b: &*self.b,
+            other: &*self.b,
+            side: false,
+            curves_3d: &self.curves_3d,
+            uv1: &self.uv,
+            uv2: &[],
+        }
     }
 }
 
-/// The `MergeCurvesObjects` world over the B-rep's cache that `MergeCurvesOnSurface`
-/// classifies through (`query.brep`, todo): uninhabited, so [`merge_curves_world`] is
-/// the one place the gap is.
-enum CacheMergeWorld {}
-
-impl crate::intersect::point_class::ClassGeometry<CacheHandle> for CacheMergeWorld {
-    fn curve(&self, _o: CacheHandle) -> Option<&Curve> {
-        match *self {}
+impl ClassGeometry<IntersectObject> for MergeCurvesWorld<'_, '_> {
+    fn classification_vertex_point(&self, o: IntersectObject) -> Option<Point3> {
+        self.view().classification_vertex_point(o)
     }
-    fn surface(&self, _o: CacheHandle) -> Option<&Surface> {
-        match *self {}
+    fn topology_zone_tol_3d(&self, o: IntersectObject) -> Option<f64> {
+        self.view().topology_zone_tol_3d(o)
     }
-    fn volume(&self, _o: CacheHandle) -> Option<&crate::surface::volume::Volume> {
-        match *self {}
+    fn curve(&self, o: IntersectObject) -> Option<&Curve> {
+        self.view().object_curve(o)
     }
-    fn point(&self, _o: CacheHandle) -> Option<Point3> {
-        match *self {}
+    fn surface(&self, o: IntersectObject) -> Option<&Surface> {
+        match o {
+            IntersectObject::FreeSurface(i) => self.free_surfaces.get(i),
+            _ => self.view().object_surface(o),
+        }
     }
-}
-
-impl crate::query::face::p2::CurveOnClassifyObjects<CacheHandle> for CacheMergeWorld {
-    fn face(&self, _f: FaceId) -> CacheHandle {
-        match *self {}
+    fn volume(&self, _o: IntersectObject) -> Option<&crate::surface::volume::Volume> {
+        None
     }
-    fn vertex(&self, _v: VertexId) -> CacheHandle {
-        match *self {}
+    fn point(&self, _o: IntersectObject) -> Option<Point3> {
+        None
     }
-    fn edge(&self, _e: EdgeId) -> CacheHandle {
-        match *self {}
+    fn topology_entity(&self, o: IntersectObject) -> Option<(&Brep, EntityRef)> {
+        self.view().object_entity(o)
     }
-    fn vertexuse(&self, _vu: VertexuseId) -> CacheHandle {
-        match *self {}
+    fn topology_handle(&self, e: EntityRef) -> Option<IntersectObject> {
+        self.view().topology_handle(e)
     }
-    fn edgeuse(&self, _eu: EdgeuseId) -> CacheHandle {
-        match *self {}
-    }
-    fn edge_curve(&self, _e: EdgeId) -> CacheHandle {
-        match *self {}
-    }
-    fn trim_curve(&self, _eu: EdgeuseId) -> CacheHandle {
-        match *self {}
-    }
-    fn face_surface(&self, _f: FaceId) -> Option<CacheHandle> {
-        match *self {}
-    }
-    fn loop_id(&self, _tgt_loop: CacheHandle) -> Option<LoopId> {
-        match *self {}
+    fn topology_handle_in(&self, brep: &Brep, e: EntityRef) -> Option<IntersectObject> {
+        self.view().topology_handle_in(brep, e)
     }
 }
 
-impl crate::topology::brep::p2::MergeCurvesObjects<CacheHandle> for CacheMergeWorld {
-    fn edge_of(&self, _object: CacheHandle) -> Option<EdgeId> {
-        match *self {}
+impl CurveOnClassifyObjects<IntersectObject> for MergeCurvesWorld<'_, '_> {
+    fn face(&self, f: FaceId) -> IntersectObject {
+        self.view().face(f)
     }
-    fn face_of(&self, _object: CacheHandle) -> Option<FaceId> {
-        match *self {}
+    fn vertex(&self, v: VertexId) -> IntersectObject {
+        self.view().vertex(v)
+    }
+    fn edge(&self, e: EdgeId) -> IntersectObject {
+        self.view().edge(e)
+    }
+    fn vertexuse(&self, vu: VertexuseId) -> IntersectObject {
+        self.view().vertexuse(vu)
+    }
+    fn edgeuse(&self, eu: EdgeuseId) -> IntersectObject {
+        self.view().edgeuse(eu)
+    }
+    fn edge_curve(&self, e: EdgeId) -> IntersectObject {
+        self.view().edge_curve(e)
+    }
+    fn trim_curve(&self, eu: EdgeuseId) -> IntersectObject {
+        self.view().trim_curve(eu)
+    }
+    fn face_surface(&self, f: FaceId) -> Option<IntersectObject> {
+        self.view().face_surface(f)
+    }
+    fn loop_id(&self, tgt_loop: IntersectObject) -> Option<LoopId> {
+        self.view().loop_id(tgt_loop)
     }
 }
 
-/// The classification world over `b`'s cache with handles for the 3D and UV curves.
-fn merge_curves_world(
-    _b: &Brep,
-    _curves_3d: &[Curve],
-    _uv_curves: &[Curve],
-) -> Result<(CacheMergeWorld, Vec<CacheHandle>, Vec<CacheHandle>)> {
-    // DISPATCH GAP: SmBrep::MergeCurvesOnSurface is ported
-    // (`topology::brep::p2::merge_curves_on_surface`, topology.brep_p2 partial; no
-    // UNPORTED marker), but its classification world over the B-rep cache (handles for
-    // the 3D and UV curves next to the cached B-rep geometry) is not built here.
-    Err(SolidError::Unported {
-        upstream: "SmBrep::MergeCurvesOnSurface classification world over the B-rep cache",
-        unit: "topology.brep_p2",
-    })
+impl ClassGeometryMut<IntersectObject> for MergeCurvesWorld<'_, '_> {
+    fn curve_mut(&mut self, o: IntersectObject) -> Option<&mut Curve> {
+        match o {
+            IntersectObject::Curve(i) => self.curves_3d.get_mut(i),
+            _ => None,
+        }
+    }
+    fn topology_entity_mut(&mut self, o: IntersectObject) -> Option<(&mut Brep, EntityRef)> {
+        match o {
+            IntersectObject::Topology(e, _) => Some((&mut *self.b, e)),
+            _ => None,
+        }
+    }
+}
+
+impl MergeIntervalBrep<IntersectObject> for MergeCurvesWorld<'_, '_> {
+    fn merge_context(&mut self, o: IntersectObject) -> Option<MergeContext<'_, IntersectObject>> {
+        let IntersectObject::Topology(target, side) = o else {
+            return None;
+        };
+        if !matches!(
+            target,
+            EntityRef::Vertex(_) | EntityRef::Edge(_) | EntityRef::Face(_) | EntityRef::Region(_)
+        ) {
+            return None;
+        }
+        Some(MergeContext {
+            brep: &mut *self.b,
+            target,
+            handle: Box::new(move |e| IntersectObject::Topology(e, side)),
+            notifications: NotifyEnv {
+                records: &mut *self.env.records,
+                attributes: &mut *self.env.attributes,
+                context: self.env.context.as_deref_mut(),
+                key_of: self.env.key_of,
+            },
+            curve_ref: self.curve_ref,
+        })
+    }
+}
+
+impl FaceBrep for MergeCurvesWorld<'_, '_> {
+    fn brep(&self) -> &Brep {
+        self.b
+    }
+}
+
+impl CurveOnClassifyBrep<IntersectObject> for MergeCurvesWorld<'_, '_> {
+    fn brep_mut(&mut self) -> &mut Brep {
+        self.b
+    }
+}
+
+impl crate::topology::brep::p2::MergeCurvesObjects<IntersectObject> for MergeCurvesWorld<'_, '_> {
+    fn edge_of(&self, object: IntersectObject) -> Option<EdgeId> {
+        match object {
+            IntersectObject::Topology(EntityRef::Edge(e), _) => Some(e),
+            _ => None,
+        }
+    }
+    fn face_of(&self, object: IntersectObject) -> Option<FaceId> {
+        match object {
+            IntersectObject::Topology(EntityRef::Face(f), _) => Some(f),
+            _ => None,
+        }
+    }
 }
 
 /// `MergeCurvesOnSurface(*pSurf, dTol, s3DCurves, &sUVCurves, sNewFaces, sCurveEdges,
 /// bUseProjection)` with the header defaults for the rest (no intersection surface,
-/// `bUVSpaceOkay = TRUE`): [`crate::topology::brep::p2::merge_curves_on_surface`]
-/// through the B-rep cache's classification world ([`merge_curves_world`], not built
-/// yet). Called here (`SmBrep.cpp:25074`, default
-/// `bUseProjection = FALSE`) and by `blend.hcr` (`SmHCR.cpp:1229`, `TRUE`).
-pub(crate) fn merge_curves_on_surface(
+/// `bUVSpaceOkay = TRUE`; `uv_curves` `None` for a null `pOptUVCurves`):
+/// [`crate::topology::brep::p2::merge_curves_on_surface`] over `b` itself, its edits
+/// notified through `env` (new edge curves named by `curve_ref`, from the edge and the
+/// curve's native type code). Called by `ProjectAndTrim` (`SmBrep.cpp:25074`, default
+/// `bUseProjection = FALSE`) and by `blend.hcr` (`SmHCR.cpp:1229`, `TRUE`). Returns
+/// the new faces and the edges of the curves.
+///
+/// # Errors
+///
+/// Those of [`crate::topology::brep::p2::merge_curves_on_surface`].
+#[allow(clippy::too_many_arguments)]
+pub fn merge_curves_on_surface(
     k: &mut Kernel,
     b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
     face: FaceId,
     tol: f64,
     curves_3d: &[Curve],
-    uv_curves: &[Curve],
+    uv_curves: Option<&[Curve]>,
     use_projection: bool,
 ) -> Result<(Vec<FaceId>, Vec<EdgeId>)> {
-    let (world, curves, uv) = merge_curves_world(b, curves_3d, uv_curves)?;
+    // curve i is IntersectObject::Curve(i), its UV curve IntersectObject::UvCurve(i, false)
+    let curves: Vec<IntersectObject> = (0..curves_3d.len()).map(IntersectObject::Curve).collect();
+    let uv: Option<Vec<Option<IntersectObject>>> = uv_curves.map(|uv| {
+        (0..uv.len())
+            .map(|i| Some(IntersectObject::UvCurve(i, false)))
+            .collect()
+    });
+    let mut world = MergeCurvesWorld {
+        b,
+        curves_3d: curves_3d.to_vec(),
+        uv: uv_curves
+            .unwrap_or_default()
+            .iter()
+            .cloned()
+            .map(Some)
+            .collect(),
+        env,
+        curve_ref,
+        free_surfaces: Vec::new(),
+    };
     let merged = crate::topology::brep::p2::merge_curves_on_surface(
         k,
-        b,
-        &world,
+        &mut world,
         face,
         tol,
         &curves,
-        Some(&uv),
+        uv.as_deref(),
         crate::topology::brep::p2::MergeCurvesOptions {
             use_projection,
             ..crate::topology::brep::p2::MergeCurvesOptions::default()
         },
     )?;
+    Ok((merged.new_faces, merged.edges))
+}
+
+/// `MergeCurvesOnSurface(*pSurf, dTol, s3DCurves, pOptUVCurves, sNewFaces, sCurveEdges,
+/// FALSE, pOptIntersectionSurface)` (`bUVSpaceOkay = TRUE`): as
+/// [`merge_curves_on_surface`], with one optional UV curve per curve (`None` for a null
+/// entry of upstream's array, which leaves that curve without one) and the optional
+/// intersection surface the curves came
+/// from (`SmPlaneCutter::MergeIntersection`'s cutting plane), which every curve
+/// classification gets as its second surface
+/// ([`IntersectObject::FreeSurface`]`(0)`) for `sm_RefineCCIToSurfaces`'s
+/// surface/surface/surface refinement. The curves are edited in place, as upstream's
+/// refinement edits the caller's curves (`sm_SetXSectCurveThroughPoint`). Returns the
+/// new faces and the edges of the curves.
+///
+/// # Errors
+///
+/// Those of [`crate::topology::brep::p2::merge_curves_on_surface`].
+#[allow(clippy::too_many_arguments)]
+pub fn merge_curves_on_surface_through_surface(
+    k: &mut Kernel,
+    b: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    curve_ref: &dyn Fn(EdgeId, i64) -> ObjectRef,
+    face: FaceId,
+    tol: f64,
+    curves_3d: &mut [Curve],
+    uv_curves: Option<&[Option<Curve>]>,
+    intersection_surface: Option<Surface>,
+) -> Result<(Vec<FaceId>, Vec<EdgeId>)> {
+    // curve i is IntersectObject::Curve(i), its UV curve IntersectObject::UvCurve(i, false)
+    // (none for a null entry of upstream's array)
+    let curves: Vec<IntersectObject> = (0..curves_3d.len()).map(IntersectObject::Curve).collect();
+    let uv: Option<Vec<Option<IntersectObject>>> = uv_curves.map(|uv| {
+        uv.iter()
+            .enumerate()
+            .map(|(i, c)| c.as_ref().map(|_| IntersectObject::UvCurve(i, false)))
+            .collect()
+    });
+    let has_surface = intersection_surface.is_some();
+    let mut world = MergeCurvesWorld {
+        b,
+        curves_3d: curves_3d.to_vec(),
+        uv: uv_curves.unwrap_or_default().to_vec(),
+        env,
+        curve_ref,
+        free_surfaces: intersection_surface.into_iter().collect(),
+    };
+    let merged = crate::topology::brep::p2::merge_curves_on_surface(
+        k,
+        &mut world,
+        face,
+        tol,
+        &curves,
+        uv.as_deref(),
+        crate::topology::brep::p2::MergeCurvesOptions {
+            intersection_surface: has_surface.then_some(IntersectObject::FreeSurface(0)),
+            ..crate::topology::brep::p2::MergeCurvesOptions::default()
+        },
+    );
+    // the refinement's edits of the curves reach the caller's
+    for (c, edited) in curves_3d.iter_mut().zip(world.curves_3d) {
+        *c = edited;
+    }
+    let merged = merged?;
     Ok((merged.new_faces, merged.edges))
 }
 
@@ -1880,17 +2062,28 @@ fn point_from_solution(
     crate::topology::brep::p2::point_from_solution(k, b, solution, start)
 }
 
-fn remove_faces(k: &mut Kernel, b: &mut Brep, faces: &[FaceId]) -> Result<()> {
+fn remove_faces(
+    k: &mut Kernel,
+    b: &mut Brep,
+    notify: &mut NotifyEnv<'_>,
+    faces: &[FaceId],
+) -> Result<()> {
     // SmBrep::RemoveFaces (topology.brep_p5) reads the B-rep's own m_bEditingEnabled
     let editing = b.editing_enabled();
-    super::p5::remove_faces(k, b, editing, faces)
+    super::p5::remove_faces_notified(k, b, editing, faces, notify)
 }
 
 /// `SmBrep::ProjectAndTrim`: projects `curve` along `direction` onto the B-rep's faces
 /// (or `subset_faces`), imprints the projections as edges, and unless
 /// [`TrimType::Split`] removes the faces on the side of the projection plane the
 /// reference point selects. Editing is enabled; the kernel context's "doing Boolean"
-/// flag is set meanwhile.
+/// flag is set meanwhile. The merges' and face removals' B-rep edits are notified
+/// through `notify`.
+///
+/// `curve` is one of the `SmBSplineCurve` classes (upstream `const SmBSplineCurve&`,
+/// whose virtuals dispatch on the curve's class). Whole-face side classification
+/// evaluates the caller's curve itself for the reference, vertex, edge-midpoint and
+/// ray-fallback queries, not a knot-tuned copy.
 ///
 /// # Errors
 ///
@@ -1901,7 +2094,8 @@ pub fn project_and_trim(
     k: &mut Kernel,
     b: &mut Brep,
     env: &ProjectEnv<'_>,
-    curve: &BSplineCurve,
+    notify: &mut NotifyEnv<'_>,
+    curve: &Curve,
     direction: Vec3,
     reference: Point3,
     trim_type: TrimType,
@@ -1924,8 +2118,12 @@ pub fn project_and_trim(
     let previous = k.context.doing_boolean();
     k.context.set_doing_boolean(true);
     let result = project_and_trim_body(
-        k, b, env, curve, direction, reference, trim_type, options, &projected, tol,
+        k, b, env, notify, curve, direction, reference, trim_type, options, &projected, tol,
     );
+    // the UV trim curves the projection's face queries and the merges' edge splits
+    // made, owned by their edge uses as upstream's SetUVTrimCurve does
+    let bound = bind_uv_trim_owners(b, notify.key_of);
+    let result = result.and(bound);
     k.context.set_doing_boolean(previous);
     result
 }
@@ -1934,7 +2132,8 @@ fn project_and_trim_body(
     k: &mut Kernel,
     b: &mut Brep,
     env: &ProjectEnv<'_>,
-    curve: &BSplineCurve,
+    notify: &mut NotifyEnv<'_>,
+    curve: &Curve,
     direction: Vec3,
     reference: Point3,
     trim_type: TrimType,
@@ -1959,7 +2158,9 @@ fn project_and_trim_body(
                 tol = t;
             }
         }
-        let _ = merge_curves_on_surface(k, b, face, tol, &c3, &uv, false)?;
+        let curve_ref = |e: EdgeId, _type_code: i64| (env.keys)(CacheObject::Curve(e));
+        let _ =
+            merge_curves_on_surface(k, b, notify, &curve_ref, face, tol, &c3, Some(&uv), false)?;
     }
 
     // If we're just Splitting, then we're done.
@@ -1975,7 +2176,7 @@ fn project_and_trim_body(
     let to_delete = to_delete?;
 
     // Remove the indicated Faces.
-    remove_faces(k, b, &to_delete)
+    remove_faces(k, b, notify, &to_delete)
 }
 
 /// Classifies each face against the plane of the projected curve: by the votes of
@@ -1983,9 +2184,9 @@ fn project_and_trim_body(
 /// direction.
 fn faces_to_delete(
     k: &mut Kernel,
-    b: &Brep,
+    b: &mut Brep,
     env: &ProjectEnv<'_>,
-    curve: &BSplineCurve,
+    curve: &Curve,
     direction: Vec3,
     reference: Point3,
     trim_type: TrimType,
@@ -1994,7 +2195,10 @@ fn faces_to_delete(
     let mut to_delete = Vec::new();
     let mut edges: Vec<EdgeId> = Vec::new();
 
-    let curve = &Curve::from(curve.clone());
+    // Native classifies against crCurveToProject itself: every reference, vertex,
+    // midpoint and ray-fallback vote uses the caller's curve, whose class's virtuals
+    // the solver dispatches (a caller wrapping a BSplineCurve uses `clone_exact`, so
+    // its knots are not tuned).
 
     // First find which side the reference point is on.
     let delete_right_side = find_side_of_curve(k, curve, reference, direction, tol)?;
@@ -2047,7 +2251,7 @@ fn faces_to_delete(
             let vertex_keys: Vec<_> = vertices.iter().map(|&v| (env.brep_id, v)).collect();
             let shape = Shape::new(
                 k,
-                &(env.brep_id, b),
+                &(env.brep_id, &*b),
                 &[],
                 &[(env.brep_id, face)],
                 &edge_keys,
@@ -2055,7 +2259,7 @@ fn faces_to_delete(
             )?;
 
             // Find a ray to determine which face needs to be kept or deleted
-            let bbox = qbrep::calculate_bounding_box(k, b, BoundingBoxOptions::default())?;
+            let bbox = qbrep::calculate_bounding_box(k, &*b, BoundingBoxOptions::default())?;
             let sphere = bbox.sphere_bound();
             let param = line_closest_point(reference, direction, sphere.center);
             let projected_center = reference + direction * param;
@@ -2063,37 +2267,38 @@ fn faces_to_delete(
             let ray_end = projected_center + direction * (2.0 * sphere.radius);
             let segment = Curve::from(BSplineCurve::create_line_segment(3, ray_start, ray_end)?);
 
-            let cache = make_brep_cache(k, CacheSource::Brep(b), env.keys)?;
-            let objects = BrepObjects {
-                preparation: None,
-                brep: b,
+            let cache = make_brep_cache(k, CacheSource::Brep(&*b), env.keys)?;
+            let identity = qbrep::BrepIdentity {
                 brep_id: env.brep_id,
-                cache: Some(&cache),
                 keys: env.keys,
                 owner_of: env.owner_of,
             };
+            let brep_tol = b.tolerance();
             // the two output vectors of the solve (uninitialised upstream)
             let vectors = [Vec3::ZERO, Vec3::ZERO];
-            let solutions = TopologySolver::shape_curve_solve(
-                k,
-                &objects,
-                &shape,
-                CurveRef {
-                    curve: &segment,
-                    handle: CacheObject::Other(ObjectRef {
-                        type_code: BSPLINE_CURVE_TYPE,
-                        key: ObjectKey(0),
-                    }),
-                },
-                &segment.natural_interval(),
-                TopologySolveOptions {
-                    operation: SolverOperation::Minimize,
-                    requested: SolutionRequested::Single,
-                    tolerance_3d: b.tolerance(),
-                    best_answer_so_far_sq: BIG_DOUBLE,
-                    opt_vectors: &vectors,
-                },
-            )?;
+            let solutions = {
+                let objects = qbrep::LiveBrepObjects::new(b, &identity, Some(&cache))?;
+                TopologySolver::shape_curve_solve(
+                    k,
+                    &objects,
+                    &shape,
+                    CurveRef {
+                        curve: &segment,
+                        handle: CacheObject::Other(ObjectRef {
+                            type_code: BSPLINE_CURVE_TYPE,
+                            key: ObjectKey(0),
+                        }),
+                    },
+                    &segment.natural_interval(),
+                    TopologySolveOptions {
+                        operation: SolverOperation::Minimize,
+                        requested: SolutionRequested::Single,
+                        tolerance_3d: brep_tol,
+                        best_answer_so_far_sq: BIG_DOUBLE,
+                        opt_vectors: &vectors,
+                    },
+                )?
+            };
 
             let Some(first) = solutions.as_slice().first() else {
                 continue;
@@ -2260,17 +2465,40 @@ fn find_and_set_infinite_region(
     );
     // Lazy face queries attach new curves to typed edge-use slots. Complete the
     // native SetUVTrimCurve owner binding under the construction caller's names.
-    // Keep existing owners so a foreign or incorrect owner remains detectable.
+    bind_uv_trim_owners(b, key_of)?;
+    status
+}
+
+/// Completes the native `SetUVTrimCurve` owner binding (`pUVTrimCurve->SetOwner(eu)`)
+/// under the caller's names `key_of` for the UV trim curves the B-rep's own routines
+/// left without owner (a B-rep under [`crate::topology::NamingScheme::Caller`]: lazy
+/// face queries, edge splits), or named by the default identity of an edge use without
+/// a recorded key (`Brep::owner_identity`, the same owner). Other existing owners are
+/// kept so a foreign or incorrect owner remains detectable. An edge use the B-rep's routines added (edge splits) gets
+/// its caller key recorded (`Brep::geometry_owner_key`) so trims made later are named
+/// alike.
+fn bind_uv_trim_owners(b: &mut Brep, key_of: &dyn Fn(EntityRef) -> ObjectRef) -> Result<()> {
     for edge in p1::edges(b, None)? {
         for id in b.edge(edge)?.edgeuses.clone() {
+            let entity = EntityRef::Edgeuse(id);
+            // a trim bound before the key was recorded is named by the edge use's
+            // default identity (`Brep::owner_identity`); it is the same owner
+            let unrecorded = b
+                .geometry_owner_key(entity)
+                .is_none()
+                .then(|| b.owner_identity(entity));
+            if unrecorded.is_some() {
+                b.set_geometry_owner_key(entity, Some(key_of(entity)));
+            }
             if let Some(curve) = b.edgeuse_mut(id)?.uv_trim_curve.as_mut() {
-                if curve.owner().is_none() {
+                if curve.owner().is_none() || (unrecorded.is_some() && curve.owner() == unrecorded)
+                {
                     curve.set_owner(Some(key_of(EntityRef::Edgeuse(id))), None);
                 }
             }
         }
     }
-    status
+    Ok(())
 }
 
 /// `GetMate()->GetRadial()`: the next edge use pair around the edge in the same
@@ -2536,7 +2764,7 @@ mod tests {
         let mut k = Kernel::default();
         let mut b = Brep::new_with_infinite_region()?;
         let mut store = AttributeStore::new();
-        let mut records = BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut env = TopologyEnv {
             all_attributes: &[],
             attributes: &mut store,
@@ -2659,7 +2887,7 @@ mod tests {
         let mut k = Kernel::default();
         let mut b = Brep::new();
         let mut store = AttributeStore::new();
-        let mut records = BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut env = TopologyEnv {
             all_attributes: &[],
             attributes: &mut store,

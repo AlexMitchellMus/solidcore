@@ -736,17 +736,6 @@ fn trim_curve_uv(k: &Kernel, b: &Brep, eu: Option<EdgeuseId>, t: f64) -> Result<
     }
 }
 
-/// `pEdgeuse->GetOrCreateUVTrimCurve(pUVTrimCurve)` (both optional outputs `NULL`,
-/// `bUVSpaceOkay` `TRUE`; the returned status is not tested by `GetGapEndPoints`): the
-/// attached UV trim curve of the edge use or its mate, built first when missing. A
-/// failed build leaves `NULL` (`None`). [`SolidError::Unported`] and the null
-/// dereferences propagate.
-fn get_or_create_uv_trim_curve(k: &Kernel, b: &mut Brep, eu: EdgeuseId) -> Result<Option<Curve>> {
-    let _ =
-        crate::topology::edgeuse::p3::get_or_create_uv_trim_curve(k, b, eu, false, false, true)?;
-    Ok(eu1::uv_trim_curve(b, eu)?.0.cloned())
-}
-
 /// The end points `GetGapEndPoints` found: the first two it set (`SM_UNDEF_DOUBLE`
 /// where it set none) and how many it found (upstream fails unless two).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1041,6 +1030,10 @@ impl Gap {
     /// `GetGapEndPoints` without the final count check: the points as upstream leaves
     /// them and their count.
     ///
+    /// UV trim curves are created when missing, then evaluated in place on their
+    /// edge use or mate. Copy construction can normalize close knots and change the
+    /// stored curve's parameterization, so endpoint evaluation must not copy it.
+    ///
     /// # Errors
     ///
     /// As [`Gap::gap_end_points`] but `SM_ERR`.
@@ -1116,13 +1109,18 @@ impl Gap {
         if uv_trim_curve_t != UNDEF_DOUBLE {
             let eu = edgeuse0
                 .ok_or_else(|| null("GetGapEndPoints: a UVTrimCurve without an Edgeuse"))?;
-            let uv_curve = get_or_create_uv_trim_curve(k, b, eu)?;
+            // GetOrCreate's ordinary status is ignored upstream. Finish its mutable
+            // work before borrowing the stored curve and surface for evaluation.
+            let _ = crate::topology::edgeuse::p3::get_or_create_uv_trim_curve(
+                k, b, eu, false, false, true,
+            )?;
+            let uv_curve = eu1::uv_trim_curve(b, eu)?.0;
             let surface = match face {
                 Some(f) => b.face(f)?.surface.as_ref(),
                 None => None,
             };
             // (a missing curve leaves `sPtUV` at its constructed `SM_UNDEF_DOUBLE`s)
-            let pt_uv = match uv_curve.as_ref() {
+            let pt_uv = match uv_curve {
                 Some(c) => point_or_undef(c.evaluate_point(k, uv_trim_curve_t))?,
                 None => Vec3::UNDEF,
             };
@@ -2207,8 +2205,8 @@ impl<'a> GapFunction<'a> {
         let (mut knots_u, mut knots_v) = match (this_curve, this_surface) {
             (Some(c), _) => (unique_knots(c.knots(k, None))?, vec![0.0]),
             (None, Some(s)) => (
-                unique_knots(s.knots(SurfParamType::U, None))?,
-                unique_knots(s.knots(SurfParamType::V, None))?,
+                unique_knots(s.knots_with_nurb(k, SurfParamType::U, None))?,
+                unique_knots(s.knots_with_nurb(k, SurfParamType::V, None))?,
             ),
             (None, None) => return Err(SolidError::invalid_input(OP_GF, "no this geometry")),
         };
@@ -2593,7 +2591,7 @@ impl<'a> GapFunction<'a> {
             (Some(u), Some(v)) => Some(Point2::new(u, v)),
             _ => None,
         };
-        let domain = other.natural_uv_domain();
+        let domain = other.natural_uv_domain_with_nurb(k)?;
         let (mut success, mut uv, mut dist) = surface_drop(k, other, this_pos, &domain, guess)?;
 
         // If we don't like the result of the drop with a guess, try without a guess
@@ -2622,7 +2620,7 @@ impl<'a> GapFunction<'a> {
             sample.set_canonical(this_pos, this_u, this_v, p, uv.x, uv.y, drop_type, tol);
         } else {
             // failed to drop - load a zero length gap vector
-            let min = other.natural_uv_domain().min();
+            let min = other.natural_uv_domain_with_nurb(k)?.min();
             sample.set_canonical(
                 this_pos,
                 this_u,
