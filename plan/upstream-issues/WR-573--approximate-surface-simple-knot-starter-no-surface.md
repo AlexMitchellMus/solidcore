@@ -12,4 +12,4 @@
 - **Fix (opt-in, not the default):** `Kernel::fixes.approximate_surface_bezier_starter`.
   - Before each round of patches, the approximation surface's inner knots are raised to full multiplicity (degree 3) in u and v by knot insertion, which is exact.
   - A patch that still runs past the control points is `SM_ERR`.
-  - With it, the offset wave is approximated within 1e-3 (`wr573_bezier_starter_approximates_the_offset_wave`).
+  - With it, the offset wave gets a surface (`wr573_bezier_starter_approximates_the_offset_wave`). Its achieved tolerance is 1.62e-3 at a requested 1e-3: as upstream, a pass is accepted when its last row of patches is within the tolerance, and the achieved tolerance is the pass's largest deviation.
