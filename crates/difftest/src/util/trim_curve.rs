@@ -48,3 +48,24 @@ pub(crate) fn put_trim_curve(
     }
     Ok(())
 }
+
+/// The length of the record [`put_trim_curve`] wrote at the start of `r`, or `None` when
+/// `r` is too short to hold one.
+pub(crate) fn trim_curve_len(r: &[f64]) -> Option<usize> {
+    if *r.first()? == -1.0 {
+        return Some(1);
+    }
+    // 1 type n p m
+    let n = *r.get(2)?;
+    let m = *r.get(4)?;
+    let mut at = 5;
+    if n >= 0.0 {
+        at += 4 * (n as usize + 1) + (m as usize + 1);
+    }
+    at += 2; // t0 t1
+    for _ in 0..3 {
+        // `0 x y z`, or a failed evaluation's status
+        at += if *r.get(at)? == 0.0 { 4 } else { 1 };
+    }
+    (at <= r.len()).then_some(at)
+}

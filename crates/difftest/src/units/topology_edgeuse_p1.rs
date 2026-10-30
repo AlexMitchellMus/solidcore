@@ -65,7 +65,7 @@ use solidcore::topology::{
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::topology_edgeuse_p1::{self as ffi, Op};
 
-use crate::util::trim_curve::put_trim_curve;
+use crate::util::trim_curve::{put_trim_curve, trim_curve_len};
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
 
 /// The difftest runner.
@@ -1683,11 +1683,9 @@ fn strip_eu_owners(state: &[f64]) -> Vec<f64> {
         if present < 0.0 {
             continue;
         }
-        // the curve fingerprint: -1, or 1 t0 t1 and three points
-        let curve = if rest.get(at).copied() == Some(-1.0) {
-            1
-        } else {
-            12
+        // the full curve record ([`put_trim_curve`])
+        let Some(curve) = rest.get(at..).and_then(trim_curve_len) else {
+            break;
         };
         out.extend(rest.iter().skip(at).take(curve));
         // then the owner, dropped; then the drop record (3) and the vertex/face gap flag
