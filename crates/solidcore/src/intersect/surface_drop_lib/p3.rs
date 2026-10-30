@@ -49,8 +49,9 @@
 //!   for the call (`SmTemporaryChangeValue`) runs on an evaluation copy with the flag
 //!   set. The surface cache flags (`m_bPointTestEnabled` off, `m_bProcessBoundaryCurves`
 //!   on) are modelled by the start point drop keeping every solution
-//!   ([`Surface::global_point_solve_point_test_off`], `SmSurfaceDropLib.cpp:4310-4316`)
-//!   unless the caller's face test or context replaces it. The
+//!   ([`Surface::global_point_solve_point_test_off`], `SmSurfaceDropLib.cpp:4310-4316`;
+//!   through the caller's context, its point-test-off variant) unless the caller's face
+//!   test replaces it. The
 //!   curve cache is built fresh (`make_curve_cache`); a failed build is
 //!   `SM_ERR_NULL_POINTER` (`NER`).
 //! - **Offset surface.** `SmOffsetSurface(1.0, *this, FALSE, lSingularities)` is a
@@ -147,7 +148,7 @@ pub struct DropCurveOut {
 fn status_of(e: &SolidError) -> i32 {
     match e {
         SolidError::Upstream { code, .. } => *code,
-        SolidError::InvalidInput { .. } => SM_ERR_INVALID_INPUT,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => SM_ERR_INVALID_INPUT,
         SolidError::NotConverged { .. } => SM_ERR_NOT_CONVERGING,
         _ => SM_ERR,
     }
@@ -630,11 +631,12 @@ impl Surface {
         let s_uv_domain = if uv_domain.x_length() >= EFF_ZERO && uv_domain.y_length() >= EFF_ZERO {
             *uv_domain
         } else {
-            self.natural_uv_domain()
+            self.natural_uv_domain_with_nurb(k)?
         };
         let degen_surf_u = s_uv_domain.x_length() < EFF_ZERO;
         let degen_surf_v = s_uv_domain.x_length() < EFF_ZERO; // (sic) WR-100
-        let contained = s_uv_domain.is_contained_by(&self.natural_uv_domain(), EFF_ZERO);
+        let contained =
+            s_uv_domain.is_contained_by(&self.natural_uv_domain_with_nurb(k)?, EFF_ZERO);
 
         let mut fs: FailState<'_, O> = FailState {
             uv_domain: *uv_domain,
@@ -690,7 +692,7 @@ impl Surface {
         }
 
         // UV Tolerances - proportional to surface 3d/UV mapping size
-        let srf_nat_domain = self.natural_uv_domain();
+        let srf_nat_domain = self.natural_uv_domain_with_nurb(k)?;
         let project_size = approx_derivative_lengths(k, self, &srf_nat_domain)?;
         let uv_tol_x = approx_tol_3d / (project_size.x + 1.0);
         let uv_tol_y = approx_tol_3d / (project_size.y + 1.0);
@@ -749,10 +751,12 @@ impl Surface {
             *dst = *src;
         }
 
-        // Drop curve StartPoint to surface (SM_SO_MINIMIZE, all solutions)
+        // Drop curve StartPoint to surface (SM_SO_MINIMIZE, all solutions; the cache's
+        // point testing is off for the whole call, `sChange1`, SmSurfaceDropLib.cpp:4315:
+        // the face's cache comes from the context, its trims are not tested)
         let mut solutions: SolutionArray<O> = if let Some(ctx) = context {
             let mut solutions = SolutionArray::new();
-            this.global_point_solve_into_with_context(
+            this.global_point_solve_into_with_context_point_test_off(
                 k,
                 ctx.handle,
                 None,
@@ -1038,6 +1042,11 @@ impl Surface {
         let num_drop_points = solutions.len();
         let mut curve_cache = None;
         for ii in 0..num_drop_points {
+            // a trace from this start point that is abandoned must not leave its drop
+            // distances in the reported maximums
+            let max_drop_to_surf_before_trace = max_drop_to_surf;
+            let max_approx_dev_before_trace = max_approx_dev;
+
             // set Start
             start.t = s_interval.min();
             start.uv_pd[0] = start_uv(&solutions, ii)?;
@@ -1260,6 +1269,8 @@ impl Surface {
                         default_path(&mut record, CreateUvTrimCurvePathType::DropStartPointFail);
                         ctrl_poly.clear();
                         knots.clear();
+                        max_drop_to_surf = max_drop_to_surf_before_trace;
+                        max_approx_dev = max_approx_dev_before_trace;
                         break;
                     }
                 }
@@ -1382,6 +1393,8 @@ impl Surface {
                         );
                         ctrl_poly.clear();
                         knots.clear();
+                        max_drop_to_surf = max_drop_to_surf_before_trace;
+                        max_approx_dev = max_approx_dev_before_trace;
                         stop_spans = true;
                         break;
                     }

@@ -34,7 +34,7 @@ Use the [live unit results](https://tangency-labs.github.io/solidcore/units/inde
 for current differential coverage and blockers, and the
 [primitive checks](https://tangency-labs.github.io/solidcore/solids.html) for whole-solid
 results. Per-unit plans and notes live in [`plan/units/`](plan/units/); the generated
-checklist is [`plan/PROGRESS.md`](plan/PROGRESS.md), with handoff notes in
+checklist is [`PROGRESS.md`](https://tangency-labs.github.io/solidcore/PROGRESS.md) on the site, with handoff notes in
 [`plan/STATUS.md`](plan/STATUS.md). The progress site is built by
 [`site/build.py`](site/README.md) (`python3 site/build.py` -> `bin/site/`).
 
@@ -48,7 +48,7 @@ checklist is [`plan/PROGRESS.md`](plan/PROGRESS.md), with handoff notes in
 | `harness/cpp`           | Builds the upstream C++ reference into `bin/cpp`; FFI shims  |
 | `plan/`                 | Unit list, port order, status, findings                      |
 | `site/`                  | Generator for the GitHub Pages progress site                 |
-| `upstream/`             | Local clone of usd-brep at `c9c5979` (gitignored)           |
+| `upstream/`             | Local clone of usd-brep v1.0.1 at `3fd5b95` (gitignored)    |
 | `bin/`                  | All build output (gitignored)                                |
 
 ## Building
@@ -99,7 +99,7 @@ Rust-only builds do not need these C++ build tools.
 
 ```sh
 git clone https://github.com/NVIDIA-Omniverse/usd-brep upstream
-git -C upstream checkout c9c5979
+git -C upstream checkout 3fd5b95   # v1.0.1; the pin is in scripts/upstream-pin.env
 scripts/fetch-cpp.sh                                  # C++ reference -> bin/cpp (prebuilt, or built)
 cargo run --profile difftest -p difftest --features cpp -- --green   # all green and partial units
 cargo run --profile difftest -p difftest --features cpp -- --unit <unit id>   # one unit

@@ -4,12 +4,13 @@
 //!
 //! | Rust | Upstream |
 //! |------|----------|
-//! | [`copy_edges`] | `SmBrep::CopyEdges` |
+//! | [`copy_edges`], [`copy_edges_with_context`] | `SmBrep::CopyEdges` |
 //! | [`make_face_topology`], [`FaceTopologyOptions`], [`FaceTopology`] | `SmBrep::MakeFaceTopology` |
 //! | [`make_face_topology_attempt`], [`FaceTopologyAttempt`] | same, retaining native status and partial outputs |
 //! | `connect_edge_loops`, `find_sector`, `assign_uv_curves` (private) | its mark-locked edge-loop block, radial-sector recovery and `cpOptUVCurves` block |
 //! | [`test_closure_split_region`] | `SmBrep::TestClosureSplitRegion(SmFaceuse*)` |
 //! | [`test_closure_split_region_attempt`] | same, retaining native status and partial outputs |
+//! | `nest_closed_shells_as_cavities` (crate) | none: WR-442, the full-turn rotational sweep's opt-in |
 //!
 //! Deviations: pointers become arena ids; optional outputs become return values.
 //! Edits preserve the upstream mutations preceding an error. A closed-shell split
@@ -174,6 +175,96 @@ pub fn copy_edges(
     Ok(result)
 }
 
+/// [`copy_edges`] notifying through the caller's environment: `env` names
+/// `destination`'s objects (`env.key_of`) and `source` names those of `src`, as
+/// [`crate::topology::brep::p3::copy_vertices_with_context`] does for `CopyVertices`.
+/// Each new wire edge is made by `CreateWireEdgeFromCurve` under `env`, and each copy
+/// is reported to `env` (`Notify(SM_NO_COPY, pNew, pDestinationBrep, this)`).
+///
+/// # Errors
+///
+/// As [`copy_edges`]; `InvalidInput` for a caller key in the kernel's reserved range.
+pub fn copy_edges_with_context(
+    destination_kernel: &mut Kernel,
+    src: &Brep,
+    edges: &[EdgeId],
+    destination: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+    source: crate::topology::brep::p3::CopySource<'_>,
+) -> Result<Vec<EdgeId>> {
+    use crate::topology::brep::p3;
+    let p3::CopySource {
+        key_of: source_key,
+        context: mut source_context,
+    } = source;
+    p3::with_caller_identities_for(
+        destination_kernel,
+        destination,
+        env,
+        Some((src, source_key)),
+        edges.len(),
+        |k, destination, env| {
+            let mut result = Vec::new();
+            for &edge in edges {
+                let curve = required(crate::topology::edge::create_trimmed_nurbs_curve(
+                    k, src, edge,
+                )?)?;
+                let interval = curve.natural_interval();
+                let new_edge = brep_p5::create_wire_edge_from_curve_notified(
+                    k,
+                    destination,
+                    curve,
+                    interval,
+                    env,
+                )?;
+
+                // Notify Copy Edge - propogates attributes and reports copy
+                let data = (brep_p2::brep_ref(destination), brep_p2::brep_ref(src));
+                let mut notify_copy = |env: &mut NotifyEnv<'_>, old: EntityRef, new: EntityRef| {
+                    let this = source_key(old);
+                    let to = (env.key_of)(new);
+                    p3::notify_copy_with_context(
+                        env,
+                        source_context.as_deref_mut(),
+                        this,
+                        Some(to),
+                        Some(data.0),
+                        Some(data.1),
+                    )
+                };
+                notify_copy(env, EntityRef::Edge(edge), EntityRef::Edge(new_edge))?;
+
+                // Notify Copy Vertices - propogates attributes and reports copy
+                let new_start =
+                    required(crate::topology::edge::start_vertex(destination, new_edge)?)?;
+                let new_end = required(crate::topology::edge::other_vertex(
+                    destination,
+                    new_edge,
+                    Some(new_start),
+                )?)?;
+                let old_start = required(crate::topology::edge::start_vertex(src, edge)?)?;
+                let old_end = required(crate::topology::edge::other_vertex(
+                    src,
+                    edge,
+                    Some(old_start),
+                )?)?;
+                notify_copy(
+                    env,
+                    EntityRef::Vertex(old_start),
+                    EntityRef::Vertex(new_start),
+                )?;
+                if old_start != old_end && new_start != new_end {
+                    notify_copy(env, EntityRef::Vertex(old_end), EntityRef::Vertex(new_end))?;
+                }
+
+                // set optional output
+                result.push(new_edge);
+            }
+            Ok(result)
+        },
+    )
+}
+
 /// Topology created by `MakeFaceTopology` when construction succeeds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FaceTopology {
@@ -238,7 +329,7 @@ impl FaceSurfaceTransfer {
         }
     }
 
-    pub(super) fn owned_surface(&self) -> Result<&Surface> {
+    pub(crate) fn owned_surface(&self) -> Result<&Surface> {
         self.owned
             .as_ref()
             .ok_or_else(|| SolidError::null_pointer(OP))
@@ -306,7 +397,7 @@ fn deref<T>(value: Option<T>) -> Result<T> {
 
 // `new (this) Sm*()`: every new topology object has its `SmTopology` part.
 fn register(env: &mut NotifyState<'_>, entity: EntityRef) {
-    env.records.entry((env.key_of)(entity).key).or_default();
+    env.records.or_default((env.key_of)(entity).key);
 }
 
 // `pSurface->SetOwner(pNewOwner)` on the new face's surface, with the
@@ -382,7 +473,9 @@ fn delete_shell(
 // not on the region's list, `InvalidInput` in the shell port) is the native status.
 fn region_remove(brep: &mut Brep, region: RegionId, shell: ShellId) -> Result<()> {
     shell::region_remove_shell(brep, region, shell).map_err(|error| match error {
-        SolidError::InvalidInput { .. } => SolidError::sm_err(OP),
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => {
+            SolidError::sm_err(OP)
+        }
         other => other,
     })
 }
@@ -652,7 +745,7 @@ fn build_face(
     // connect face to surface just temporarily to help with some radial sectoring
     // that will follow (the face is not on the face list yet).
     let face_ref = (env.key_of)(EntityRef::Face(face));
-    let domain = transfer.owned_surface()?.natural_uv_domain();
+    let domain = transfer.owned_surface()?.natural_uv_domain_with_nurb(k)?;
     transfer.install(brep, face)?;
     set_surface_owner(
         k,
@@ -808,7 +901,8 @@ fn build_face(
             let shell_region = deref(eu::shell_region(brep, shell_vu)?)?;
             match shell::region_remove_shell(brep, shell_region, shell_vu) {
                 // `SmOwningTopology::Remove`'s SM_ERR (not on the list) is ignored
-                Ok(()) | Err(SolidError::InvalidInput { .. }) => {}
+                Ok(())
+                | Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => {}
                 Err(error) => return Err(error),
             }
             delete_shell(k, brep, env, shell_vu)?;
@@ -1582,6 +1676,7 @@ fn native<T>(r: Result<T>) -> Result<Option<T>> {
         Err(
             e @ (SolidError::Unported { .. }
             | SolidError::InvalidInput { .. }
+            | SolidError::PortInvariant { .. }
             | SolidError::NotFound { .. }),
         ) => Err(e),
         Err(_) => Ok(None),
@@ -1890,6 +1985,163 @@ fn nest_shells(
     Ok(())
 }
 
+/// Not upstream (WR-442, tangency-labs/solidcore#478): makes a closed solid lying
+/// inside another one that solid's cavity, for builders that make every closed shell
+/// its own solid (the full-turn rotational sweep). A candidate is a solid region with
+/// one shell whose mated shell is in the infinite region; a ray from a point of one
+/// candidate's outside shell, fired at another candidate's inside shell (as
+/// `nest_shells` fires), tells whether it lies inside. A candidate inside exactly one
+/// other, itself inside none, has its outside shell moved into that solid's region,
+/// its own region marked void and its faces swapped to point into the cavity.
+/// Deeper nesting is left as built. With `Kernel::fixes.revolve_holed_profile_void`
+/// (WR-529), a B-rep whose infinite region holds one shell, more than two regions and
+/// only closed face-use shells gets its void flags from the nesting instead
+/// ([`super::p1::set_region_is_void_flags_for_nested_solids`]).
+pub(crate) fn nest_closed_shells_as_cavities(
+    k: &mut Kernel,
+    brep: &mut Brep,
+    env: &mut NotifyEnv<'_>,
+) -> Result<()> {
+    let Some(infinite) = brep.infinite_region() else {
+        return Ok(());
+    };
+    // Not upstream (WR-529, opt-in `revolve_holed_profile_void`; the fork's
+    // tangency-labs/smlib@38b4212): the stitch may have nested the shells itself (a hole in
+    // the profile: the ring it turns into lies inside the ring around it, in that ring's
+    // region) and left the region inside the inner shell material. Where every shell is
+    // closed the regions alternate material and void from the infinite region in.
+    if k.fixes.revolve_holed_profile_void && brep.region(infinite)?.shells.len() < 2 {
+        let regions = super::p1::regions(brep, None)?;
+        if regions.len() <= 2 {
+            return Ok(());
+        }
+        for &region in &regions {
+            for &s in &brep.region(region)?.shells {
+                let shell = brep.shell(s)?;
+                if !shell.is_faceuse_shell() || !shell.is_closed(brep, s)? {
+                    return Ok(());
+                }
+            }
+        }
+        return super::p1::set_region_is_void_flags_for_nested_solids(k, brep);
+    }
+    // (solid region, its shell, the mated shell in the infinite region)
+    let mut solids: Vec<(RegionId, ShellId, ShellId)> = Vec::new();
+    for region in super::p1::regions(brep, None)? {
+        if region == infinite {
+            continue;
+        }
+        let [inner] = brep.region(region)?.shells.as_slice() else {
+            continue;
+        };
+        let inner = *inner;
+        let mated = brep.shell(inner)?.mated_shells(k, brep)?;
+        let [outer] = mated.as_slice() else {
+            continue;
+        };
+        if brep.shell(*outer)?.region == Some(infinite) {
+            solids.push((region, inner, *outer));
+        }
+    }
+    if solids.len() < 2 {
+        return Ok(());
+    }
+
+    // containers[i]: the candidates candidate i lies inside
+    let mut containers: Vec<Vec<usize>> = Vec::new();
+    {
+        let brep_bbox = qbrep::calculate_bounding_box(
+            k,
+            &mut *brep,
+            BoundingBoxOptions {
+                approx: true,
+                tight: false,
+                expand_by_zone_tol_3d: true,
+            },
+        )?;
+        let brep_radius = brep_bbox.sphere_bound().radius;
+        let key_of = env.key_of;
+        let keys = |object| brep_p2::caller_cache_key(key_of, object);
+        let query = qbrep::BrepQuery::with_proven_owners(
+            qbrep::BrepIdentity {
+                brep_id: BrepId::from_index(0),
+                keys: &keys,
+                owner_of: &|_| None,
+            },
+            brep,
+        );
+        let brep_zone_tol = brep.tolerance();
+        let ray = Vec3::new(1.0, 1.0, 1.0);
+        let ray = ray.unitize().unwrap_or(ray);
+        for (i, &(_, _, outer)) in solids.iter().enumerate() {
+            let mut point = shell_point(k, brep, outer)?;
+            point += ray * (EFF_ZERO_SQRT * (1.0 + point.max_dimension()));
+            let mut inside = Vec::new();
+            for (j, &(region, inner, _)) in solids.iter().enumerate() {
+                if i == j {
+                    continue;
+                }
+                let editing = brep.editing_enabled();
+                brep.set_editing_enabled(false);
+                let attempt = shell::ray_fire(
+                    k,
+                    brep,
+                    query.identity().brep_id,
+                    inner,
+                    &query,
+                    ShellRayInput {
+                        start: point,
+                        direction: ray,
+                        zone_tolerance: brep_zone_tol,
+                        sphere_bound: Some(brep_radius),
+                        state: ShellRayState {
+                            region: None,
+                            classification: PointClassification::<CacheObject>::new(brep_zone_tol),
+                        },
+                    },
+                );
+                brep.set_editing_enabled(editing);
+                attempt.status?;
+                if attempt.state.region == Some(region) {
+                    inside.push(j);
+                }
+            }
+            containers.push(inside);
+        }
+    }
+
+    let moves: Vec<(usize, usize)> = containers
+        .iter()
+        .enumerate()
+        .filter_map(|(i, found)| match found.as_slice() {
+            [j] if containers.get(*j).is_some_and(Vec::is_empty) => Some((i, *j)),
+            _ => None,
+        })
+        .collect();
+    for (i, j) in moves {
+        let (Some(&(cavity, inner, outer)), Some(&(solid, _, _))) = (solids.get(i), solids.get(j))
+        else {
+            continue;
+        };
+        region_remove(brep, infinite, outer)?;
+        shell::region_post_insert_shell(brep, solid, outer)?;
+        shell::order_region_shells(k, brep, solid)?;
+        // SmRegion::SetIsVoid(TRUE)
+        brep.region_mut(cavity)?.set_is_void(1);
+        // the cavity's faces now point into the solid: swap them
+        for face in super::p1::faces(brep, None)? {
+            let up = required(crate::topology::face::p2::upward_faceuse(brep, face)?)?;
+            let mate = required(eu::faceuse_mate(brep, up)?)?;
+            if eu::faceuse_shell(brep, up)? == Some(inner)
+                || eu::faceuse_shell(brep, mate)? == Some(inner)
+            {
+                crate::topology::face::p1::swap_uv_with_notifications(k, brep, face, env)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 // A point on a shell to classify: a point stepped off the first edge of its first
 // face use (or the vertex of its vertex loop), a point on its wire, or its vertex.
 fn shell_point(k: &Kernel, brep: &mut Brep, shell_id: ShellId) -> Result<Point3> {
@@ -2029,6 +2281,7 @@ fn ignore_status(r: Result<()>) -> Result<()> {
         Err(
             e @ (SolidError::Unported { .. }
             | SolidError::InvalidInput { .. }
+            | SolidError::PortInvariant { .. }
             | SolidError::NotFound { .. }),
         ) => Err(e),
         _ => Ok(()),

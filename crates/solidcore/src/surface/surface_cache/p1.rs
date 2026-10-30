@@ -161,6 +161,7 @@ use crate::nurbs::b_spline_surface_n_lib::p2::EvaluateFlags;
 use crate::nurbs::math::NOW;
 use crate::nurbs::nurbs_crv::to_euclid;
 use crate::nurbs::srf_basic::Surface as NurbSurface;
+use crate::surface::surface::p1::SurfaceBoxes;
 use crate::surface::surface::p5::SS_NONE;
 use crate::surface::surface::{Surface, SurfaceKind};
 
@@ -209,8 +210,13 @@ pub(super) fn invalid(operation: &'static str, reason: &'static str) -> SolidErr
 /// `SM_CAST_PTR(SmBSplineSurface, surface)` for callers that run only non-virtual
 /// `SmBSplineSurface` members: an `SmPlane` gives its B-spline part. Callers that
 /// reach a virtual member deal with planes first.
-pub(super) const fn bspline_of(surface: &Surface) -> Option<&BSplineSurface> {
-    match surface.kind() {
+pub(super) fn bspline_of(surface: &Surface) -> Option<&BSplineSurface> {
+    bspline_of_kind(surface.kind())
+}
+
+/// [`bspline_of`] of a surface kind (a made kind with its NURB, say).
+fn bspline_of_kind(kind: &SurfaceKind) -> Option<&BSplineSurface> {
+    match kind {
         SurfaceKind::BSpline(b) => Some(b),
         SurfaceKind::Plane(p) => Some(p.base()),
         SurfaceKind::Cone(s) => Some(s.rev().base()),
@@ -257,6 +263,7 @@ const fn bspline_curve_of(curve: &Curve) -> Option<&BSplineCurve> {
         | CurveKind::Offset(_)
         | CurveKind::CrvInVolume(_)
         | CurveKind::CrvOnSurf(_)
+        | CurveKind::TangentField(_)
         | CurveKind::Composite(_) => None,
     }
 }
@@ -307,7 +314,7 @@ pub(super) fn calculate_bounding_box(
     domain: &Extent2d,
     req: &BoundingBoxRequest<'_>,
 ) -> Result<BoundingBoxes> {
-    match surface.kind() {
+    match surface.kind_with_nurb(k)? {
         SurfaceKind::BSpline(b) => b.calculate_bounding_box(k, domain, req),
         // inherited from SmBSplineSurface, run for the derived surface (its IsKindOf
         // and virtual EvaluateNormal)
@@ -345,28 +352,49 @@ pub(super) fn calculate_bounding_box(
                     crate::surface::surface::p1::POLAR_RECURSION,
                 ));
             }
-            // DISPATCH GAP: the other boxes come from the surface's own cache
-            // (Surface::base_calculate_bounding_box, surface::surface::p1), whose build
-            // needs the kernel this signature does not take. No UNPORTED marker: the
-            // callees are ported (the continuities of the tree build are
-            // surface::surface::p6); the error names the owner of the base body. Once the
-            // kernel is plumbed, the next blocker for these kinds is surface.surface_p5:
-            // CalculateContinuities calls the base CreateIsoParametricCurve, which that
-            // unit owns.
+            // The other boxes come from the base body (Surface::base_calculate_bounding_box,
+            // surface::surface::p1): the top node of the surface's own cache, the cache
+            // this callback is building. Not reached: the callers are the polar box of a
+            // node (refused above) and the tolerance test of an SM_AD_AUX_DATA node,
+            // which upstream casts to an SmBSplineSurface unchecked and the port refuses
+            // for these kinds before calling here (`bspline_of`). Routing it would build
+            // a second cache of the surface from inside the first build, which recurses.
+            // The error names the owner of the base body.
             Err(SolidError::unported(
                 "SmSurface::CalculateBoundingBox",
                 "surface.surface_p1",
             ))
         }
-        // DISPATCH GAP: OffsetSurface::calculate_bounding_box is ported, but this
-        // cache callback has no Kernel (the offset's constructor-time queries and its
-        // base box need one), and upstream forwards the basis guesses to the base, which
-        // Surface::calculate_bounding_box does not take. No UNPORTED marker: the callees
-        // are ported; the error names this callback's unit. No difftest reaches it.
-        SurfaceKind::OffsetSurface(_) => Err(SolidError::unported(
-            "SmOffsetSurface::CalculateBoundingBox from a surface cache",
-            "surface.surface_cache_p1",
-        )),
+        // SmOffsetSurface::CalculateBoundingBox forwarding the basis guesses to its base's
+        // CalculateBoundingBox (this dispatcher, all three boxes)
+        SurfaceKind::OffsetSurface(o) => {
+            let base_req = BoundingBoxRequest {
+                normal: true,
+                pseudo: true,
+                polar: true,
+                ..*req
+            };
+            let boxes = o.calculate_bounding_box_with(
+                k,
+                surface,
+                domain,
+                [req.normal, req.pseudo, req.polar],
+                req.expand_by_zone_tol,
+                |base| {
+                    let b = calculate_bounding_box(k, base, domain, &base_req)?;
+                    Ok(SurfaceBoxes {
+                        normal_box: b.normal,
+                        pseudo_box: b.pseudo,
+                        polar_box: b.polar,
+                    })
+                },
+            )?;
+            Ok(BoundingBoxes {
+                normal: boxes.normal_box,
+                pseudo: boxes.pseudo_box,
+                polar: boxes.polar_box,
+            })
+        }
     }
 }
 
@@ -752,12 +780,22 @@ impl PatchBoundaryBoundingPlanes {
         let tolerance = 0.0001;
 
         // local
-        let bs = bspline_of(surface).ok_or(SolidError::null_pointer(OP_PLANES))?;
-        // (the canonical form asks for the NURB through the virtual GetOrCreateGwNurbPointer,
-        // which makes a plane's)
-        let bs = match surface.kind() {
+        bspline_of(surface).ok_or(SolidError::null_pointer(OP_PLANES))?;
+        // (the control point count and the canonical form read the NURB, made through
+        // the virtual GetOrCreateGwNurbPointer when missing: a plane's, a cone's,
+        // sphere's, torus's or surface of revolution's or extrusion's)
+        let bs = match surface.kind_with_nurb(k)? {
             SurfaceKind::Plane(p) => p.base_for_query(),
-            _ => std::borrow::Cow::Borrowed(bs),
+            SurfaceKind::SurfOfExtrusion(_) => match surface.extrusion_base_with_nurb(k) {
+                Ok(base) => base,
+                Err(e) if e.is_unported() => return Err(e),
+                Err(_) => std::borrow::Cow::Borrowed(
+                    bspline_of(surface).ok_or(SolidError::null_pointer(OP_PLANES))?,
+                ),
+            },
+            made => std::borrow::Cow::Borrowed(
+                bspline_of_kind(made).ok_or(SolidError::null_pointer(OP_PLANES))?,
+            ),
         };
 
         // for every boundary
@@ -1125,6 +1163,8 @@ impl<O> FaceContainmentClassifier<O> for BaseClassifier {
         // arm it dispatches to is ported (topology::{vertex, edge, face::p2, edgeuse::p1}::tolerance,
         // Brep::tolerance) but each takes `&Brep` and none is in scope here; wire once this code
         // receives the owning B-rep (justified: findings.md "stubs naming green units")
+        // Proof (unreachable): BaseClassifier only fronts the SM_ERR PointClassify path; 0
+        // hits in the green difftest sweep.
         Err(SolidError::unported(
             "SmTol::GetZoneTol3d(const SmObject*)",
             "geom.tol",
@@ -1653,6 +1693,37 @@ impl<O: Clone> Clone for SurfaceCache<O> {
     }
 }
 
+impl<O: Clone> SurfaceCache<O> {
+    /// A copy standing for this same cache where upstream keeps using it (the
+    /// boundary start-point search of `SmSurfaceIntersector::DoIntersection` runs on
+    /// the intersector's own caches): the surfaces and iso boundary curves are exact
+    /// evaluation copies, since [`Clone`] runs the copy constructor's knot fix-up,
+    /// which moves near-coincident knots of a fillet surface.
+    ///
+    /// # Errors
+    ///
+    /// An owned geometry chain deeper than the evaluation-copy bound.
+    pub(crate) fn clone_for_evaluation(&self) -> Result<Self> {
+        let mut c = self.clone();
+        c.surface = self.surface.clone_for_evaluation()?;
+        let mut subdivision_surfaces = Vec::new();
+        for (o, s) in &self.subdivision_surfaces {
+            subdivision_surfaces.push((o.clone(), s.clone_for_evaluation()?));
+        }
+        c.subdivision_surfaces = subdivision_surfaces;
+        c.iso_boundary_curves = match &self.iso_boundary_curves {
+            Some([a, b, cc, d]) => Some([
+                a.clone_for_evaluation()?,
+                b.clone_for_evaluation()?,
+                cc.clone_for_evaluation()?,
+                d.clone_for_evaluation()?,
+            ]),
+            None => None,
+        };
+        Ok(c)
+    }
+}
+
 impl<O: Copy + PartialEq> SurfaceCache<O> {
     /// A cache of `surface` over `uv_domain` with the tessellation controls `opts`,
     /// without tree (the field initialisation of `SmSurfaceCache::SmSurfaceCache`).
@@ -1709,6 +1780,20 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
     #[must_use]
     pub const fn is_trimmed(&self) -> bool {
         self.trimmed_dispatch
+    }
+
+    /// Keys a face binding to the cache surface's owner as it is now: after the surface
+    /// and its face were renamed together (a B-rep copied into new arenas, its handles
+    /// mapped), the bound face is that surface's face again.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::face`].
+    pub(crate) fn rekey_trimmed_face(&mut self) -> Result<()> {
+        if self.trimmed_face_key.is_some() {
+            self.trimmed_face_key = self.surface.face()?;
+        }
+        Ok(())
     }
 
     /// Records a face handle only after checking the source surface's owner key.
@@ -2073,6 +2158,12 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
                 })
             }
             // An object key is not a typed arena index or a caller handle.
+            // UNPORTED(topology.face_p2): SmSurface::GetFace (the SmFace handle of a
+            // face-owned surface whose cache was made without its face). Reachable: a
+            // solve on a B-rep face's surface without face context lands here (seen in
+            // blend.fillet_geom_p6 on own-reader targets, which now pass the face's
+            // B-rep through BrepFaceServices). Callers thread it with the
+            // `*_with_context` variants or `get_surface_cache_with_face`.
             Some(_) if self.trimmed_face_key.is_none() => Err(SolidError::unported(
                 "SmFace handle of a surface's face",
                 "topology.face_p2",
@@ -3398,7 +3489,7 @@ mod tests {
         )
         .unwrap();
         let surface = Surface::from(BSplineSurface::from_nurb(nurb, false));
-        let d = surface.natural_uv_domain();
+        let d = surface.natural_uv_domain_if_built();
         let mut c = SurfaceCache::new(surface, d, SurfaceCacheOptions::default());
         c.set_surface_handle(Some(-1));
         c
@@ -3592,5 +3683,64 @@ mod tests {
         let o = Vec3::new(0.0, 0.0, 0.0);
         let z = SurfaceCache::<u32>::size_tolerances_from_corners(o, o, o, o);
         assert_eq!(z.aspect_ratio, Vec2::new(0.5, 0.5));
+    }
+
+    /// A node box of an offset surface with basis guesses (the polar box chain of
+    /// `BuildPolarBox` passes the parent's box) runs `SmOffsetSurface::
+    /// CalculateBoundingBox`, which hands the guesses to its base surface: the polar
+    /// box is the base's, computed with the same guess.
+    #[test]
+    fn offset_node_boxes_pass_the_basis_guesses_to_the_base() {
+        use crate::geom::axis2_placement::Axis2Placement;
+        use crate::nurbs::b_spline_surface::BoundingBoxRequest;
+        use crate::surface::offset_surface::OffsetSurface;
+        use crate::surface::torus::{Torus, TorusOptions};
+        let k = Kernel::default();
+        let torus = Torus::create_canonical(
+            &k,
+            &Axis2Placement::IDENTITY,
+            3.0,
+            1.0,
+            TorusOptions::default(),
+            None,
+        )
+        .unwrap();
+        let base = Surface::from(torus);
+        let natural = base.natural_uv_domain_with_nurb(&k).unwrap();
+        let sub = |a: f64, b: f64, c: f64, d: f64| {
+            Extent2d::from_points(natural.evaluate(a, b), natural.evaluate(c, d))
+        };
+        let wide = sub(0.1, 0.1, 0.6, 0.6);
+        let node = sub(0.2, 0.25, 0.35, 0.4);
+        let guess = base
+            .calculate_bounding_box(&k, &wide, [false, false, true], true)
+            .unwrap()
+            .polar_box
+            .unwrap();
+        let offset = Surface::from(
+            OffsetSurface::new(&k, 0.5, base.clone(), true, crate::geom::extent2d::SS_NONE)
+                .unwrap(),
+        );
+        let req = BoundingBoxRequest {
+            normal: false,
+            pseudo: false,
+            polar: true,
+            pseudo_guess: None,
+            polar_guess: Some(&guess),
+            expand_by_zone_tol: true,
+            expand_tolerance: None,
+        };
+        let boxes = calculate_bounding_box(&k, &offset, &node, &req).unwrap();
+        let from_base = base
+            .calculate_bounding_box_with_guesses(
+                &k,
+                &node,
+                [true, true, true],
+                true,
+                None,
+                Some(&guess),
+            )
+            .unwrap();
+        assert_eq!(boxes.polar, from_base.polar_box);
     }
 }

@@ -62,7 +62,6 @@ use crate::topology::face::p3::{FaceIntersectOptions, IntersectObject};
 use crate::topology::loopuse as lu;
 use crate::topology::proto_topology::p1::ProtoTopology;
 use crate::topology::proto_topology::{ProtoBrep, ProtoGeometry};
-use crate::topology::topology::Topology;
 use crate::topology::vertex as vx;
 use crate::topology::{
     Brep, BrepId, EdgeId, EdgeuseId, FaceId, FaceuseId, LoopId, LoopuseId, RegionId, VertexId,
@@ -70,7 +69,6 @@ use crate::topology::{
 };
 use crate::{EntityRef, SolidError};
 use std::cell::Cell;
-use std::collections::BTreeMap;
 use std::rc::Rc;
 const K_VERTEX: u8 = 0;
 const K_EDGE: u8 = 1;
@@ -190,7 +188,7 @@ pub(super) struct ArenaPair<'a> {
     breps: [Option<&'a mut Brep>; 2],
     curves: &'a mut Vec<SmCurve>,
     extra: &'a mut Vec<SmCurve>,
-    records: &'a mut BTreeMap<ObjectKey, Topology>,
+    records: &'a mut crate::topology::topology::NotifyRecords,
     attributes: &'a mut AttributeStore,
     primary_context: &'a mut Context,
     other_context: Option<&'a mut Context>,
@@ -267,7 +265,7 @@ impl ArenaPair<'_> {
         other: Option<&'a mut Brep>,
         curves: &'a mut Vec<SmCurve>,
         extra: &'a mut Vec<SmCurve>,
-        records: &'a mut BTreeMap<ObjectKey, Topology>,
+        records: &'a mut crate::topology::topology::NotifyRecords,
         attributes: &'a mut AttributeStore,
         cache_kernels: [Kernel; 2],
         primary_context: &'a mut Context,
@@ -1218,13 +1216,21 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
             }),
             key_of: &|e| self.keys.object(brep.b == 1, e),
         };
-        let out = crate::topology::brep::p9::make_vertex_split_edge_with_identity(
+        let checked = |e, kind| self.keys.curve(brep.b == 1, e, kind);
+        let identity = if self.keys.actual_curve_identities() {
+            crate::topology::brep::p9::CurveIdentity::Actual(
+                &crate::topology::brep::p9::issue_curve_identity,
+            )
+        } else {
+            crate::topology::brep::p9::CurveIdentity::Checked(&checked)
+        };
+        let out = crate::topology::brep::p9::make_vertex_split_edge_with_curve_identity_state(
             k,
             b,
             eid(edge),
             parameter,
             &mut crate::topology::edge::NotifyState::from_env(&mut env),
-            &|e, kind| self.keys.curve(brep.b == 1, e, kind),
+            identity,
         )?;
         if !out.split {
             return Err(SolidError::sm_err("boolean::merge::p4::arena_pair::split"));
@@ -1264,6 +1270,14 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
     ) -> crate::Result<Extent3d> {
         let b = self.brep_r(face)?;
         crate::query::face::p1::calculate_bounding_box(k, b, fid(face), tight)
+    }
+    fn vertex_update_edge_intervals(&mut self, k: &Kernel, vertex: H) -> crate::Result<()> {
+        if vertex.kind != K_VERTEX {
+            return Err(invalid("not a vertex handle"));
+        }
+        self.with_edit_env(brep_h(vertex.b), |b, env| {
+            crate::topology::brep::p1::update_vertex_edge_intervals(k, b, env, vid(vertex))
+        })
     }
     fn vertex_brep(&self, vertex: H) -> crate::Result<Option<H>> {
         let b = self.brep_r(vertex)?;
@@ -1566,6 +1580,8 @@ impl IntersectorBrep<H> for ArenaPair<'_> {
                     EntityRef::Vertexuse(vu) => Ok(hd(brep_of(side), K_VERTEXUSE, vu.index())),
                     other => Self::entity_h(brep_of(side), other).ok_or_else(bad),
                 },
+                // face intersections name no free surface
+                IntersectObject::FreeSurface(_) => Err(bad()),
             }
         };
         let mut cc1 = Vec::new();

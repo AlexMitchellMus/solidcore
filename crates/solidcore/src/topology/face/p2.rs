@@ -20,6 +20,8 @@
 //! | [`PrecisePropertyLayout`]               | `SmPrecisePropertyLayout` (constructor, `Add`)    |
 //! | [`OdeIsoCurveLength`]                   | `SmODEIsoCurveLengthIFEO` (constructor, `Evaluate`) |
 //! | [`OdeArea`]                             | `SmODEAreaIFEO::Evaluate`                         |
+//! | [`surface_knots_inside`]                | `sm_SurfaceKnotsInside` (static; the SolidCraft fork's tangency-labs/smlib@08d9a14) |
+//! | [`trim_curve_breaks`]                   | `sm_TrimCurveBreaks` (static; the SolidCraft fork's tangency-labs/smlib@08d9a14) |
 //! | [`create_curves_by_trimming`], [`TrimmedCurves`] | `SmFace::CreateCurvesByTrimming`         |
 //! | [`create_curves_from_face`], [`FaceCurves`] | `SmFace::CreateCurvesFromFace`                |
 //! | [`fix_uv_trim_curves`], [`fix_uv_trim_curves_notified`] | `sm_FixUVTrimCurves`              |
@@ -66,6 +68,9 @@
 //!   thread edge's trim 5e-5 off its edge, tolerance 1e-5). That is the default here, as
 //!   upstream; with [`UpstreamFixes::uv_trim_corner_end_points_only`](crate::kernel::UpstreamFixes::uv_trim_corner_end_points_only)
 //!   only the end control points move, by the UV gap.
+//!   Each `Trim` uses the tolerance of the edge reached through the UV curve's actual
+//!   holding edge use, matching `SmTol::GetZoneTol3d(curve)`; an owner path without an
+//!   edge uses the system tolerance. Notification probes use that same tolerance.
 //! - **Edit notifications.** [`fix_uv_trim_curves_notified`] notifies its two
 //!   `EditEndPoint`s (`SM_NO_PRE_EDIT` / `SM_NO_POST_EDIT`, caller and first data
 //!   object the UV trim curve under its kernel-issued identity) through the caller's
@@ -969,15 +974,22 @@ fn is_singularity(
 
 /// `SmOffsetSurface(dOffset, rSurface).EvaluateSimple(uv, 1, 1, TRUE, TRUE, TRUE, ..)`:
 /// a temporary offset (not owning, default singularities, so its constructor runs the
-/// surface's `IsPeriodic` and `GetSingularities`) over a copy of `surface` that keeps
-/// its owner (upstream shares it).
+/// surface's `IsPeriodic` and `GetSingularities`) over an exact evaluation copy of
+/// `surface` that keeps its owner (upstream shares it; [`Surface`]'s `Clone` would run
+/// the copy constructor's knot fix-up).
 fn offset_evaluate_simple(
     k: &Kernel,
     surface: &Surface,
     offset: f64,
     uv: Point2,
 ) -> Result<Vec<Vec<Vec3>>> {
-    let off = OffsetSurface::new(k, offset, surface.clone_keeping_owner(), false, SS_UNKNOWN)?;
+    let off = OffsetSurface::new(
+        k,
+        offset,
+        surface.clone_for_evaluation()?,
+        false,
+        SS_UNKNOWN,
+    )?;
     off.evaluate_simple(k, uv, 1, 1, simple_flags())
 }
 
@@ -1188,7 +1200,7 @@ pub fn are_connected(
     // when gaps across MissingSeams are allowed
     if crosses_missing_seam_ok {
         // check for a properly oriented seam gap
-        let domain = surf.natural_uv_domain();
+        let domain = surf.natural_uv_domain_with_nurb(k)?;
         let (closed_u, _) = surf.is_closed(k, &domain, SurfParamType::U, Some(uv_tol), false)?;
         let (closed_v, _) = surf.is_closed(k, &domain, SurfParamType::V, Some(uv_tol), false)?;
 
@@ -1579,7 +1591,7 @@ pub fn points_in_face(
             Err(e) if e.is_unported() => return Err(e),
             Err(_) => b.face(f)?.uv_domain,
         };
-        let srf_dom = surf.natural_uv_domain();
+        let srf_dom = surf.natural_uv_domain_with_nurb(k)?;
         // (SmExtent2d::Intersect leaves the output unchanged when disjoint)
         let uv_dom = srf_dom
             .intersect(&trim_uv_domain)
@@ -2118,18 +2130,49 @@ impl OdeArea<'_> {
             let num_components = self.y_scale.len();
             let mut dy = Vec::new();
             dy.resize(num_components, 0.0);
-            let step = p0.y - self.min_v;
+            if k.fixes.precise_properties_split_at_surface_knots {
+                // Along the iso-u line the integrand is smooth only within each knot
+                // span of the surface: integrated span by span, as the trim curve is
+                // (WR-494; the SolidCraft fork's tangency-labs/smlib@08d9a14).
+                let mut breaks =
+                    surface_knots_inside(k, self.surface, SurfParamType::V, self.min_v, p0.y)?;
+                breaks.insert(0, self.min_v);
+                breaks.push(p0.y);
+                let mut piece_y = Vec::new();
+                piece_y.resize(num_components, 0.0);
+                for pair in breaks.windows(2) {
+                    let &[a, b] = pair else {
+                        continue;
+                    };
+                    piece_y.fill(0.0);
+                    // A failed inner integration is not a zero-area contribution.
+                    runge_kutta_ode_integrate(
+                        &eval,
+                        &mut piece_y,
+                        a,
+                        b,
+                        self.iso_curve_accuracy,
+                        (b - a) / 2.0,
+                        self.y_scale,
+                    )?;
+                    for (total, part) in dy.iter_mut().zip(piece_y.iter()) {
+                        *total += *part;
+                    }
+                }
+            } else {
+                let step = p0.y - self.min_v;
 
-            // A failed inner integration is not a zero-area contribution.
-            runge_kutta_ode_integrate(
-                &eval,
-                &mut dy,
-                self.min_v,
-                p0.y,
-                self.iso_curve_accuracy,
-                step / 2.0,
-                self.y_scale,
-            )?;
+                // A failed inner integration is not a zero-area contribution.
+                runge_kutta_ode_integrate(
+                    &eval,
+                    &mut dy,
+                    self.min_v,
+                    p0.y,
+                    self.iso_curve_accuracy,
+                    step / 2.0,
+                    self.y_scale,
+                )?;
+            }
             dydx.clear();
             dydx.push(0.0);
             dydx.extend_from_slice(&dy);
@@ -2141,6 +2184,131 @@ impl OdeArea<'_> {
 
         Ok(())
     }
+}
+
+/// `sm_SurfaceKnotsInside` (the SolidCraft fork's tangency-labs/smlib@08d9a14): the
+/// unique knots of a B-spline-kind surface in `param`'s direction strictly inside
+/// `(lo, hi)`, ascending; none for a surface not of the B-spline kind (smooth
+/// everywhere). The knots are read as upstream's virtual `GetKnots` does, with the NURB
+/// of a lazy analytic surface made ([`Surface::knots_with_nurb`]).
+///
+/// # Errors
+///
+/// Those of [`Surface::is_kind_of`] and [`Surface::knots_with_nurb`].
+pub fn surface_knots_inside(
+    k: &Kernel,
+    surface: &Surface,
+    param: SurfParamType,
+    lo: f64,
+    hi: f64,
+) -> Result<Vec<f64>> {
+    let mut knots = Vec::new();
+    if !surface.is_kind_of(crate::surface::surface::p2::B_SPLINE_SURFACE_TYPE)? {
+        return Ok(knots);
+    }
+    let (all, _) = surface.knots_with_nurb(k, param, None)?;
+    for &knot in &all {
+        if knot > lo && knot < hi {
+            knots.push(knot);
+        }
+    }
+    Ok(knots)
+}
+
+/// `sm_TrimCurveBreaks` (the SolidCraft fork's tangency-labs/smlib@08d9a14): where the
+/// precise-property integrand is not smooth along the UV trim curve `uv_curve` on
+/// `surface`: the curve's own knots over its natural interval, and the parameters where
+/// it crosses a knot line `u = k` of a B-spline surface (found per knot span by a sign
+/// change of `u(t) - k` between `4 (degree + 1)` evenly spaced points, then at most 64
+/// bisections). Ascending, the curve's ends included; breaks the integrator cannot step
+/// between are merged into one, a curve knot kept over a crossing.
+///
+/// # Errors
+///
+/// `SM_ERR` for fewer than two curve knots; those of the curve's knots, bounding box,
+/// degree and evaluation and of [`surface_knots_inside`].
+pub fn trim_curve_breaks(k: &Kernel, uv_curve: &Curve, surface: &Surface) -> Result<Vec<f64>> {
+    let mut breaks = Vec::new();
+    let ivl = uv_curve.natural_interval();
+    let (knots, _) = uv_curve.knots(k, Some(&ivl))?;
+    if knots.len() < 2 {
+        return Err(SolidError::sm_err("topology::face::trim_curve_breaks"));
+    }
+    let req = crate::nurbs::b_spline_curve::p2::BoundingBoxRequest {
+        normal: true,
+        pseudo: false,
+        polar: false,
+    };
+    let bbox = uv_curve
+        .calculate_bounding_box(k, &uv_curve.natural_interval(), req, true)?
+        .normal
+        .ok_or_else(|| null("trim_curve_breaks: bounding box not computed"))?;
+    let u_lines = surface_knots_inside(k, surface, SurfParamType::U, bbox.min().x, bbox.max().x)?;
+
+    let samples = 4 * (uv_curve.degree()? + 1);
+    let u = |t: f64| -> Result<f64> { Ok(uv_curve.evaluate_point(k, t)?.x) };
+    for pair in knots.windows(2) {
+        let &[a, b] = pair else {
+            continue;
+        };
+        breaks.push(a);
+        for &line in &u_lines {
+            let mut t0 = a;
+            let mut u0 = u(t0)?;
+            for i in 1..=samples {
+                // (`(dB - dA) * iS / lSamples`: an unsigned count converted to double)
+                let t1 = a + (b - a) * (i as f64) / (samples as f64);
+                let u1 = u(t1)?;
+                if (u0 - line) * (u1 - line) < 0.0 {
+                    let mut lo = t0;
+                    let mut hi = t1;
+                    let mut u_lo = u0;
+                    let mut bisections = 0;
+                    while bisections < 64 && hi - lo > EFF_ZERO * (1.0 + hi.abs()) {
+                        let mid = 0.5 * (lo + hi);
+                        let u_mid = u(mid)?;
+                        if (u_lo - line) * (u_mid - line) <= 0.0 {
+                            hi = mid;
+                        } else {
+                            lo = mid;
+                            u_lo = u_mid;
+                        }
+                        bisections += 1;
+                    }
+                    breaks.push(0.5 * (lo + hi));
+                } else if u1 == line && i < samples {
+                    breaks.push(t1);
+                }
+                t0 = t1;
+                u0 = u1;
+            }
+        }
+    }
+    if let Some(&last) = knots.last() {
+        breaks.push(last);
+    }
+    breaks.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+
+    // A crossing found next to a knot (a corner of the trim curve on a knot line) is the
+    // knot: breaks the integrator cannot step between are one, the curve's own knots and
+    // ends kept. The integrator takes no step when its ends are `SM_ARE_SAME` or its
+    // first step is `SM_ARE_SAME` as `SM_EFF_ZERO`, and the first step is half the span.
+    let unsteppable = |a: f64, b: f64| {
+        are_same(a, b) || are_same(0.5 * (b - a), EFF_ZERO) || 0.5 * (b - a) < EFF_ZERO
+    };
+    let mut distinct: Vec<f64> = Vec::new();
+    for &brk in &breaks {
+        if let Some(prev) = distinct.last_mut() {
+            if unsteppable(*prev, brk) {
+                if knots.contains(&brk) {
+                    *prev = brk;
+                }
+                continue;
+            }
+        }
+        distinct.push(brk);
+    }
+    Ok(distinct)
 }
 
 // ---- face curves ----------------------------------------------------------------------------
@@ -2659,9 +2827,9 @@ fn edit_end_point(
 
 /// `sm_FixUVTrimCurves`: closes the UV gap between the start of `eu_current`'s UV trim
 /// curve and the end of `eu_previous`'s (its clockwise neighbour in the loop) by
-/// moving their end control points onto the vertex's UV point. Unlike upstream, the
-/// curves are not first trimmed at their drop points and stretched back over their
-/// intervals (module docs, #570). Gaps below `SM_EFF_ZERO / 10` or above a twentieth of the
+/// moving their end control points onto the vertex's UV point after trimming at their
+/// drop points and stretching back over their intervals (unless the opt-in fix skips
+/// those edits; module docs, #570). Gaps below `SM_EFF_ZERO / 10` or above a twentieth of the
 /// smaller side of `uv_domain` are left alone. `vertex` is the vertex between the two
 /// edge uses; `tol_3d` and `uv_dist_between` (the current UV gap) as upstream.
 /// Returns whether the curves were modified.
@@ -2732,7 +2900,7 @@ pub fn fix_uv_trim_curves_notified(
     let vertex_point = b.vertex(vertex)?.point;
     let curr_face =
         eu1::face(b, eu_current)?.ok_or_else(|| null("FixUVTrimCurves: edge use without face"))?;
-    let _ = surface_deref(b, curr_face)?.natural_uv_domain();
+    let _ = surface_deref(b, curr_face)?.natural_uv_domain_with_nurb(k)?;
 
     let curr_edge = edge_deref(b, eu_current)?;
     let prev_edge = edge_deref(b, eu_previous)?;
@@ -2820,9 +2988,17 @@ pub fn fix_uv_trim_curves_notified(
                     let _ = trim_ivl.set_min_max(curr_ivl.min(), t_curr_new);
                 }
                 if !are_same(trim_ivl.min(), trim_ivl.max()) {
+                    // SmTol::GetZoneTol3d(curve) follows its actual holder's edge.
+                    let zone_tol_3d = match eu1::edge(b, curr_holder)? {
+                        Some(edge) => b.edge(edge)?.tolerance,
+                        None => crate::geom::tol::zone_tol_3d(
+                            k,
+                            crate::geom::tol::SmallTopoType::NormalSize,
+                        ),
+                    };
                     notified_curve_edit(b, env.as_deref_mut(), curr_holder, |c| {
                         let mut ivl = trim_ivl;
-                        c.trim(k, &mut ivl, TrimMode::Notify)
+                        c.trim_with_zone_tol(k, &mut ivl, TrimMode::Notify, zone_tol_3d)
                     })?;
                     notified_curve_edit(b, env.as_deref_mut(), curr_holder, |c| {
                         c.edit_parameterization(k, &curr_ivl)
@@ -2840,9 +3016,17 @@ pub fn fix_uv_trim_curves_notified(
                     let _ = trim_ivl.set_min_max(t_prev_new, prev_ivl.max());
                 }
                 if !are_same(trim_ivl.min(), trim_ivl.max()) {
+                    // The previous curve can likewise be held by another edge use.
+                    let zone_tol_3d = match eu1::edge(b, prev_holder)? {
+                        Some(edge) => b.edge(edge)?.tolerance,
+                        None => crate::geom::tol::zone_tol_3d(
+                            k,
+                            crate::geom::tol::SmallTopoType::NormalSize,
+                        ),
+                    };
                     notified_curve_edit(b, env.as_deref_mut(), prev_holder, |c| {
                         let mut ivl = trim_ivl;
-                        c.trim(k, &mut ivl, TrimMode::Notify)
+                        c.trim_with_zone_tol(k, &mut ivl, TrimMode::Notify, zone_tol_3d)
                     })?;
                     notified_curve_edit(b, env.as_deref_mut(), prev_holder, |c| {
                         c.edit_parameterization(k, &prev_ivl)

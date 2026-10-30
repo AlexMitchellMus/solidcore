@@ -22,15 +22,17 @@
 //! | [`Ellipse::is_circle_class`], [`Ellipse::kind_of`] | `SmCircle_TYPE` objects, `SmCircle::IsKindOf`     |
 //! | [`Ellipse::type_code`], [`Ellipse::type_string`], [`Ellipse::class_string`] (in `p2`), [`CIRCLE_CLASS_TYPE`] | `SmCircle::GetType`, `GetTypeString`, `GetClassString`, `GetClassType` |
 //! | [`Ellipse::is_arc`]                                | `SmCircle::IsArc`                                 |
+//! | [`Ellipse::is_nurb_curve_circle`]                  | `SmCircle::IsNurbCurveCircle`                     |
 //! | [`Ellipse::create_simple_offset`]                  | `SmCircle::CreateSimpleOffset`                    |
 //! | [`Ellipse::assert_valid`]                          | `SmEllipse::AssertValid`, `SmCircle::AssertValid` |
 //! | [`Ellipse::read_from_db`]                          | `SmEllipse::ReadFromDB`, `SmCircle::ReadFromDB`   |
+//! | [`Ellipse::write_to_db`]                           | `SmEllipse::WriteToDB`, `SmCircle::WriteToDB`     |
 //! | [`Ellipse::convert_to_2d`]                         | `SmEllipse::ConvertTo2D`                          |
 //! | [`Ellipse::convert_t_from_nurbs_to_step`]          | `SmEllipse::ConvertTFromNURBSToSTEP`              |
 //! | [`Ellipse::adjust_step_interval`]                  | `SmEllipse::AdjustSTEPInterval`                   |
 //! | [`Ellipse::global_point_solve_step`]               | `SmEllipse::GlobalPointSolveSTEP`                 |
 //! | [`Ellipse::join_with`]                             | `SmEllipse::JoinWith`                             |
-//! | [`Ellipse::make_nurb`], [`Ellipse::make_nurb_owned`] | `SmEllipse::MakeNurb`                           |
+//! | [`Ellipse::make_nurb`], [`Ellipse::make_nurb_owned`], [`Ellipse::make_nurb_owned_with_edge_tol`] | `SmEllipse::MakeNurb` |
 //! | [`Ellipse::notify`]                                | `SmEllipse::Notify`                               |
 //! | [`Ellipse::reverse_parameterization`]              | `SmEllipse::ReverseParameterization`              |
 //! | [`Ellipse::trim`]                                  | `SmEllipse::Trim`                                 |
@@ -40,6 +42,7 @@
 //! | [`PolarConversion::is_current`]                    | `SmPolarConversion::IsCurrent`                    |
 //! | [`PolarConversion::assert_valid`]                  | `SmPolarConversion::AssertValid`                  |
 //! | [`PolarConversion::read_from_db`], [`PolarConversion::read_from_db_with_curve`] | `SmPolarConversion::ReadFromDB` (ellipse back pointer; null back pointer, from `SmSurfOfRevolution::ReadFromDB`) |
+//! | [`PolarConversion::write_to_db`]                   | `SmPolarConversion::WriteToDB`                    |
 //!
 //! Deviations:
 //! - **Circle class.** `SmCircle` derives from `SmEllipse` without data of its own;
@@ -54,7 +57,12 @@
 //!   tolerance (`SmTol::GetZoneTol3d(const SmObject*)`, unit `topology.brep_p1`);
 //!   one owned by a surface of extrusion or revolution needs its generator range
 //!   (units `surface.surf_of_extrusion_p1`, `surface.surf_of_revolution_p1`). These
-//!   return [`SolidError::Unported`].
+//!   return [`SolidError::Unported`], except where the caller resolved the edge's
+//!   tolerance ([`Ellipse::make_nurb_owned_with_edge_tol`]: the curve cache of an edge
+//!   curve, and a curve carrying its edge's tolerance,
+//!   [`crate::curve::curve::Curve::owner_zone_tol_3d`]).
+//!   Trimming accepts a caller-resolved owning edge tolerance through
+//!   `trim_with_zone_tol`; public ownerless trimming uses the system tolerance.
 //! - **Notifications.** `Notify(SM_NO_POST_EDIT)` rebuilds the polar converter
 //!   (status ignored); the other operations only drop caches the ellipse does not
 //!   own here, and `SM_NO_UNKNOWN` only logs. `SmCurve::Notify`'s cache bookkeeping
@@ -84,6 +92,11 @@
 //! - **Back-edges.** `SmCurve::IsArc` of a non-circular ellipse (inside
 //!   `SmBSplineCurve::CreateSimpleOffset`) is the base class of unit `curve.curve_p5`
 //!   ([`crate::curve::curve::p5::is_arc_base`]) on the ellipse's NURB.
+//! - **`IsNurbCurveCircle`.** The `SmCircle*&` out-param is the returned `Option`
+//!   (`None` for `FALSE`), the defaulted `dToleranceScale` an `Option` (`None`: `1.0`);
+//!   the `SmBSplineCurve*` is a [`Curve`] whose kind must derive from `SmBSplineCurve`
+//!   (B-spline, ellipse, circle, line, parabola, hyperbola), others are
+//!   [`SolidError::InvalidInput`]. The ignored `EvaluatePoint` status propagates.
 
 use core::ops::Div;
 
@@ -116,7 +129,10 @@ use crate::nurbs::crv_basic::ConicType;
 use crate::nurbs::crv_common::{elliptical_arc_tol, EllipseArc};
 use crate::nurbs::index::at;
 use crate::nurbs::nurbs_crv::to_euclid;
-use crate::topology::database_io::{DatabaseReader, FileType, InputStream};
+use crate::surface::surface::Surface;
+use crate::topology::database_io::{
+    fixed16, DatabaseReader, DatabaseWriter, FileType, InputStream,
+};
 
 use super::p2::{Ellipse, EllipseOptions, PolarConversion};
 
@@ -130,6 +146,9 @@ const OP_CANONICAL: &str = "curve::ellipse::p1::Ellipse::create_canonical";
 const OP_CIRCLE_CANONICAL: &str = "curve::ellipse::p1::Ellipse::create_canonical_circle";
 const OP_JOIN: &str = "curve::ellipse::p1::Ellipse::join_with";
 const OP_OFFSET: &str = "curve::ellipse::p1::Ellipse::create_simple_offset";
+const OP_IS_NURB_CURVE_CIRCLE: &str = "curve::ellipse::p1::Ellipse::is_nurb_curve_circle";
+/// `ANALYTIC_TOL_SCALE` (`SmConfig.h`).
+const ANALYTIC_TOL_SCALE: f64 = 100.0;
 
 /// `SmCircle_TYPE` (`CURV_BASE_TYPE + 21`), the class type of a circle.
 pub const CIRCLE_CLASS_TYPE: i64 = CIRCLE_TYPE;
@@ -259,8 +278,10 @@ impl PolarConversion {
 
         let exact = true;
 
-        // make sure to return the proper end value for closed curve seam conversions
-        if is_closed_base(k, &curve.base, &curve.base.natural_interval(), 0.0)? {
+        // make sure to return the proper end value for closed curve seam conversions.
+        // The seam adjustments only apply at the ends of the knot/angle tables, so test those
+        // cheap conditions first and evaluate IsClosed() (three curve evaluations) only there.
+        if !self.natural_knots.is_empty() && !self.angles.is_empty() {
             let inside_out = curve.inside_out;
             let knots = &self.natural_knots;
             let angles = &self.angles;
@@ -271,7 +292,7 @@ impl PolarConversion {
             let same = |a: f64, b: f64, tol: f64| are_same_to_tol(a, b, tol);
 
             // when values are at opposing ends - move the end angle
-            let move_down = if inside_out {
+            let move_to_min = if inside_out {
                 same(nurbs_param, at(knots, last, OP_TO_POLAR)?, scaled_zero)
                     && same(polar_deg, at(angles, 0, OP_TO_POLAR)?, EFF_ZERO_DEG)
             } else {
@@ -282,11 +303,8 @@ impl PolarConversion {
                         EFF_ZERO_DEG,
                     )
             };
-            if move_down {
-                // increment, rather than PolarParam = minAngle, to preserve tolerances
-                polar_deg -= 360.0;
-            } else {
-                let move_up = if inside_out {
+            let move_to_max = !move_to_min
+                && if inside_out {
                     same(nurbs_param, at(knots, 0, OP_TO_POLAR)?, scaled_zero)
                         && same(
                             polar_deg,
@@ -297,8 +315,14 @@ impl PolarConversion {
                     same(nurbs_param, at(knots, last, OP_TO_POLAR)?, scaled_zero)
                         && same(polar_deg, at(angles, 0, OP_TO_POLAR)?, EFF_ZERO_DEG)
                 };
-                if move_up {
-                    // increment, rather than PolarParam = maxAngle, to preserve tolerances
+
+            if (move_to_min || move_to_max)
+                && is_closed_base(k, &curve.base, &curve.base.natural_interval(), 0.0)?
+            {
+                // increment, rather than PolarParam = min/maxAngle, to preserve tolerances
+                if move_to_min {
+                    polar_deg -= 360.0;
+                } else {
                     polar_deg += 360.0;
                 }
             }
@@ -563,6 +587,101 @@ impl PolarConversion {
         }
         pc.has_curve = curve.is_some();
         Ok((pc, curve))
+    }
+
+    /// `WriteToDB`: writes the set-up flag, the knot, angle and exactness counts and
+    /// whether the table owns a copy of its curve (`owned_curve`; the ellipse's own
+    /// table borrows it and passes `None`), then the three arrays (ASCII: a line
+    /// break after the elements with index 5, 10, ... and after a partial last line),
+    /// then the owned curve (`m_cpCurve`, any curve kind) with its type header, as
+    /// a curve nested `depth` levels deep.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`crate::topology::geometry_write::write_curve_at`] for the owned curve.
+    pub fn write_to_db(
+        &self,
+        db: &mut DatabaseWriter,
+        version: u64,
+        owned_curve: Option<&Curve>,
+        depth: usize,
+    ) -> Result<()> {
+        let ascii = db.file_type() == FileType::Ascii;
+        let n_knots = self.natural_knots.len() as u64;
+        let n_angles = self.angles.len() as u64;
+        let n_exact = self.exact_conversion.len() as u64;
+        let has_curve = i32::from(owned_curve.is_some());
+        let possible = i32::from(self.possible);
+
+        if ascii {
+            db.out_i64(possible.into());
+            db.out_str(
+                " SmPolarConversion PolarConversionPossible - TRUE=tables are initialized \n",
+            );
+            db.out_u64(n_knots);
+            db.out_str(" SmPolarConversion Number of Natural Knots \n");
+            db.out_u64(n_angles);
+            db.out_str(" SmPolarConversion Number of Angles \n");
+            db.out_u64(n_exact);
+            db.out_str(" SmPolarConversion Number of ExactConversion Flags \n");
+            db.out_i64(has_curve.into());
+            db.out_str(
+                " SmPolarConversion TRUE = Has Curve for stored conversions, \
+                 FALSE = back pointer \n",
+            );
+        } else {
+            db.write_boolean(possible);
+            db.write_long(n_knots as i64);
+            db.write_long(n_angles as i64);
+            db.write_long(n_exact as i64);
+            db.write_boolean(has_curve);
+        }
+
+        // Write Arrays
+        if ascii {
+            let rows = |db: &mut DatabaseWriter, values: &mut dyn Iterator<Item = String>| {
+                let mut n = 0usize;
+                for (ii, v) in values.enumerate() {
+                    db.out_str(&v).out_str(" ");
+                    if ii > 0 && ii % 5 == 0 {
+                        db.out_str("\n");
+                    }
+                    n += 1;
+                }
+                if n > 0 && n % 5 != 0 {
+                    db.out_str("\n");
+                }
+            };
+            let exact = &self.exact_conversion;
+            let mut flags = exact.iter().map(|&b| i32::from(b).to_string());
+            rows(db, &mut self.natural_knots.iter().map(|&x| fixed16(x)));
+            rows(db, &mut self.angles.iter().map(|&x| fixed16(x)));
+            rows(db, &mut flags);
+        } else {
+            if n_knots > 0 {
+                db.write_doubles(&self.natural_knots);
+            }
+            if n_angles > 0 {
+                db.write_doubles(&self.angles);
+            }
+            if n_exact > 0 {
+                let exact = &self.exact_conversion;
+                let flags: Vec<i32> = exact.iter().map(|&b| i32::from(b)).collect();
+                db.write_booleans(&flags);
+            }
+        }
+
+        // write out the curve the table owns (the ellipse's own table borrows it)
+        if let Some(c) = owned_curve {
+            if ascii {
+                db.out_str(" SmPolarConversion->CurveBeingConverted \n");
+            }
+            db.write_type(c.type_code(), Some(c.dim()));
+            crate::topology::geometry_write::write_curve_at(c, db, version, depth)?;
+        } else if ascii {
+            db.out_str("Has No Copy of SmPolarConversion->CurveBeingConverted \n");
+        }
+        Ok(())
     }
 
     /// The end of a read whose table has no stored curve: the back pointer
@@ -908,6 +1027,96 @@ impl Ellipse {
         )
     }
 
+    /// The circle a B-spline curve is, when its geometry and representation are those
+    /// of a circle (`SmCircle::IsNurbCurveCircle`; `tolerance_scale` defaults to `1.0`):
+    /// a copy of a circle; `None` for a curve that is not of degree 2 and rational, is
+    /// degenerate (`IsDegenerate` to `scale * ANALYTIC_TOL_SCALE * SM_EFF_ZERO * (1 +
+    /// |P|max)`, `P` the point at 0.4567 of the natural interval) or is not an arc
+    /// (`IsArc(5, ..)` to the same tolerance); else the circle of the arc's frame,
+    /// radius and angular domain, dimension 3, with a copy of the curve's NURB
+    /// (`pOptNurb`).
+    ///
+    /// # Errors
+    ///
+    /// [`SolidError::InvalidInput`] for a curve that is not an `SmBSplineCurve` (a
+    /// Hermite, composite, conic or procedural curve); those of the curve's
+    /// evaluator, [`Curve::is_degenerate`], [`Curve::is_arc`] and
+    /// [`Ellipse::new_circle`].
+    pub fn is_nurb_curve_circle(
+        k: &Kernel,
+        test_curve: &Curve,
+        tolerance_scale: Option<f64>,
+    ) -> Result<Option<Self>> {
+        let tolerance_scale = tolerance_scale.unwrap_or(1.0);
+        let line_base;
+        let test_base: &BSplineCurve = match test_curve.kind() {
+            CurveKind::BSpline(c) => c,
+            CurveKind::Ellipse(e) => {
+                // low work - already a circle
+                if e.is_circle_class() {
+                    // copy the circle
+                    return Ok(Some(e.copy(k)?));
+                }
+                e.base()
+            }
+            CurveKind::Parabola(c) => c.base(),
+            CurveKind::Hyperbola(c) => c.base(),
+            CurveKind::Line(l) => {
+                line_base = l.base_with_nurb()?;
+                &line_base
+            }
+            _ => {
+                return Err(SolidError::invalid_input(
+                    OP_IS_NURB_CURVE_CIRCLE,
+                    "the curve is not an SmBSplineCurve",
+                ))
+            }
+        };
+
+        // no work - not a degree 2 rational curve
+        let deg = test_curve.degree()?;
+        if deg != 2 || !test_curve.is_rational()? {
+            return Ok(None);
+        }
+
+        // scale zero value
+        let mid_point =
+            test_curve.evaluate_point(k, test_curve.natural_interval().evaluate(0.4567))?;
+        let scaled_zero =
+            tolerance_scale * ANALYTIC_TOL_SCALE * EFF_ZERO * (1.0 + mid_point.max_dimension());
+
+        // skip degenerate curves
+        if test_curve.is_degenerate(k, scaled_zero, None)? {
+            return Ok(None);
+        }
+
+        // Get circle reference frame, radius and angle extent
+        let Some((ref_frame, radius, start_ang_deg, end_ang_deg)) =
+            test_curve.is_arc(k, 5, scaled_zero)?
+        else {
+            // when isoParameterCurve is not a circular Arc
+            return Ok(None);
+        };
+        let anal_domain = Extent1d::from_min_max(start_ang_deg, end_ang_deg);
+
+        // make new circle
+        let circle = Self::new_circle(
+            k,
+            ref_frame.origin(),
+            ref_frame.x_axis(),
+            ref_frame.y_axis(),
+            anal_domain,
+            radius,
+            &EllipseOptions {
+                dim: 3,
+                nurb: Some(test_base),
+                inside_out: false,
+            },
+        )?;
+        // all done
+        Ok(Some(circle))
+    }
+
     /// The offset of the curve by `offset_distance` in the plane with normal
     /// `offset_plane_normal` within `approx_tol_3d`, and its maximum gap
     /// (`CreateSimpleOffset`). For a circle (`SmCircle::CreateSimpleOffset`) whose
@@ -1002,9 +1211,29 @@ impl Ellipse {
         key: ObjectKey,
         polar_key: ObjectKey,
     ) -> Result<bool> {
+        self.assert_valid_on(k, list, level_given, key, polar_key, None)
+    }
+
+    /// [`Ellipse::assert_valid`] of a UV trim on `trim_surface`, its face's surface:
+    /// the `SmBSplineCurve` checks measure the trim on it with
+    /// `Kernel::fixes.uv_trim_checks_on_surface` (WR-560, see
+    /// [`BSplineCurve::assert_valid_on`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Ellipse::assert_valid`].
+    pub fn assert_valid_on(
+        &mut self,
+        k: &Kernel,
+        list: Option<&mut AssertArray>,
+        level_given: bool,
+        key: ObjectKey,
+        polar_key: ObjectKey,
+        trim_surface: Option<&Surface>,
+    ) -> Result<bool> {
         let mut list = list;
         if !self.circle {
-            return self.ellipse_assert_valid(k, list, level_given, key, polar_key);
+            return self.ellipse_assert_valid(k, list, level_given, key, polar_key, trim_surface);
         }
 
         // init return value
@@ -1014,7 +1243,14 @@ impl Ellipse {
         rtn &= if level_given {
             true
         } else {
-            self.ellipse_assert_valid(k, list.as_deref_mut(), level_given, key, polar_key)?
+            self.ellipse_assert_valid(
+                k,
+                list.as_deref_mut(),
+                level_given,
+                key,
+                polar_key,
+                trim_surface,
+            )?
         };
 
         // Check that analytic ellipse is a circle
@@ -1039,6 +1275,7 @@ impl Ellipse {
         level_given: bool,
         key: ObjectKey,
         polar_key: ObjectKey,
+        trim_surface: Option<&Surface>,
     ) -> Result<bool> {
         let mut list = list;
 
@@ -1063,6 +1300,7 @@ impl Ellipse {
                     analytic: true,
                     bounded: true,
                     is_degenerate: &is_degenerate,
+                    trim_surface,
                 },
             )?;
         }
@@ -1242,6 +1480,53 @@ impl Ellipse {
         Ok(e)
     }
 
+    /// `WriteToDB` (`SmCircle::WriteToDB` is the same): writes the placement origin
+    /// and axes, the angular domain (degrees), the two radii and the inside-out flag,
+    /// then the polar converter (which borrows this ellipse) and the B-spline curve
+    /// part.
+    ///
+    /// # Errors
+    ///
+    /// Those of [`PolarConversion::write_to_db`]; `SM_ERR` when the B-spline part has
+    /// no NURB (upstream ignores the part's status; its virtual
+    /// `GetOrCreateGwNurbPointer` always has one to write).
+    pub fn write_to_db(&self, db: &mut DatabaseWriter, version: u64) -> Result<()> {
+        let o = self.position.origin();
+        let x = self.position.x_axis();
+        let y = self.position.y_axis();
+        let (lo, hi) = (self.anal_domain.min(), self.anal_domain.max());
+        let inside_out = i32::from(self.inside_out);
+        let ascii = db.file_type() == FileType::Ascii;
+        if ascii {
+            db.out_reals(&[o.x, o.y, o.z]);
+            db.out_str(" SmEllipse Axis Origin \n");
+            db.out_reals(&[x.x, x.y, x.z]);
+            db.out_str(" SmEllipse X Axis\n");
+            db.out_reals(&[y.x, y.y, y.z]);
+            db.out_str(" SmEllipse Y Axis\n");
+            db.out_reals(&[lo, hi]);
+            db.out_str(" SmEllipse angular arc domain in degrees \n");
+            db.out_f64(self.radius_x);
+            db.out_str(" SmEllipse X_Axis radius \n");
+            db.out_f64(self.radius_y);
+            db.out_str(" SmEllipse Y_Axis radius \n");
+            db.out_i64(inside_out.into());
+            db.out_str(" SmEllipse InsideOut Flag \n");
+        } else {
+            db.write_doubles(&[o.x, o.y, o.z, x.x, x.y, x.z, y.x, y.y, y.z]);
+            db.write_doubles(&[lo, hi, self.radius_x, self.radius_y]);
+            db.write_boolean(inside_out);
+        }
+
+        // PolarConverter
+        if ascii {
+            db.out_str(" SmEllipse->PolarConverter \n");
+        }
+        self.polar.write_to_db(db, version, None, 0)?;
+
+        self.base.write_to_db(db, version)
+    }
+
     // ---- conversions ------------------------------------------------------------------
 
     /// Projects the ellipse onto the x-y plane (`ConvertTo2D`): the NURB is made 2D
@@ -1379,6 +1664,24 @@ impl Ellipse {
     /// owner whose edge tolerance or generator range is needed (see the module
     /// deviations).
     pub fn make_nurb_owned(&mut self, k: &Kernel, owner: Option<ObjectRef>) -> Result<()> {
+        self.make_nurb_owned_with_edge_tol(k, owner, None)
+    }
+
+    /// [`Self::make_nurb_owned`] given the tolerance of the edge the ellipse's owner
+    /// chain reaches (`GetEdge()->GetTolerance()`), resolved by a caller that holds it
+    /// (`Some` means that edge exists, whatever `owner` says). Then the arc's angle
+    /// tolerance is a hundredth of that tolerance over the speed at the mid angle
+    /// (`EvaluateSTEP`) [B630].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::make_nurb_owned`].
+    pub fn make_nurb_owned_with_edge_tol(
+        &mut self,
+        k: &Kernel,
+        owner: Option<ObjectRef>,
+        edge_zone_tol_3d: Option<f64>,
+    ) -> Result<()> {
         // free existing m_pNurb object
         self.base.nurb = None;
 
@@ -1407,7 +1710,18 @@ impl Ellipse {
         };
 
         // Convert 3d tolerance to Angle tol [B630]: GetEdge()
-        if owner.is_some_and(|o| {
+        let angle_tol = if let Some(z_tol_3d) = edge_zone_tol_3d {
+            let approx_tol_3d = z_tol_3d / 100.;
+
+            let mid_p = (start_ang_deg + end_ang_deg) / 2.0;
+            let point_and_der = self.evaluate_step(mid_p, 1)?;
+            let der = point_and_der
+                .get(1)
+                .copied()
+                .ok_or_else(|| SolidError::sm_err(OP_MAKE_NURB))?;
+
+            approx_tol_3d / der.length()
+        } else if owner.is_some_and(|o| {
             o.type_code == EDGE_TYPE
                 || o.type_code == EDGEUSE_TYPE
                 || crate::curve::curve::p2::is_kind_of(o.type_code)
@@ -1420,8 +1734,9 @@ impl Ellipse {
                 upstream: "SmTol::GetZoneTol3d(const SmObject*)",
                 unit: "geom.tol",
             });
-        }
-        let angle_tol = 0.01; // Preserves behavior
+        } else {
+            0.01 // Preserves behavior
+        };
 
         // Build the circular arc
         let arc = EllipseArc {
@@ -1871,6 +2186,27 @@ impl Ellipse {
     /// Those of [`BSplineCurve::trim`]; `InvalidInput` when an end cannot be converted
     /// (upstream: an uninitialised angle).
     pub fn trim(&mut self, k: &Kernel, trim_interval: &mut Extent1d, mode: TrimMode) -> Result<()> {
+        self.trim_with_zone_tol(
+            k,
+            trim_interval,
+            mode,
+            crate::geom::tol::zone_tol_3d(k, crate::geom::tol::SmallTopoType::NormalSize),
+        )
+    }
+
+    /// Trims with the caller-resolved owning edge's 3D zone tolerance, forwarding
+    /// it to both base-curve trim passes without changing interval-only behavior.
+    ///
+    /// # Errors
+    ///
+    /// The same errors as [`Self::trim`].
+    pub(crate) fn trim_with_zone_tol(
+        &mut self,
+        k: &Kernel,
+        trim_interval: &mut Extent1d,
+        mode: TrimMode,
+        zone_tol_3d: f64,
+    ) -> Result<()> {
         // no work - current natural interval is a subSet of targetInterval
         let nat_ivl = self.base.natural_interval();
         if nat_ivl.is_contained_by(trim_interval, EFF_ZERO) {
@@ -1878,7 +2214,8 @@ impl Ellipse {
         }
 
         // First ask SmBSplineCurve::Trim to compute the actual trim interval.
-        self.base.trim(k, trim_interval, TrimMode::IntervalOnly)?;
+        self.base
+            .trim_with_zone_tol(k, trim_interval, TrimMode::IntervalOnly, zone_tol_3d)?;
 
         // all done when asked to stop here
         if mode == TrimMode::IntervalOnly {
@@ -1900,7 +2237,8 @@ impl Ellipse {
         let max_step = to_step(self, trim_interval.max())?;
 
         // pass the call to Trim the BSpline - skip its Notify call
-        self.base.trim(k, trim_interval, TrimMode::Silent)?;
+        self.base
+            .trim_with_zone_tol(k, trim_interval, TrimMode::Silent, zone_tol_3d)?;
 
         // store the angular interval paying attention to m_bInsideOut
         if self.inside_out {
@@ -2035,6 +2373,39 @@ mod tests {
         let mut t = Extent1d::from_min_max(ivl.evaluate(0.25), ivl.evaluate(0.75));
         c.trim(&k, &mut t, TrimMode::Notify).unwrap();
         assert!(c.polar_converter().is_polar_conversion_possible());
+    }
+
+    /// #1432: a full unit circle given as its rational quadratic NURBS (9 points,
+    /// weights `1, s, 1, s, ..`, a plain B-spline) is recognised as that circle.
+    #[test]
+    fn is_nurb_curve_circle_full_unit_circle() {
+        let k = kernel();
+        let circle =
+            Ellipse::create_canonical_circle(&k, &Axis2Placement::default(), 1.0, None, None)
+                .unwrap();
+        let nurbs = Curve::from(circle.base().copy());
+        assert!(matches!(nurbs.kind(), CurveKind::BSpline(_)));
+        let got = Ellipse::is_nurb_curve_circle(&k, &nurbs, None)
+            .unwrap()
+            .expect("a circle");
+        assert!(got.is_circle_class());
+        assert!((got.radius() - 1.0).abs() < 1e-12);
+        let dom = got.step_interval();
+        assert!((dom.max() - dom.min() - 360.0).abs() < 1e-9);
+        assert!(got.base().gw_nurb().is_some());
+
+        // already a circle: a copy
+        let same = Ellipse::is_nurb_curve_circle(&k, &Curve::from(circle.copy(&k).unwrap()), None)
+            .unwrap()
+            .expect("a copy");
+        assert!(same.is_circle_class());
+        assert_eq!(same.radius(), 1.0);
+
+        // a non-circular ellipse is rational degree 2 but not an arc
+        let ell = Ellipse::create_canonical(&k, &Axis2Placement::default(), 2.0, 1.0, None, None)
+            .unwrap();
+        let none = Ellipse::is_nurb_curve_circle(&k, &Curve::from(ell.base().copy()), None);
+        assert!(none.unwrap().is_none());
     }
 
     #[test]

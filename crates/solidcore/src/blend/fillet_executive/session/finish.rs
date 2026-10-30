@@ -16,17 +16,25 @@
 //! every entity of the intermediate body before `~SmBrep`. `RemoveTopoEdges` and
 //! `BooleanPostProcess` notify through local environments (their ports take none);
 //! afterwards the attributes of target edges they deleted are cleared from the
-//! session store. `do_fillet` ends with the closed-manifold check of the generic
-//! `FilletExecutive::do_fillet` (not upstream, tangency-labs/solidcore#422).
-//! `DoPiecewiseMerge` and a live-session `IntersectInsertRelate` (global merge) are not
-//! wired: no public API entry point reaches them (`SetFilletParameters` resets both
-//! flags), so they return `Unported`. No recursion.
+//! session store. With the opt-in `Kernel::fixes.fillet_refuse_non_manifold_result`
+//! `do_fillet` ends with the closed-manifold check of the generic
+//! `FilletExecutive::do_fillet` (not upstream, WR-212, tangency-labs/solidcore#422);
+//! the public wrappers that drive it put the caller's body back on that refusal.
+//! After the in-place merge (also on error) the geometry bound to the target's
+//! edges, edge uses and faces under the session's kernel identities is rebound to the
+//! target's naming, as the piecewise merge does (owners are pointers upstream;
+//! tangency-labs/solidcore#423).
+//! No public API entry point reaches `DoPiecewiseMerge` or a live-session
+//! `IntersectInsertRelate` (global merge): `SetFilletParameters` resets both flags;
+//! [`FilletSession::set_do_piecewise_merge`] selects the piecewise merge after it.
+//! No recursion.
 
 use super::original_trim::OriginalSurfaceDeletion;
 use super::{invalid, FilletBody, FilletObject, FilletSession, SessionObjects};
 use crate::blend::fillet_executive::p3::{
     ErrorInfo, FilletExecutive, FilletFinishAccess, StitchAttempt, StitchSettings,
 };
+use crate::blend::fillet_geom::p1::FilletErrorType;
 use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::object::NotifyOperation;
 use crate::kernel::Kernel;
@@ -34,6 +42,36 @@ use crate::topology::brep::{p1, p3};
 use crate::topology::{BrepId, EdgeId};
 
 const OP: &str = "blend::fillet_executive::session::finish";
+
+/// Whether `error` is the refusal of `fixes.fillet_refuse_non_manifold_result`
+/// (WR-212): a result that is not a closed manifold solid, the only status 1001 of
+/// this file that names an edge. The public wrappers recognise it to put the caller's
+/// body back.
+pub(crate) fn is_non_manifold_refusal(error: &SolidError) -> bool {
+    matches!(
+        error,
+        SolidError::Upstream {
+            operation: OP,
+            code: 1001,
+            entity: Some(EntityRef::Edge(_)),
+        }
+    )
+}
+
+/// `error` without the entity it names (the refused result's edge, gone once the
+/// caller's body is put back).
+pub(crate) fn without_entity(error: SolidError) -> SolidError {
+    match error {
+        SolidError::Upstream {
+            operation, code, ..
+        } => SolidError::Upstream {
+            operation,
+            code,
+            entity: None,
+        },
+        other => other,
+    }
+}
 
 /// `FILEXEC_ERR`: the executive's generic failure status.
 fn failure() -> SolidError {
@@ -60,7 +98,17 @@ fn target_edge(object: FilletObject) -> Result<EdgeId> {
     }
 }
 
-struct FinishAccess<'a, 'target>(&'a mut SessionObjects<'target>);
+/// The topology entity of an intersector mate (an intermediate or target object).
+const fn mate_entity(object: FilletObject) -> Option<EntityRef> {
+    match object {
+        FilletObject::Topology(_, entity) | FilletObject::IntermediateTopology(entity) => {
+            Some(entity)
+        }
+        _ => None,
+    }
+}
+
+pub(super) struct FinishAccess<'a, 'target>(pub(super) &'a mut SessionObjects<'target>);
 
 impl FinishAccess<'_, '_> {
     fn require_target(brep: FilletObject) -> Result<()> {
@@ -267,12 +315,32 @@ impl FilletFinishAccess<FilletObject> for FinishAccess<'_, '_> {
             };
             relations.vertices.push(vertex);
         }
-        if !check_all_edges {
-            // UNPORTED(blend.fillet_executive_p1): live intersector mates for BooleanPostProcess(FALSE)
-            return Err(SolidError::unported(
-                "SmMerge::BooleanPostProcess(FALSE) live mates",
-                "blend.fillet_executive_p1",
-            ));
+        // `m_vTI.GetOtherMate` of the target's edges and vertices (the FALSE edge and
+        // vertex filters and `GetCommonVertices`): only whether a mate exists is read, so
+        // each mate is recorded under its own operand-local id.
+        for edge in p1::edges(self.0.target, None)? {
+            let key = FilletObject::Topology(FilletBody::Target, EntityRef::Edge(edge));
+            if let Some(EntityRef::Edge(other)) = executive
+                .intersector
+                .other_mate(Some(key))
+                .and_then(mate_entity)
+            {
+                relations.mates.edges.record(edge, other)?;
+            }
+        }
+        for vertex in p1::vertices(self.0.target, None)? {
+            let key = FilletObject::Topology(FilletBody::Target, EntityRef::Vertex(vertex));
+            if let Some(EntityRef::Vertex(other)) = executive
+                .intersector
+                .other_mate(Some(key))
+                .and_then(mate_entity)
+            {
+                relations.mates.vertices.record(vertex, other)?;
+            }
+        }
+        if let Some((edges, faces)) = &self.0.cleanup_kept {
+            relations.kept_edges.clone_from(edges);
+            relations.kept_faces.clone_from(faces);
         }
         let before = p1::edges(self.0.target, None)?;
         let result = crate::boolean::merge::p1::boolean_post_process(
@@ -376,6 +444,9 @@ impl FilletSession<'_> {
     ///
     /// # Errors
     /// The first stage error, with the executive's error info recorded as upstream.
+    /// With `fixes.fillet_vertex_error_diagnostics`, a missing-corner note from the
+    /// corner stage is kept in [`FilletSession::error_info`] across the later failure;
+    /// the returned error is still the later stage's own status.
     pub fn do_fillet(&mut self, k: &mut Kernel) -> Result<()> {
         if !self.executive.initialized {
             // The generic NoteError overload changes exactly these two members.
@@ -384,12 +455,28 @@ impl FilletSession<'_> {
             return Err(invalid("fillet parameters not set up"));
         }
         self.create_corners(k, None)?;
-        self.do_filleting(k, None)?;
+        // The opt-in missing-corner note is the reason the later stage fails; keep it
+        // through that later error so `error_info()` reports the unsupported vertex,
+        // while the returned failure stays the later stage's own status.
+        let missing_corner_note = (k.fixes.fillet_vertex_error_diagnostics
+            && self.executive.error.code == FilletErrorType::CornerUnsupported as i32)
+            .then(|| self.executive.error.clone());
+        let result = self.do_filleting(k, None);
+        if result.is_err() {
+            if let Some(note) = missing_corner_note {
+                self.executive.error = note;
+            }
+        }
+        result?;
+        if !k.fixes.fillet_refuse_non_manifold_result {
+            return Ok(());
+        }
         self.check_closed_manifold()
     }
 
     /// The closed-manifold result check of `FilletExecutive::do_fillet` (not
-    /// upstream, tangency-labs/solidcore#422), on the live target.
+    /// upstream, opt-in `fixes.fillet_refuse_non_manifold_result`, WR-212,
+    /// tangency-labs/solidcore#422), on the live target.
     fn check_closed_manifold(&mut self) -> Result<()> {
         for edge in p1::edges(self.objects.target, None)? {
             if crate::topology::edge::is_manifold(self.objects.target, edge)? {
@@ -426,6 +513,15 @@ impl FilletSession<'_> {
         mut error_out: Option<&mut ErrorInfo<FilletObject>>,
     ) -> Result<()> {
         self.sync_self_intersection_handler();
+        // WR-459: the clean-up after filleting leaves the target's own edges and faces.
+        self.objects.cleanup_kept = if k.fixes.fillet_cleanup_keeps_target_faces {
+            Some((
+                p1::edges(self.objects.target, None)?.into_iter().collect(),
+                p1::faces(self.objects.target, None)?.into_iter().collect(),
+            ))
+        } else {
+            None
+        };
         self.with_filleting_context(k, |session, k| {
             if ignore(session.create_fillet_brep(k, error_out.as_deref_mut()))?.is_none() {
                 return Err(failure());
@@ -440,7 +536,13 @@ impl FilletSession<'_> {
             if faces < 1 {
                 return Err(failure());
             }
+            if k.fixes.fillet_refuse_crossing_rails {
+                session.refuse_crossing_rails(k)?;
+            }
             session.shrink_fillet_faces(k)?;
+            // The fork's SetMarkCornerPatches (60af574): mark the set-back corners'
+            // patch faces, which the merge copies into the target with their marks.
+            session.mark_corner_patches()?;
             let editing = session.objects.target.editing_enabled();
             session.objects.target.set_editing_enabled(true);
             let result = session.merge_fillet(k);
@@ -461,12 +563,28 @@ impl FilletSession<'_> {
             .intersector
             .set_other_brep(Some(FilletObject::IntermediateBrep));
         if self.executive.options.piecewise_merge {
-            // UNPORTED(blend.fillet_executive_p1): SmFilletExecutive::DoPiecewiseMerge
-            return Err(SolidError::unported(
-                "SmFilletExecutive::DoPiecewiseMerge",
-                "blend.fillet_executive_p1",
-            ));
+            // DoPiecewiseMerge deletes m_pFilletBrep inside its mark scope
+            return self.do_piecewise_merge(k);
         }
+        let result = self.merge_fillet_in_place(k);
+        // (not upstream: owners are pointers there) the insertion names the geometry
+        // it binds to the target's edges and faces by the session's kernel identity
+        // of the entity; rebind it to the same entity's identity in the target's
+        // naming, as the piecewise merge does, so the curve owner test of
+        // `SmEdge::ValidateGeometry` (`SmBrep` test #61) finds its edge
+        // (tangency-labs/solidcore#423). Also after an error.
+        let naming = self.objects.target.naming();
+        let serial = self.objects.target_serial;
+        let session_owner = |e| p3::topology_ref(serial, e);
+        let restored =
+            super::piecewise::normalize_session_owners(self.objects.target, session_owner, |e| {
+                super::piecewise::naming_owner(naming, e).unwrap_or_else(|| session_owner(e))
+            });
+        result.and(restored)
+    }
+
+    /// The in-place (non-piecewise) body of [`Self::merge_fillet`].
+    fn merge_fillet_in_place(&mut self, k: &mut Kernel) -> Result<()> {
         // SetFilletBrepEdgeMap, then the geometry and corner insertion.
         self.insert_fillet_intersection_topology(k)?;
         // Upstream cbi_MAP_TOPO_EDGES=0: do not collect mapped intersections.
@@ -565,5 +683,111 @@ mod stitch_identity_tests {
                 .issued_brep_serial(session.objects.target.notify_identity_slot()),
             Some(session.objects.target_serial)
         );
+    }
+}
+
+/// `fixes.fillet_refuse_ball_not_fitting` (WR-462, tangency-labs/solidcore#1172): a
+/// 60 x 40 x 20 box, its top edge at y = 40 rounded r5, then its top edge at x = 60
+/// rounded r3, then its vertical edge at x = 60, y = 40 with the two edges up into the
+/// corner (the side's arc on the r5 round, the seam between the rounds).
+#[cfg(test)]
+mod ball_fit_tests {
+    use super::*;
+    use crate::blend::fillet_geom::p1::FilletErrorType;
+    use crate::geom::global_solver::SolverOperation;
+    use crate::math::Point3;
+    use crate::topology::{edge, Brep};
+
+    const NO_ROOM: i32 = FilletErrorType::NoRoom as i32;
+
+    fn edge_near(k: &Kernel, b: &Brep, point: [f64; 3]) -> EdgeId {
+        let point = Point3::new(point[0], point[1], point[2]);
+        let mut nearest = (f64::MAX, None);
+        for id in p1::edges(b, None).unwrap() {
+            let Some(curve) = edge::curve(b, id).unwrap() else {
+                continue;
+            };
+            let interval = edge::interval(b, id).unwrap();
+            let d = curve
+                .drop_point(
+                    k,
+                    &interval,
+                    point,
+                    None,
+                    1e-6,
+                    None,
+                    SolverOperation::Minimize,
+                )
+                .unwrap();
+            if d.success && d.distance < nearest.0 {
+                nearest = (d.distance, Some(id));
+            }
+        }
+        assert!(nearest.0 < 2e-3, "no edge near {point:?}");
+        nearest.1.unwrap()
+    }
+
+    /// The executive's error code after the corner round of `radius` with the fix on or
+    /// off, and its result.
+    fn corner_round(radius: f64, fix: bool) -> (i32, Result<()>) {
+        let mut k = Kernel::default();
+        let mut body =
+            crate::primitive::api_primitives::create_box(&mut k, Point3::ZERO, 60.0, 40.0, 20.0)
+                .unwrap();
+        for (point, r) in [([30.0, 40.0, 20.0], 5.0), ([60.0, 20.0, 20.0], 3.0)] {
+            let e = edge_near(&k, &body, point);
+            crate::blend::fillet_executive::api::fillet_edges(
+                &mut k,
+                &mut body,
+                &[e],
+                r,
+                1,
+                1,
+                1.0,
+            )
+            .unwrap();
+        }
+        let edges: Vec<_> = [
+            [60.0, 40.0, 7.5],
+            [60.0, 35.0 + 24.0_f64.sqrt(), 16.0],
+            [58.93224999673208, 37.56010200025561, 19.29486599217306],
+        ]
+        .into_iter()
+        .map(|p| edge_near(&k, &body, p))
+        .collect();
+        k.fixes.fillet_refuse_ball_not_fitting = fix;
+        let mut session = FilletSession::new(&mut k, &mut body).unwrap();
+        session
+            .prepare_constant_radius_edges(&mut k, &edges, radius, 1, 1, 1.0)
+            .unwrap();
+        let result = session.do_fillet(&mut k);
+        (session.executive.error.code, result)
+    }
+
+    #[test]
+    fn a_ball_that_does_not_fit_is_no_room_before_the_corners() {
+        for radius in [3.1, 7.0] {
+            let (code, result) = corner_round(radius, false);
+            assert!(matches!(
+                result,
+                Err(SolidError::Upstream { code: 1001, .. })
+            ));
+            assert_ne!(code, NO_ROOM, "r{radius}: the corners fail on their own");
+            let (code, result) = corner_round(radius, true);
+            assert!(matches!(
+                result,
+                Err(SolidError::Upstream { code: 1001, .. })
+            ));
+            assert_eq!(code, NO_ROOM, "r{radius}: NoRoom");
+        }
+    }
+
+    #[test]
+    fn a_ball_that_fits_is_not_refused() {
+        let (code, result) = corner_round(2.0, true);
+        // the round past the gate completes (main wired SmFace::PointClassify, which this
+        // test used to stop at)
+        result.unwrap();
+        assert_ne!(code, NO_ROOM);
     }
 }

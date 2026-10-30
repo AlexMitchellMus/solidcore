@@ -34,7 +34,7 @@
 //! | [`MapMates`]                                          | `GetOtherMate` / `RemoveRelationship` for `SmProtoTopologyManager::GlueCoincidentBrepVertices` |
 //!
 //! The two constructors are in [`p1`](super::p1) (co-ported there). `CloseIntersectionLoop`
-//! (`SmTopologyIntersector.cpp:6108-6354`, called from `SmMerge.cpp:2958`) and its only
+//! (`SmTopologyIntersector.cpp:6108-6368`, called from `SmMerge.cpp:2961`) and its only
 //! callee `IIREdgeBrep` (`:2836-2971`) are listed by no unit in `units.json`; they are
 //! co-ported here.
 //!
@@ -53,6 +53,15 @@
 //!   not returned, except by `check_for_squeeze_vertices_into`, which appends to the
 //!   caller's lists as upstream does (a failure after the first conflict keeps its
 //!   appends). The `NotUsed` `bMakingManifoldSolid` of `EdgeEdgeIntersect` is kept.
+//! - **Opt-in (WR-527, #1526).** With `Kernel::fixes.boolean_skips_faces_apart`,
+//!   `IntersectTopology` skips a face pair whose face boxes are disjoint by the
+//!   intersection tolerance (the fork's tangency-labs/smlib@60b1c6a). It then visits,
+//!   for each face of the B-rep, only the faces of the other B-rep a box search
+//!   (`SpatialIndex`) finds not disjoint from its box, in ascending order (the fork's
+//!   tangency-labs/smlib@84a7998): a superset of the pairs the box test keeps, so the
+//!   pairs processed and their order are the same, and a join of two bodies of n faces
+//!   no longer walks all n^2 pairs to skip them. With an intersection table registered
+//!   every pair is still visited (its lookup copies curves before the box test).
 //! - **Deleted curves.** `IntersectTopology` and `IntersectInsertRelate` return the
 //!   curve handles deleted (by `SplitIntersectingProtoEdges`, the resolution, the
 //!   imprint and the manager's destructor), as [`p1`](super::p1) does.
@@ -116,6 +125,7 @@ use crate::kernel::Kernel;
 use crate::math::{max2, max3, min2, Point3, BIG_DOUBLE, EFF_ZERO_SQRT};
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::surface::surface::p2::TsectCurveType;
+use crate::topology::brep::validation::spatial::SpatialIndex;
 use crate::topology::proto_topology::p3::Mates;
 use crate::topology::proto_topology::{ProtoEdgeId, ProtoTopologyManager, ProtoVertexId};
 
@@ -371,7 +381,7 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
     /// Register a known empty surface intersection without a geometry backend.
     /// This is the empty-array branch of [`Self::register_existing_ssi`].
-    pub(crate) fn register_empty_ssi(&mut self, brep_surface: Option<O>, other_surface: Option<O>) {
+    pub fn register_empty_ssi(&mut self, brep_surface: Option<O>, other_surface: Option<O>) {
         let table = self.intersection_table.get_or_insert_with(Default::default);
         table.brep_surfaces.push(brep_surface);
         table.other_surfaces.push(other_surface);
@@ -912,7 +922,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         Ok(merged)
     }
 
-    /// `CloseIntersectionLoop(pBrepVertex, rbMadeNewTopology)`: tries to close a gap in
+    /// `CloseIntersectionLoop(pBrepVertex, rbMadeNewTopology, rDeletedVertices,
+    /// rDeletedEdges)`: tries to close a gap in
     /// the intersection loop at a B-rep vertex mated to an other-B-rep vertex. For each
     /// unmated edge of the vertex whose far vertex is mated: when the two mated
     /// vertices of the other B-rep share exactly one edge and the edge's midpoint drops
@@ -921,8 +932,12 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
     /// (`BrepCurveSolve` gives a range of values), it is intersected, inserted and
     /// related there ([`TopologyIntersector::iir_edge_brep`]). Without new topology in
     /// the other B-rep, the same is tried the other way round for the other vertex's
-    /// unmated edges. Returns `rbMadeNewTopology`. Unowned in `units.json` (called from
-    /// `SmMerge.cpp:2958`); co-ported into this part.
+    /// unmated edges. Returns `rbMadeNewTopology`; `deleted_vertices` and
+    /// `deleted_edges` are reset once the vertex and its mate are found, then receive
+    /// the vertices and edges (of either B-rep) each completed
+    /// [`TopologyIntersector::iir_edge_brep`] deleted by squeezing, so they hold the
+    /// completed calls' deletions also when a later call fails. Unowned in `units.json`
+    /// (called from `SmMerge.cpp:2961`); co-ported into this part.
     ///
     /// # Errors
     ///
@@ -935,6 +950,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
         k: &mut Kernel,
         brep: &mut impl IntersectorBrepP3<O>,
         brep_vertex: Option<O>,
+        deleted_vertices: &mut Vec<O>,
+        deleted_edges: &mut Vec<O>,
     ) -> Result<bool> {
         // check input
         let brep_vertex = brep_vertex.ok_or(SolidError::null_pointer(OP_CLOSE_LOOP))?;
@@ -945,6 +962,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
         // init output
         let mut made_new_topology = false;
+        deleted_vertices.clear();
+        deleted_edges.clear();
 
         // get all edges connected to target vertex
         let brep_edges = brep.vertex_edges(brep_vertex)?;
@@ -1025,7 +1044,9 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 let old_edges = brep.brep_edges(other)?;
 
                 // intersect, insert, and relate target Edge with m_pOther brep
-                self.iir_edge_brep(k, brep, be, other, false, true)?;
+                let deleted = self.iir_edge_brep(k, brep, be, other, false, true)?;
+                deleted_vertices.extend(deleted.deleted_vertices);
+                deleted_edges.extend(deleted.deleted_edges);
 
                 // remember if  new edges were added to m_pOther
                 let new_edges = brep.brep_edges(other)?;
@@ -1070,7 +1091,9 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                     let old_edges = brep.brep_edges(this)?;
 
                     // intersect, insert, and relate target edge into this  m_pBrep
-                    self.iir_edge_brep(k, brep, oe, this, true, true)?;
+                    let deleted = self.iir_edge_brep(k, brep, oe, this, true, true)?;
+                    deleted_vertices.extend(deleted.deleted_vertices);
+                    deleted_edges.extend(deleted.deleted_edges);
 
                     // remember if new topology was added to m_pBrep
                     let new_edges = brep.brep_edges(this)?;
@@ -1319,9 +1342,45 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
             ))?;
         }
 
+        // Opt-in (WR-527, #1526/#1527): each face's bounding box, for skipping the pairs
+        // below that lie apart. A box that cannot be computed, or holds nothing, rules
+        // nothing out.
+        let face_boxes = |faces: &[O]| -> Vec<Extent3d> {
+            faces
+                .iter()
+                .map(|&f| match brep.face_calculate_bounding_box(k, f, false) {
+                    Ok(b) if !b.has_negative_volume() => b,
+                    _ => {
+                        let mut b = Extent3d::new();
+                        b.set_unbounded();
+                        b
+                    }
+                })
+                .collect()
+        };
+        let skip_apart = k.fixes.boolean_skips_faces_apart;
+        let (boxes1, boxes2) = if skip_apart {
+            (face_boxes(&faces1), face_boxes(&faces2))
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        // (the fork's tangency-labs/smlib@84a7998) the other B-rep's faces whose box may
+        // lie within the tolerance of a face's box: a superset of the pairs the box test
+        // below keeps, in ascending order. The pairs it leaves out reach nothing before
+        // that test but lookups without effect (no intersection table is registered).
+        let pair_search = (skip_apart && self.intersection_table().is_none())
+            .then(|| SpatialIndex::new(boxes2.iter().copied().map(Some)));
+
         // Finally, the Face-Face intersections.
-        for &f1 in &faces1 {
-            for &f2 in &faces2 {
+        for (ii, &f1) in faces1.iter().enumerate() {
+            let pairs: Vec<usize> = match (&pair_search, boxes1.get(ii)) {
+                (Some(search), Some(box1)) => search.boxes_in_box(box1, self.this_approx_tol_3d()),
+                _ => (0..faces2.len()).collect(),
+            };
+            for jj in pairs {
+                let Some(&f2) = faces2.get(jj) else {
+                    continue;
+                };
                 let s1 = brep
                     .face_surface(f1)
                     .ok_or(invalid(OP_INTERSECT_TOPOLOGY, "face handle is unknown"))?;
@@ -1338,6 +1397,14 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
 
                 // No existing SSI, check coincidence or intersection.
                 let tol = self.this_approx_tol_3d();
+
+                // Opt-in (WR-527): no work - faces farther apart than the intersection
+                // tolerance cannot meet
+                if let (Some(box1), Some(box2)) = (boxes1.get(ii), boxes2.get(jj)) {
+                    if box1.are_disjoint(box2, tol) {
+                        continue;
+                    }
+                }
 
                 // Check for coincident surfaces -- partial coincidence is ok.
                 let surf1 = s1.ok_or(invalid(OP_INTERSECT_TOPOLOGY, "face without surface"))?;
@@ -1890,9 +1957,11 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                 // Do the intersection.
                 let split = match super::p1::test_and_split_two_edges(k, brep, e1, e2, this_tol) {
                     Ok(s) => s,
-                    Err(e @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => {
-                        return Err(e)
-                    }
+                    Err(
+                        e @ (SolidError::Unported { .. }
+                        | SolidError::InvalidInput { .. }
+                        | SolidError::PortInvariant { .. }),
+                    ) => return Err(e),
                     Err(e) => {
                         if ignore_problems {
                             continue;
@@ -2185,7 +2254,8 @@ impl<O: ClassObject + SolutionObject + Ord> TopologyIntersector<O> {
                             Ok(()) => out.imprinted_edges.push(e),
                             Err(
                                 err @ (SolidError::Unported { .. }
-                                | SolidError::InvalidInput { .. }),
+                                | SolidError::InvalidInput { .. }
+                                | SolidError::PortInvariant { .. }),
                             ) => return Err(err),
                             Err(_) => {
                                 if !ignore_problems {

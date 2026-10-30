@@ -224,8 +224,25 @@ impl Surface {
         k: &Kernel,
         surf_param: SurfParamType,
     ) -> Result<(ContinuityType, Vec<ContinuityType>)> {
+        self.calculate_continuities_reached(k, surf_param, &mut None)
+    }
+
+    /// [`Surface::calculate_continuities`], also storing in `reached` the minimum
+    /// continuity output (`reMinContinuityInSurfaceKnot`) as it stands whenever upstream
+    /// writes it, so that a caller ignoring a failed status reads what upstream leaves
+    /// there (`None`: never written, upstream's uninitialised value).
+    ///
+    /// # Errors
+    ///
+    /// Those of [`Surface::calculate_continuities`].
+    pub(crate) fn calculate_continuities_reached(
+        &self,
+        k: &Kernel,
+        surf_param: SurfParamType,
+        reached: &mut Option<ContinuityType>,
+    ) -> Result<(ContinuityType, Vec<ContinuityType>)> {
         // Get unique knot values for eSurfParam direction
-        let (other_knots, _) = self.knots(surf_param, None)?;
+        let (other_knots, _) = self.knots_with_nurb(k, surf_param, None)?;
 
         // check state
         if other_knots.len() <= 1 {
@@ -235,6 +252,7 @@ impl Surface {
         // init output continuities to [Discontinuous, G1, ... G1, Discontinuous]
         let mut conts_at_knots = vec![ContinuityType::G1; other_knots.len()];
         let mut min_continuity = ContinuityType::G1;
+        *reached = Some(min_continuity);
         if let Some(c) = conts_at_knots.first_mut() {
             *c = ContinuityType::Discontinuous;
         }
@@ -249,7 +267,7 @@ impl Surface {
         } else {
             SurfParamType::U
         };
-        let (mut knots, _) = self.knots(get_sp, None)?;
+        let (mut knots, _) = self.knots_with_nurb(k, get_sp, None)?;
 
         // single span surfaces get checked in the middle in case the iso curves at both
         // end knots are degenerate.
@@ -363,10 +381,12 @@ impl Surface {
                     }
                 }
                 min_continuity = tmp_min;
+                *reached = Some(min_continuity);
             } else {
                 // save minimum continuity values
                 if code(tmp_min) < code(min_continuity) {
                     min_continuity = tmp_min;
+                    *reached = Some(min_continuity);
                 }
 
                 // for every knot
@@ -571,7 +591,7 @@ impl Surface {
         if singular {
             // If one end of the subdomain coincides with an end of the whole domain,
             // use that.
-            let all_domain = self.natural_uv_domain();
+            let all_domain = self.natural_uv_domain_with_nurb(k)?;
 
             if sing_dir == SurfParamType::U || sing_dir == SurfParamType::Both {
                 uv.x = singular_end(&uv_domain.u_interval(), &all_domain.u_interval(), uv.x);
@@ -974,7 +994,7 @@ impl Surface {
 
         // locals to run from best solution end to other end
         let ivl = curve.natural_interval();
-        let reg = self.natural_uv_domain();
+        let reg = self.natural_uv_domain_with_nurb(k)?;
         let (start_dev, start_par, delta_par) = if sol.start.solution_value < sol.end.solution_value
         {
             let s = sol.start.parameters;
@@ -1292,8 +1312,13 @@ impl DerivSurfDefinition<'_> {
 
                 // project CurvePoint to Surface
                 let guess = (ii != 0).then_some(uv_guess);
-                let (success, surface_uv0) =
-                    drop_point(k, surface, crv_pos, &surface.natural_uv_domain(), guess)?;
+                let (success, surface_uv0) = drop_point(
+                    k,
+                    surface,
+                    crv_pos,
+                    &surface.natural_uv_domain_with_nurb(k)?,
+                    guess,
+                )?;
                 if !success {
                     return Err(SolidError::sm_err(OP_SAMPLE));
                 }
@@ -1717,7 +1742,7 @@ pub fn sc_local_solve<O: SolutionObject>(
             } else {
                 (uv_domain.min().x, true)
             };
-            let ic = boundary_iso_curve(srf_eval, SurfParamType::U, u, from_left)?;
+            let ic = boundary_iso_curve(k, srf_eval, SurfParamType::U, u, from_left)?;
 
             if !ic.is_degenerate(k, EFF_ZERO, None)? {
                 let v_ivl = Extent1d::from_min_max(uv_domain.min().y, uv_domain.max().y);
@@ -1750,7 +1775,7 @@ pub fn sc_local_solve<O: SolutionObject>(
             } else {
                 (uv_domain.min().y, true)
             };
-            let ic = boundary_iso_curve(srf_eval, SurfParamType::V, v, from_left)?;
+            let ic = boundary_iso_curve(k, srf_eval, SurfParamType::V, v, from_left)?;
 
             if !ic.is_degenerate(k, EFF_ZERO, None)? {
                 let u_ivl = Extent1d::from_min_max(uv_domain.min().x, uv_domain.max().x);
@@ -1985,12 +2010,14 @@ fn param_direction_ignored(k: &Kernel, surface: &Surface, uv: Point2, vec: Vec3)
 
 /// `SmIsoCurve(*pSrfEval, dir, value, bFromLeft)` (input clamped) as a curve.
 pub(super) fn boundary_iso_curve(
+    k: &Kernel,
     surface: &Surface,
     dir: SurfParamType,
     value: f64,
     from_left: bool,
 ) -> Result<Curve> {
     Ok(Curve::from(IsoCurve::from_surface(
+        k,
         surface.clone_for_evaluation()?,
         dir,
         value,
@@ -2008,7 +2035,7 @@ pub(super) fn create_iso_parametric_curve(
     value: f64,
     domain: Option<&Extent2d>,
 ) -> Result<(Curve, f64)> {
-    match surface.kind() {
+    match surface.kind_with_nurb(k)? {
         SurfaceKind::BSpline(b) => {
             let iso = b.create_iso_parametric_curve(
                 k,
@@ -2021,9 +2048,11 @@ pub(super) fn create_iso_parametric_curve(
             )?;
             Ok((Curve::from(iso.curve), iso.max_gap_3d))
         }
-        // (SmSurfOfExtrusion inherits the B-spline override)
+        // (SmSurfOfExtrusion inherits the B-spline override, whose
+        // `GetOrCreateGwNurbPointer` makes a missing NURB: a recognised extrusion has
+        // none until then)
         SurfaceKind::SurfOfExtrusion(s) => {
-            let iso = s.base().create_iso_parametric_curve(
+            let iso = s.base_with_nurb(k)?.create_iso_parametric_curve(
                 k,
                 dir,
                 value,
@@ -2353,8 +2382,8 @@ mod tests {
             base,
             surface1: Some(&s1),
             surface2: Some(&s2),
-            uv_domain1: s1.natural_uv_domain(),
-            uv_domain2: s2.natural_uv_domain(),
+            uv_domain1: s1.natural_uv_domain_if_built(),
+            uv_domain2: s2.natural_uv_domain_if_built(),
             kernel: &k,
             caches: [None, None],
             face_queries: None,

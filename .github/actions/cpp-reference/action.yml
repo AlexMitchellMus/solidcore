@@ -2,10 +2,22 @@ name: C++ reference
 description: >
   Clones upstream at the pinned commit, enables sccache and installs the C++ reference
   (bin/cpp layout) into $SOLIDCORE_CPP_DIR, so the cpp feature of solidcore-ffi builds.
-  Expects UPSTREAM_REPO, UPSTREAM_COMMIT and SOLIDCORE_CPP_DIR in the job environment.
+  Expects SOLIDCORE_CPP_DIR in the job environment; the upstream pin (UPSTREAM_REPO,
+  UPSTREAM_VERSION, UPSTREAM_COMMIT) comes from scripts/upstream-pin.env unless the job
+  environment already sets it.
 runs:
   using: composite
   steps:
+    - name: Load upstream pin
+      shell: bash
+      run: |
+        while IFS='=' read -r k v; do
+          case "$k" in
+            UPSTREAM_REPO|UPSTREAM_VERSION|UPSTREAM_COMMIT)
+              if [ -z "${!k:-}" ]; then echo "$k=$v" >> "$GITHUB_ENV"; fi ;;
+          esac
+        done < scripts/upstream-pin.env
+
     - name: Clone upstream at pinned commit
       shell: bash
       run: |
@@ -29,6 +41,13 @@ runs:
         # The difftest run is idle for sccache for minutes; without this the server
         # exits after 10 idle minutes and the stats printed at the end read zero.
         echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"
+        # Start the server now, so a cache-storage outage (the Actions cache answering
+        # 503 ServerBusy at startup) costs a cold build instead of failing the job.
+        if ! SCCACHE_GHA_ENABLED=true SCCACHE_IDLE_TIMEOUT=0 sccache --start-server; then
+          echo "::warning::sccache could not start (cache storage unavailable); building without it"
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=false" >> "$GITHUB_ENV"
+        fi
 
     # The C++ reference (bin/cpp/lib) comes prebuilt from the GitHub Release that
     # .github/workflows/cpp-reference.yml publishes for scripts/cpp-ref-key.sh's key.

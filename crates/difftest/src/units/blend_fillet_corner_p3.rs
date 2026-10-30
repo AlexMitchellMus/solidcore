@@ -34,7 +34,15 @@
 //! make upstream dereference null or free the harness's objects. To tell a default patch
 //! that reaches `MakeFaceBrep` from one that returns a status before it, the shim runs
 //! `MakeAnalyticCornerSurface`'s fits and the Coons patch's `CreateCornerBlend` on
-//! copies first. The model's fillet geometries have a solver (a base solver with the
+//! copies first. Its `SER` / `NER` exits (read as `TRUE`) add no surface, so the
+//! `MakeFaceBrep` after them copies the edges' curves only when the corner already had one
+//! surface (a planar corner's exit leaves the edge it was recomputing without a curve).
+//! Every refused case was checked by running the C++ natively with the pre-check bypassed,
+//! one process per case: each crashed in upstream (`SIGSEGV` in `SmFilletCorner::Create`,
+//! `MakeAnalyticCornerSurface`, `AdjustTopology`, `AdjustConcaveCornerTopology`,
+//! `AdjustTangentCorner`) except the tangent split's call through a solver-less geometry
+//! (`GetFilletSolver()->SplitFilletGeomAtSideEdge`: a member call on a null pointer,
+//! undefined, though the non-virtual callee returns a status before it reads `this`). The model's fillet geometries have a solver (a base solver with the
 //! generator of a cross-section kind, `geom_solvers`) only in generated patch and geometry
 //! cases; elsewhere none, and the paths that ask a geometry for its solver (the `NxN`
 //! candidate search past its first cross section, the closed Nx1 and Nx2 tangent splits,
@@ -42,7 +50,6 @@
 //! the import holds only approximately (analytic surfaces and curves) is deferred like
 //! `topology.edgeuse_p2`'s (`inexact_geometry`).
 
-use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -60,7 +67,7 @@ use solidcore::kernel::Kernel;
 use solidcore::math::EFF_ZERO_RAD;
 use solidcore::surface::surface::{Surface, SurfaceKind};
 use solidcore::topology::edgeuse::p1 as eu1;
-use solidcore::topology::{Brep, EdgeuseId, FaceId, VertexId, VertexuseId};
+use solidcore::topology::{Brep, EdgeuseId, FaceId, VertexId};
 use solidcore::SolidError;
 use solidcore_ffi::units::blend_fillet_corner_p3::{self as ffi, Op};
 use solidcore_ffi::units::topology_edgeuse_p1 as ffi1;
@@ -300,29 +307,48 @@ fn eu_vertex(b: &Brep, eu: EdgeuseId) -> Option<VertexId> {
     b.vertexuse(vu).ok()?.vertex
 }
 
+/// The case's B-rep and its resolved selectors. With `own` (the Rust side) the B-rep is
+/// read by the Rust reader or built by the Rust kernel in the shim's traversal order
+/// ([`crate::own_reader::brep_in_order`]); else (the C++ side, to resolve its
+/// selectors) it is imported from the C++ export.
 fn create_setup(
     brep: &BrepIn,
     validate_only: bool,
     init_gaps: bool,
     eu: i64,
     more: &[i64],
+    own: bool,
 ) -> Result<Result<CreateSetup, Output>, HarnessError> {
     let path = path_of(Some(brep))?;
     let block = brep_block_of(Some(brep), validate_only, init_gaps)?;
-    let ex = crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
-        ffi1::eval(ffi1::Op::Export, &path, &block)
-    })
-    .map_err(|e| harness(format!("c++ export: {e}")))?;
-    let Some(c) = ffi1::counts(&ex) else {
-        let st = ex.get(1).copied().unwrap_or(0.0);
-        return Ok(Err(Output::err(format!("brep_build_status_{st}"))));
+    let (c, built) = if own {
+        use crate::own_builder::{counts, failed_output, Built, Conventions};
+        let conv = &Conventions::EDGEUSE_GRAPH;
+        let k = &mut Kernel::default();
+        match crate::own_reader::brep_in_order(k, brep, validate_only, init_gaps, conv)? {
+            Built::Brep(b) => (counts(&b), Ok(*b)),
+            Built::Failed(e) => return Ok(Err(failed_output(&e))),
+        }
+    } else {
+        let ex = crate::export_memo::export("topology_edgeuse_p1", &[&path], &block, || {
+            ffi1::eval(ffi1::Op::Export, &path, &block)
+        })
+        .map_err(|e| harness(format!("c++ export: {e}")))?;
+        let Some(c) = ffi1::counts(&ex) else {
+            let st = ex.get(1).copied().unwrap_or(0.0);
+            return Ok(Err(Output::err(format!("brep_build_status_{st}"))));
+        };
+        (c, Err(ex))
     };
     let n_eu = c.get(6).copied().unwrap_or(0);
     let s = sel(eu, n_eu);
     if s < 0 {
         return Ok(Err(Output::err("no_edge_use")));
     }
-    let (b, types) = import_with_types(&ex)?;
+    let (b, types) = match built {
+        Ok(b) => (b, ImportTypes::default()),
+        Err(ex) => import_with_types(&ex)?,
+    };
     let start = EdgeuseId::from_index(u32::try_from(s).map_err(|_| harness("index"))?);
     let Some(vertex) = eu_vertex(&b, start) else {
         return Ok(Err(Output::err("start_edge_use_without_vertex")));
@@ -419,7 +445,7 @@ fn create_cpp(
     more: &[i64],
     solvers: &[SolverIn],
 ) -> Result<Output, HarnessError> {
-    let s = match create_setup(brep, validate_only, init_gaps, eu, more)? {
+    let s = match create_setup(brep, validate_only, init_gaps, eu, more, false)? {
         Ok(s) => s,
         Err(o) => return Ok(o),
     };
@@ -503,7 +529,7 @@ fn create_rust(
     more: &[i64],
     solvers: &[SolverIn],
 ) -> Result<Output, HarnessError> {
-    let mut s = match create_setup(brep, validate_only, init_gaps, eu, more)? {
+    let mut s = match create_setup(brep, validate_only, init_gaps, eu, more, true)? {
         Ok(s) => s,
         Err(o) => return Ok(o),
     };
@@ -880,7 +906,6 @@ fn corner_rust_status_gs(
     c.topology_adjusted = ci.adjusted;
     c.set_back_dist = ci.setback;
 
-    let mut surfaces: BTreeMap<VertexuseId, [Option<Surface>; 2]> = BTreeMap::new();
     for t in &ci.tsects {
         let eu = rm.edgeuse(t.e, t.which)?;
         let vu = rm
@@ -924,7 +949,17 @@ fn corner_rust_status_gs(
                 _ => Ok(None),
             }
         };
-        surfaces.insert(vu, [srf(&rm, t.s0)?, srf(&rm, t.s1)?]);
+        let user = |s: Option<Surface>| {
+            s.map(|s| {
+                solidcore::intersect::surface_intersector::p1::UserSurface(std::sync::Arc::new(s))
+            })
+        };
+        let user_pointer = [user(srf(&rm, t.s0)?), user(srf(&rm, t.s1)?)];
+        rm.fb
+            .fillet_vertexuse_mut(vu)
+            .map_err(h)?
+            .tsect_pnt_mut()
+            .user_pointer = user_pointer;
     }
 
     for &[e, f] in &ci.orig_faces {
@@ -973,7 +1008,7 @@ fn corner_rust_status_gs(
     let mut fillet_brep = Brep::new_with_infinite_region().map_err(h)?;
     let mut exec = FilletExecutiveData::default();
     let r = {
-        let mut records = BTreeMap::new();
+        let mut records = solidcore::topology::topology::NotifyRecords::new();
         let mut attributes = solidcore::geom::attribute::AttributeStore::default();
         let mut env = CornerEnv {
             k: &mut rm.k,
@@ -982,7 +1017,6 @@ fn corner_rust_status_gs(
             exec: &mut exec,
             // the shim exports `this` as this id
             corner: Some(FilletCornerId(THIS_CORNER)),
-            tsect_surfaces: &surfaces,
             // the model's geometries have a solver only where the case gives one
             solvers: &mut solvers,
             fillet: Some(fillet_env(&mut fillet_brep, &mut records, &mut attributes)),
@@ -1040,10 +1074,7 @@ fn fillet_key_of(e: solidcore::EntityRef) -> solidcore::geom::object::ObjectRef 
 /// The corner's [`CornerFilletBrep`] over `brep` (the executive's `m_pFilletBrep`).
 pub(super) fn fillet_env<'a>(
     brep: &'a mut Brep,
-    records: &'a mut BTreeMap<
-        solidcore::geom::attribute::ObjectKey,
-        solidcore::topology::topology::Topology,
-    >,
+    records: &'a mut solidcore::topology::topology::NotifyRecords,
     attributes: &'a mut solidcore::geom::attribute::AttributeStore,
 ) -> CornerFilletBrep<'a> {
     CornerFilletBrep {

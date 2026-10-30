@@ -93,7 +93,7 @@ use crate::topology::face::p2 as face2;
 use crate::topology::loopuse;
 use crate::topology::topology_traverser::Marks;
 use crate::topology::trimming_tools::curve_loops::{
-    CurveIntersections, CurveKey, CurveLoops, IsoXSectSegment, LoopObject,
+    CurveIntersections, CurveKey, CurveLoops, IsoXSectSegment, LoopObject, StoreDomains,
 };
 use crate::topology::trimming_tools::find_outer_loops;
 use crate::topology::vertex;
@@ -166,7 +166,7 @@ fn as_sm_err(e: SolidError) -> SolidError {
 /// input upstream mishandles, e.g. `FindOuterLoops`' zero-area loop, UB-119) go through.
 fn plane_failed(e: SolidError) -> SolidError {
     match e {
-        SolidError::InvalidInput { .. } => e,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => e,
         other => as_sm_err(other),
     }
 }
@@ -212,7 +212,7 @@ pub fn create_face_in_region_from_surface(
     let region = region.or(b.infinite_region());
 
     // check input - crUVDomain contained within the pSurface->GetNaturalUVDomain()
-    if !uv_domain.is_contained_by(&surface.natural_uv_domain(), EFF_ZERO) {
+    if !uv_domain.is_contained_by(&surface.natural_uv_domain_with_nurb(k)?, EFF_ZERO) {
         return Err(SolidError::sm_err(OP));
     }
 
@@ -317,7 +317,7 @@ pub fn create_faces_from_surface(
         } else {
             let mut sur = surface;
             for &param in &u_knots {
-                let dom = sur.natural_uv_domain();
+                let dom = sur.natural_uv_domain_with_nurb(k)?;
                 let ivl = Extent1d::from_min_max(dom.min().x, dom.max().x);
                 if ivl.is_value_on_boundary(param, EFF_ZERO_SQRT).0 {
                     continue;
@@ -335,7 +335,7 @@ pub fn create_faces_from_surface(
         } else {
             for mut sur in splitted {
                 for &param in &v_knots {
-                    let dom = sur.natural_uv_domain();
+                    let dom = sur.natural_uv_domain_with_nurb(k)?;
                     let ivl = Extent1d::from_min_max(dom.min().y, dom.max().y);
                     if ivl.is_value_on_boundary(param, EFF_ZERO_SQRT).0 {
                         continue;
@@ -350,7 +350,7 @@ pub fn create_faces_from_surface(
 
         // for every subpatch - create face
         for srf in sub_patches {
-            let dom = srf.natural_uv_domain();
+            let dom = srf.natural_uv_domain_with_nurb(k)?;
             let region = b.infinite_region();
             let made = create_face_in_region_from_surface(k, b, region, Some(srf), &dom, fenv)?;
             new_faces.push(made.face);
@@ -385,7 +385,7 @@ pub fn create_planar_face_with_3d_curves(
 
     // create the plane - returns an error for open, degenerate, or nonCoplanar curves
     let plane = Surface::create_plane_with_3d_curves(k, curves, tol_3d).map_err(plane_failed)?;
-    let plane_domain = plane.plane.natural_uv_domain();
+    let plane_domain = plane.plane.natural_uv_domain_with_nurb(k)?;
 
     let mut next_loop = 0usize;
     let mut next_curve = 0usize;
@@ -400,7 +400,9 @@ pub fn create_planar_face_with_3d_curves(
             this_loops.push(num_curves);
             for _ in 0..num_curves {
                 let ci = *at(&plane.ordered_curves, next_curve)?;
-                this_curves.push(Some(at(curves, ci)?.clone()));
+                // the curve itself goes into the new edge upstream: an exact copy, not
+                // the copy constructor (whose knot fix-up would change the curve)
+                this_curves.push(Some(at(curves, ci)?.clone_for_evaluation()?));
                 this_orients.push(*at(&plane.orients, next_curve)?);
                 next_curve += 1;
             }
@@ -466,7 +468,8 @@ pub fn create_planar_faces_with_3d_curves(
 
     let mut ordered: Vec<Option<Curve>> = Vec::with_capacity(plane.ordered_curves.len());
     for &ci in &plane.ordered_curves {
-        ordered.push(Some(at(curves, ci)?.clone()));
+        // (the curves themselves go into the new edges upstream: exact copies)
+        ordered.push(Some(at(curves, ci)?.clone_for_evaluation()?));
     }
     let made = create_faces_with_curves(
         k,
@@ -521,7 +524,7 @@ pub fn create_faces_with_curves(
         // First create the big face covering the whole surface.
         // (upstream reads pSurface->GetNaturalUVDomain() before its null check)
         let surface = surface.ok_or_else(|| invalid("no surface (upstream dereferences null)"))?;
-        let natural = surface.natural_uv_domain();
+        let natural = surface.natural_uv_domain_with_nurb(k)?;
         let big = create_face_in_region_from_surface(k, b, region, Some(surface), &natural, fenv)?;
         out.shell = big.shell;
         let new_face = big.face;
@@ -957,7 +960,12 @@ pub fn make_faces_with_curves(
         let mut new_sols: SolutionArray<LoopObject> = SolutionArray::new();
         for ii in 0..ci.solutions.len() {
             if let Some(s) = ci.solutions.get(ii) {
-                ignore_status(new_sols.add_sorted_solution(s, SortKey::ByFirstParameter))?;
+                // (IsEqual reads the natural intervals of the solutions' curves)
+                ignore_status(new_sols.add_sorted_solution_in(
+                    s,
+                    SortKey::ByFirstParameter,
+                    &StoreDomains(&store),
+                ))?;
             }
         }
         let iso_key = ci
@@ -1102,7 +1110,7 @@ pub fn make_faces_with_curves(
             let mut pt_uv = Point2::new(pt.x, pt.y);
 
             for (kk, sub) in sub_patches.iter().enumerate() {
-                let sub_domain = sub.natural_uv_domain();
+                let sub_domain = sub.natural_uv_domain_with_nurb(k)?;
                 if curve_dim == 3 {
                     let r = ignored(sub.drop_point::<LoopObject>(
                         k,
@@ -1170,7 +1178,7 @@ pub fn make_faces_with_curves(
         // FindOuterLoops() needs a surface normal.
         let mut norm = Vec3::new(0.0, 0.0, 1.0);
         if curve_dim == 3 {
-            let dom = sub_patch.natural_uv_domain();
+            let dom = sub_patch.natural_uv_domain_with_nurb(k)?;
             match ignored(sub_patch.evaluate_normal(k, dom.mid(), Side::Right, Side::Right))? {
                 Some(nv) => norm = nv,
                 None => continue,
@@ -1223,7 +1231,7 @@ pub fn make_faces_with_curves(
 
             // copy sub patches that have already been used
             let src_to_use = sub_patch.clone();
-            let sub_domain = src_to_use.natural_uv_domain();
+            let sub_domain = src_to_use.natural_uv_domain_with_nurb(k)?;
             let face_input = FaceCurvesInput {
                 loops: single_loops,
                 curves_3d: (curve_dim == 3)
@@ -1287,7 +1295,6 @@ mod tests {
     use crate::geom::attribute::AttributeStore;
     use crate::math::Point2;
     use crate::surface::plane::Plane;
-    use std::collections::BTreeMap;
 
     fn code(e: &SolidError) -> Option<i32> {
         match e {
@@ -1302,7 +1309,7 @@ mod tests {
     ) -> (R, Brep) {
         let mut k = Kernel::default();
         let mut b = p3::new_brep(&mut k, tol::USE_DEFAULT, tol::USE_DEFAULT).unwrap();
-        let mut records = BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let mut env = NotifyEnv {
             records: &mut records,
