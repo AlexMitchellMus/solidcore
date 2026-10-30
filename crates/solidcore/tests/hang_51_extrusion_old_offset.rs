@@ -90,7 +90,7 @@ fn hang_51_extrusion_old_rounded_outset_returns() {
     let result = match rx.recv_timeout(BUDGET) {
         Ok(None) => return,
         Ok(Some(result)) => result,
-        Err(_) => panic!("the offset did not return within {BUDGET:?} (HANG-51)"),
+        Err(e) => panic!("the offset did not return within {BUDGET:?} (HANG-51): {e}"),
     };
     // the C++ has no result to compare with; the bound ends the call with its error
     match result {
