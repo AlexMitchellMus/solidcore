@@ -167,6 +167,8 @@ solidcraft_preset! {
         boolean_new_face_closure_both_sides, // WR-584; smlib 69c5198
         stitch_solid_nests_cavities, // WR-569; smlib 351c57c
         box_face_failures_propagate, // WR-596; smlib 0df62c8, 35008b1, 449c81c
+        offset_closes_loop_gaps, // WR-578; smlib 7ff0a94, 34318f4
+        linear_sweep_arc_is_cylinder, // WR-565; smlib 12918e9
     ],
     reported: [
         fillet_refuse_rails_leaving_faces, // WR-302, #1024
