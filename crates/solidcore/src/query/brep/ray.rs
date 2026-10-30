@@ -187,7 +187,8 @@ fn face_surface_cache(
             "unexpected cache geometry handle",
         )),
     };
-    let mut mapped = MappedCacheFace::new(BrepCacheFace { b, f: face }, &cache_handle, &entity_of)?;
+    let mut mapped = MappedCacheFace::new(BrepCacheFace { b, f: face }, &cache_handle, &entity_of)?
+        .with_subdivision_handles(CacheObject::SubdivisionSurface);
     let mut cache =
         get_surface_cache_with_face(k, &surface, Some(CacheObject::Surface(face)), &mut mapped)?;
     // A Boolean operation can defer the factory's tree build until GetTree.

@@ -2051,7 +2051,15 @@ impl<O: Copy + PartialEq> SurfaceCache<O> {
         self.subdivision_handles = make;
     }
 
-    /// A new subdivision surface handle, `None` when the cache cannot name them.
+    /// Whether the cache can name new subdivision surfaces
+    /// ([`SurfaceCache::set_subdivision_handles`]).
+    #[must_use]
+    pub fn has_subdivision_handles(&self) -> bool {
+        self.subdivision_handles.is_some()
+    }
+
+    /// A fresh handle for a new subdivision surface, `None` when the cache has no way
+    /// to name one ([`SurfaceCache::set_subdivision_handles`]).
     pub fn new_subdivision_handle(&mut self) -> Option<O> {
         let make = self.subdivision_handles?;
         let n = self.subdivision_handle_count;
