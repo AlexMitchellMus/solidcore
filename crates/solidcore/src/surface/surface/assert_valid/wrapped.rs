@@ -43,7 +43,7 @@
 //!   surface, its whole owned geometry is checked to nest at most that deep
 //!   ([`check_geometry_nesting`]), which bounds the surface recursion.
 
-use super::{a_object, Reporter, LEVEL_GIVEN, UNDEF};
+use super::{a_object, Reporter, UNDEF};
 use crate::error::{Result, SolidError};
 use crate::geom::assert_array::labels::{
     BEND_VOLUME_TYPE, B_SPLINE_VOLUME_TYPE, OFFSET_SURFACE_TYPE, SRF_IN_VOLUME_TYPE,
@@ -186,7 +186,7 @@ pub(super) fn srf_in_volume_assert_valid(
 
 impl Volume {
     /// `AssertValid` (virtual): the checks of this volume's class and of its base
-    /// classes (unless `level` is [`LEVEL_GIVEN`], which skips the `SmAObject` call only,
+    /// classes (unless `level` is [`LEVEL_GIVEN`](super::LEVEL_GIVEN), which skips the `SmAObject` call only,
     /// as upstream), including the checks of its next map and orient maps, reporting
     /// failures about the volume `key` into `list`. Returns `true` when every test that
     /// ran passed.
@@ -278,7 +278,7 @@ fn volume_checks(v: &Volume, r: &mut Reporter<'_>, depth: usize) -> Result<bool>
     let mut rtn = true;
 
     // call the base class AssertValid
-    rtn &= if r.level != LEVEL_GIVEN {
+    rtn &= if r.bases() {
         a_object::assert_valid(false)
     } else {
         true
@@ -339,7 +339,7 @@ fn transform_assert_valid(
     };
     let r = &mut r;
     // SmVolume::AssertValid: the base class, no next or orient maps
-    let rtn = if r.level != LEVEL_GIVEN {
+    let rtn = if r.bases() {
         a_object::assert_valid(false)
     } else {
         true

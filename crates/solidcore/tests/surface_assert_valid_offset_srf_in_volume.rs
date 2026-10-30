@@ -2,6 +2,8 @@
 //! `SmSrfInVolume::AssertValid` (with the volume checks it nests into) instead of
 //! returning `Unported`.
 
+#![allow(clippy::unwrap_used)] // test helpers
+
 use solidcore::geom::assert_array::labels::{
     BEND_VOLUME_TYPE, OFFSET_SURFACE_TYPE, SRF_IN_VOLUME_TYPE, VOLUME_TYPE,
 };
@@ -29,7 +31,7 @@ fn run(k: &Kernel, s: &Surface, level: u8) -> (bool, Vec<(i64, u64)>) {
     let mut list = AssertArray::new();
     let ok = s
         .assert_valid(k, Some(&mut list), level, ObjectKey(1))
-        .expect("assert_valid runs");
+        .unwrap();
     let ids = list
         .reports()
         .iter()
