@@ -105,6 +105,7 @@ use crate::geom::tol::{
     ANG_TOL_DEG, ZONE_TOL_3D,
 };
 use crate::geom::vector3d::acos as sm_acos;
+use crate::geom::vector3d::asin as sm_asin;
 use crate::kernel::Kernel;
 use crate::math::{
     max2, min2, rad_to_deg, Point2, Point3, Vec3, EFF_ZERO, EFF_ZERO_DEG, EFF_ZERO_RAD,
@@ -1472,11 +1473,16 @@ fn surf_of_revolution_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>
     }
 
     /* 13 */
-    // Analytic U Direction Domain too large (reported as test 2, as upstream)
+    // Analytic U Direction Domain too large (reported as test 2, as upstream; as 13, its
+    // label, with WR-538's `torus_check_reads_v_interval`)
     let ivl_u = anal.u_interval();
     rtn &= r.report(
         CLASS,
-        2,
+        if k.fixes.torus_check_reads_v_interval {
+            13
+        } else {
+            2
+        },
         0,
         ivl_u.length() <= 360.0 + EFF_ZERO_DEG,
         EFF_ZERO_DEG,
@@ -2023,7 +2029,11 @@ fn sphere_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>) -> Result<
 }
 
 /// `SmTorus::AssertValid` (pinned upstream: test 4 reads the U interval, and the U
-/// and V tests report as 2 and 3).
+/// and V tests report as 2 and 3; with `Kernel::fixes.torus_check_reads_v_interval`,
+/// WR-538, they read U and V and report as 3 and 4. A spindle torus's self-intersection
+/// test clears the result with no report and tests the U interval against an `acos`
+/// range; with `Kernel::fixes.torus_check_spindle_apex`, WR-539, it reports test 5 for an
+/// apex inside the V interval).
 fn torus_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>) -> Result<bool> {
     const CLASS: i64 = TORUS_TYPE;
     let mut rtn = true;
@@ -2042,20 +2052,46 @@ fn torus_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>) -> Result<b
 
     let anal = t.base().step_uv_domain();
     if major < minor {
-        let angle_limit_deg = 90.0 + sm_acos(major / minor) * 180.0 / PI;
-        let self_intersect = Extent1d::from_min_max(angle_limit_deg, 360.0 - angle_limit_deg);
-        if !self_intersect.are_disjoint_periodic(&anal.u_interval(), 360.0, -1.0) {
-            rtn &= false;
+        if k.fixes.torus_check_spindle_apex {
+            /*  5 */
+            // Not upstream (WR-539, the fork's tangency-labs/smlib@daba678): a spindle
+            // torus's minor circles cross the axis where R + r cos(V) = 0, at the apexes
+            // V = +-(90 + asin(R/r)) degrees; like a sphere's poles (its tests 4 and 5),
+            // an apex may bound the V domain but not lie inside it.
+            let apex_deg = 90.0 + sm_asin(major / minor) * 180.0 / PI;
+            let apex_ivl_v = anal.v_interval();
+            for apex in [apex_deg, -apex_deg] {
+                let c = apex_ivl_v.contains_periodic_value(apex, 360.0, EFF_ZERO_DEG);
+                rtn &= r.report(
+                    CLASS,
+                    5,
+                    0,
+                    !c.contained
+                        || is_zero_to_tol(c.dist_to_min, EFF_ZERO_DEG)
+                        || is_zero_to_tol(c.dist_to_max, EFF_ZERO_DEG),
+                    EFF_ZERO_DEG,
+                    min2(c.dist_to_min, c.dist_to_max),
+                )?;
+            }
+        } else {
+            let angle_limit_deg = 90.0 + sm_acos(major / minor) * 180.0 / PI;
+            let self_intersect = Extent1d::from_min_max(angle_limit_deg, 360.0 - angle_limit_deg);
+            if !self_intersect.are_disjoint_periodic(&anal.u_interval(), 360.0, -1.0) {
+                rtn &= false;
+            }
         }
     }
 
     let same = generator_has_same_parameterization(k, s)?;
     rtn &= r.report(CLASS, 2, 0, same, EFF_ZERO, UNDEF)?;
 
+    // Not upstream (WR-538, the fork's tangency-labs/smlib@0cd9d08, #482): the U and V
+    // tests report as 3 and 4 (their labels), and the V test reads the V interval
+    let fixed_ids = k.fixes.torus_check_reads_v_interval;
     let ivl_u = anal.u_interval();
     rtn &= r.report(
         CLASS,
-        2,
+        if fixed_ids { 3 } else { 2 },
         0,
         ivl_u.length() <= 360.0 + EFF_ZERO_DEG,
         EFF_ZERO_DEG,
@@ -2063,10 +2099,14 @@ fn torus_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>) -> Result<b
     )?;
 
     // (upstream reads the U interval again)
-    let ivl_v = anal.u_interval();
+    let ivl_v = if fixed_ids {
+        anal.v_interval()
+    } else {
+        anal.u_interval()
+    };
     rtn &= r.report(
         CLASS,
-        3,
+        if fixed_ids { 4 } else { 3 },
         0,
         ivl_v.length() <= 360.0 + EFF_ZERO_DEG,
         EFF_ZERO_DEG,
@@ -2301,6 +2341,67 @@ mod tests {
                 ),
             ],
         );
+    }
+
+    /// The failed reports' (class, test) of `s` at level 0 on kernel `k`.
+    fn failed_tests(k: &Kernel, s: &Surface) -> (bool, Vec<(i64, u64)>) {
+        let mut list = AssertArray::new();
+        let ok = s.assert_valid(k, Some(&mut list), 0, ObjectKey(1)).unwrap();
+        let failed = list
+            .reports()
+            .iter()
+            .filter(|r| !r.ok)
+            .map(|r| (r.reporting_type, r.test_index))
+            .collect();
+        (ok, failed)
+    }
+
+    fn torus_over(v0: f64, v1: f64, major: f64, minor: f64) -> Surface {
+        let d = Extent2d::from_bounds(0.0, v0, 360.0, v1);
+        let opts = TorusOptions {
+            swap_uv: false,
+            inside_out: false,
+            circle_nurb: None,
+        };
+        Surface::from(Torus::new(&Kernel::default(), O, X, Y, d, major, minor, opts).unwrap())
+    }
+
+    /// WR-538 (the fork's tangency-labs/smlib@0cd9d08, #482): a torus whose V interval
+    /// runs past a turn. Upstream tests the U interval twice and never the V one; with
+    /// `torus_check_reads_v_interval` the V test (4) fails.
+    #[test]
+    fn wr_538_torus_check_reads_its_v_interval() {
+        let s = torus_over(0.0, 400.0, 5.0, 1.0);
+        let mut k = Kernel::default();
+        let (_, upstream) = failed_tests(&k, &s);
+        assert!(!upstream.contains(&(TORUS_TYPE, 4)), "{upstream:?}");
+        k.fixes.torus_check_reads_v_interval = true;
+        let (ok, fixed) = failed_tests(&k, &s);
+        assert!(!ok);
+        assert!(fixed.contains(&(TORUS_TYPE, 4)), "{fixed:?}");
+        assert!(!fixed.contains(&(TORUS_TYPE, 3)), "{fixed:?}");
+    }
+
+    /// WR-539 (the fork's tangency-labs/smlib@daba678): the spindle torus R 1, r 2 has its
+    /// apexes at V = +-120. Upstream fails every spindle torus with a whole turn of U and
+    /// reports nothing; with `torus_check_spindle_apex` V [0, 360] reports test 5 and the
+    /// outer sheet V [-120, 120] passes.
+    #[test]
+    fn wr_539_spindle_torus_reports_an_apex_inside() {
+        let whole = torus_over(0.0, 360.0, 1.0, 2.0);
+        let outer = torus_over(-120.0, 120.0, 1.0, 2.0);
+        let mut k = Kernel::default();
+        for s in [&whole, &outer] {
+            let (ok, upstream) = failed_tests(&k, s);
+            assert!(!ok);
+            assert!(!upstream.contains(&(TORUS_TYPE, 5)), "{upstream:?}");
+        }
+        k.fixes.torus_check_spindle_apex = true;
+        let (ok, fixed) = failed_tests(&k, &whole);
+        assert!(!ok);
+        assert!(fixed.contains(&(TORUS_TYPE, 5)), "{fixed:?}");
+        let (_, outer_fixed) = failed_tests(&k, &outer);
+        assert!(!outer_fixed.contains(&(TORUS_TYPE, 5)), "{outer_fixed:?}");
     }
 
     /// tangency-labs/solidcore#1515 (WR-505): a horn torus (major radius = minor radius)
