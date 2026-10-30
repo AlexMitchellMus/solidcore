@@ -212,6 +212,11 @@ pub struct OffsetExecutive {
     /// convex round thinner than the wall), mated across instead of offset
     /// (`m_sCollapsedFaces`; only with `Kernel::fixes.offset_collapsed_rounds_mated`).
     pub(super) collapsed_faces: Vec<FaceId>,
+    /// The faces of a local operation and the surfaces replacing theirs, in step (the
+    /// part of `SmLocalOperationGeometryCreation` the executive reads: `m_vFaces`,
+    /// `m_vSurfaces`).
+    pub(super) local_faces: Vec<FaceId>,
+    pub(super) local_surfaces: Vec<Surface>,
 }
 
 impl OffsetExecutive {
@@ -258,6 +263,8 @@ impl OffsetExecutive {
             blend_to_faces: Relation::default(),
             extended_surfaces: BTreeMap::new(),
             collapsed_faces: Vec::new(),
+            local_faces: Vec::new(),
+            local_surfaces: Vec::new(),
         }
     }
 
@@ -340,6 +347,13 @@ impl OffsetExecutive {
     pub fn set_shell_faces(&mut self, faces: &[FaceId]) {
         self.shell_faces.clear();
         self.shell_faces.extend_from_slice(faces);
+    }
+
+    /// The geometry of a local operation (`SmLocalOperationGeometryCreation`'s face and
+    /// surface lists): `surfaces[i]` replaces the surface of `faces[i]`.
+    pub fn set_local_surfaces(&mut self, faces: &[FaceId], surfaces: Vec<Surface>) {
+        self.local_faces = faces.to_vec();
+        self.local_surfaces = surfaces;
     }
 
     /// Sets `m_eOffsetOperation`.
@@ -655,8 +669,10 @@ impl OffsetExecutive {
             let base = offset
                 .extended_base_surface()
                 .unwrap_or_else(|| offset.base_surface());
-            // make sure base surface is an SmBSplineSurface
-            let SurfaceKind::BSpline(nurb) = base.kind() else {
+            // make sure base surface is an SmBSplineSurface (`SM_CAST_PTR`, which every
+            // subclass passes: plane, extrusion, revolution, cone, sphere, torus); its
+            // B-spline part with the NURB `GetOrCreateGwNurbPointer` makes when missing
+            let Some(nurb) = crate::topology::brep::p3::with_nurb(kernel, base)? else {
                 return Err(SolidError::sm_err(OP));
             };
             // use NLIB function to build offset surface approximation
@@ -2316,18 +2332,19 @@ impl OffsetExecutive {
         let domain = ignored(original_face.uv_domain.intersect(&offset_face.uv_domain))?
             .unwrap_or_else(Extent2d::new);
         let mid_uv = domain.evaluate(0.5, 0.5);
+        // (`EvaluateNormal(sMidUV, TRUE, TRUE, ..)`: from the left)
         let normal = ignored(required(original_face.surface.as_ref())?.evaluate_normal(
             kernel.kernel(),
             mid_uv,
-            Side::Right,
-            Side::Right,
+            Side::Left,
+            Side::Left,
         ))?
         .unwrap_or(Vec3::UNDEF);
         let offset_normal = ignored(required(offset_face.surface.as_ref())?.evaluate_normal(
             kernel.kernel(),
             mid_uv,
-            Side::Right,
-            Side::Right,
+            Side::Left,
+            Side::Left,
         ))?
         .unwrap_or(Vec3::UNDEF);
         let same_normals = normal.dot(offset_normal) > 0.0;
@@ -3806,8 +3823,30 @@ mod tests {
             .unwrap();
         assert!((p.z - 0.25).abs() < 1.0e-6, "{p:?}");
 
-        // a base that is not a B-spline surface is SM_ERR
+        // a plane is an SmBSplineSurface too (issue #1476): its offset is approximated
         let offset = OffsetSurface::new(&kernel, 0.25, plane(0.0), true, 0).unwrap();
+        let mut brep = Brep::new();
+        let (offset_face, _) = add_face(&mut brep, Surface::from(offset));
+        OffsetExecutive::replace_implicit_offsets(
+            &mut kernel,
+            &mut brep,
+            1.0e-6,
+            &mut NotificationStores {
+                records: &mut records,
+                attributes: &mut attributes,
+                key_of: &loopuse::notify_ref,
+            },
+        )
+        .unwrap();
+        let surface = brep.face(offset_face).unwrap().surface.clone().unwrap();
+        assert!(matches!(surface.kind(), SurfaceKind::BSpline(_)));
+        let mid = surface.natural_uv_domain_if_built().mid();
+        let p = surface.evaluate_point(&kernel, mid).unwrap();
+        assert!((p.z - 0.25).abs() < 1.0e-6, "{p:?}");
+
+        // a base that is not a B-spline surface (here an offset surface) is SM_ERR
+        let inner = OffsetSurface::new(&kernel, 0.25, plane(0.0), true, 0).unwrap();
+        let offset = OffsetSurface::new(&kernel, 0.25, Surface::from(inner), true, 0).unwrap();
         let mut brep = Brep::new();
         add_face(&mut brep, Surface::from(offset));
         let status = OffsetExecutive::replace_implicit_offsets(

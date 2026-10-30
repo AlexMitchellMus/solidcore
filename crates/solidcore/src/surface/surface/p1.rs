@@ -155,6 +155,7 @@ use crate::geom::vector3d::{Point3, Vec3};
 use crate::intersect::surface_silhouette::SurfaceSilhouette;
 use crate::intersect::surface_tracer::SurfaceTrace;
 use crate::kernel::Kernel;
+
 #[cfg(test)]
 use crate::math::EFF_ZERO_DEG;
 use crate::math::{max2, min2, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI};
@@ -2116,20 +2117,76 @@ impl Surface {
     /// of revolution reads the domain of the NURB its `MakeNurb` gives
     /// ([`Surface::kind_with_nurb`]), where [`Surface::natural_uv_domain_if_built`] answers the
     /// NURB-less base's empty domain; an offset surface reads its base's (or extended
-    /// surface's) the same way ([`OffsetSurface::natural_uv_domain_with_nurb`]). A
-    /// surface of extrusion already answers from its generator, and every other kind as
+    /// surface's) the same way ([`OffsetSurface::natural_uv_domain_with_nurb`]), and so
+    /// does a lazy surface of extrusion (`SmSurfOfExtrusion` does not override
+    /// `GetNaturalUVDomain`: its made NURB's domain, whatever the generator's kind).
+    /// A curve bounded surface and a surface in a volume pass the call to their basis /
+    /// base surface, and a STEP surface answers its base's STEP domain
+    /// ([`Surface::step_uv_domain_with_nurb`]), so a lazy analytic under them is made
+    /// as upstream's virtual calls make it. Every other kind answers as
     /// [`Surface::natural_uv_domain_if_built`].
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] from the make.
+    /// [`SolidError::Unported`] from the make; `InvalidInput` for a curve bounded, STEP
+    /// or volume chain deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING).
     pub fn natural_uv_domain_with_nurb(&self, k: &Kernel) -> Result<Extent2d> {
+        self.natural_uv_domain_with_nurb_at(k, 0)
+    }
+
+    /// [`Surface::step_uv_domain`] as upstream's `GetSTEPUVDomain`, whose base default
+    /// is the virtual `GetNaturalUVDomain` ([`Surface::natural_uv_domain_with_nurb`]):
+    /// the kinds with their own STEP domain answer it, a surface in a volume its base's,
+    /// the others their natural domain with a lazy NURB made.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::natural_uv_domain_with_nurb`].
+    pub fn step_uv_domain_with_nurb(&self, k: &Kernel) -> Result<Extent2d> {
+        self.step_uv_domain_with_nurb_at(k, 0)
+    }
+
+    /// [`Surface::step_uv_domain_with_nurb`] at chain depth `depth`.
+    fn step_uv_domain_with_nurb_at(&self, k: &Kernel, depth: usize) -> Result<Extent2d> {
+        Ok(match self.kind() {
+            SurfaceKind::Plane(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_) => self.step_uv_domain(),
+            SurfaceKind::SrfInVolume(s) => s.surface().step_uv_domain_with_nurb_at(
+                k,
+                nesting_depth(depth, "surface::surface::p1::step_uv_domain_with_nurb")?,
+            )?,
+            SurfaceKind::BSpline(_)
+            | SurfaceKind::CurveBounded(_)
+            | SurfaceKind::Step(_)
+            | SurfaceKind::OffsetSurface(_) => self.natural_uv_domain_with_nurb_at(k, depth)?,
+        })
+    }
+
+    /// [`Surface::natural_uv_domain_with_nurb`] at chain depth `depth`.
+    fn natural_uv_domain_with_nurb_at(&self, k: &Kernel, depth: usize) -> Result<Extent2d> {
+        const OP: &str = "surface::surface::p1::natural_uv_domain_with_nurb";
         Ok(match self.kind_with_nurb(k)? {
+            SurfaceKind::CurveBounded(s) => s
+                .basis()
+                .natural_uv_domain_with_nurb_at(k, nesting_depth(depth, OP)?)?,
+            SurfaceKind::SrfInVolume(s) => s
+                .surface()
+                .natural_uv_domain_with_nurb_at(k, nesting_depth(depth, OP)?)?,
+            SurfaceKind::Step(s) => match s.surface() {
+                Some(base) => base.step_uv_domain_with_nurb_at(k, nesting_depth(depth, OP)?)?,
+                None => s.natural_uv_domain(),
+            },
             SurfaceKind::Cone(s) => s.rev().base().natural_uv_domain(),
             SurfaceKind::SurfOfRevolution(s) => s.base().natural_uv_domain(),
             SurfaceKind::Sphere(s) => s.base().base().natural_uv_domain(),
             SurfaceKind::Torus(s) => s.base().base().natural_uv_domain(),
             SurfaceKind::OffsetSurface(s) => s.natural_uv_domain_with_nurb(k)?,
+            // (the made kind: its base holds the NURB unless the make failed)
+            SurfaceKind::SurfOfExtrusion(s) => s.natural_uv_domain_for_query(),
             // (the other kinds are never lazy)
             _ => self.natural_uv_domain_if_built(),
         })
@@ -2290,9 +2347,14 @@ impl Surface {
         let iso = |param: SurfParamType, value: f64| -> Result<Curve> {
             Ok(Curve::from(match self.kind() {
                 SurfaceKind::BSpline(bs) => IsoCurve::new(bs.clone(), param, value, true, true),
-                _ => {
-                    IsoCurve::from_surface(self.clone_for_evaluation()?, param, value, true, true)?
-                }
+                _ => IsoCurve::from_surface(
+                    k,
+                    self.clone_for_evaluation()?,
+                    param,
+                    value,
+                    true,
+                    true,
+                )?,
             }))
         };
 
@@ -4249,6 +4311,18 @@ impl<'a> SssIntersectEnfo<'a> {
             srf_tangents: [[undef; 2]; 3],
         }
     }
+}
+
+/// The next depth of a curve bounded, STEP or volume chain walk, `InvalidInput` past
+/// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING).
+fn nesting_depth(depth: usize, op: &'static str) -> Result<usize> {
+    if depth >= crate::surface::surface::p2::MAX_GEOMETRY_NESTING {
+        return Err(SolidError::invalid_input(
+            op,
+            "surface chain deeper than MAX_GEOMETRY_NESTING",
+        ));
+    }
+    Ok(depth + 1)
 }
 
 #[cfg(test)]

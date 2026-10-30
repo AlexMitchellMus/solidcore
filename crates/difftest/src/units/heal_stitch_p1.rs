@@ -5,27 +5,56 @@
 //! a face or the `prog_test` wire network (the B-rep blocks of `topology.edgeuse_p1`),
 //! unstitched sheets (one face per surface in one B-rep; generated as grids of
 //! bilinear or biquadratic patches whose shared corners and edges are pulled apart by
-//! a gap), or `SmApiCreateBox` (the upstream tests' box). The Rust side builds the same
+//! a gap), `SmApiCreateBox` (the upstream tests' box), or a wire edge over one
+//! `SmHermiteCurve` ([`StitchBrep::HermiteWire`]). The Rust side builds the same
 //! B-rep with the Rust kernel ([`own_brep`]: the Rust `.smb` reader, the Rust
 //! constructors), renumbered into the shim's traversal order, so no C++ export reaches
-//! it. Every op's C++ output after the build status is compared with the Rust side's as one float array (`out`): statuses (`0`,
-//! an `SmStatus` code), traversal indices, flags and values; `-2` (the shim's guard on
+//! it. Every op's C++ output after the build status is compared with the Rust side's as
+//! one float array (`out`): statuses (`0`, an `SmStatus` code), traversal indices, flags
+//! and values, and after every op that changes the B-rep its digest ([`digest`]: counts,
+//! vertex points and tolerances, and the topology in list order, so a stitch that
+//! reports the right counts but builds a different B-rep fails); `-2` (the shim's guard on
 //! input upstream would dereference null or free twice) is an error on both sides.
+//!
+//! A [`StitchBrep::HermiteWire`] B-rep is not transported: the shared export carries
+//! B-spline and line curves only, so each side builds that B-rep from the same block
+//! with its own native constructors (the same curve data and tolerances, an independent
+//! object on each side).
 //!
 //! Selectors are taken modulo the entity count; an op needing an entity the B-rep
 //! lacks is rejected (nothing runs on either side). Edge parameters are given normalised to the
 //! edge's interval and split points as an offset from the edge, resolved on the Rust
 //! build for both sides (on the C++ side's import of its export only when the Rust
 //! build fails).
+//!
+//! **Owner tolerance of a nonlinear edge.** `Split` takes `editing` (set
+//! `m_bEditingEnabled` first: `MakeVertexSplitEdge` refuses every split with it off) and
+//! `probe` (append the post-call edge curve's cache geometry: spans and subdivision
+//! data, [`push_span`]). The split-point solve builds that cache through
+//! `SmTol::GetApproxTol3d(&m_crCurve)`, half its owning edge's tolerance.
+//! The probe is limited to Hermite edges: unlike B-splines their approximate spans
+//! exercise the distance test at this pin. Rust requests the post-call curve's
+//! cache through the solve's same builder, reusing its memo when valid and never
+//! supplying a separate tolerance override. This compares computed cache geometry,
+//! not an echoed tolerance or a claim of successful Hermite edge splitting.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use solidcore::curve::curve::p5::make_curve_cache;
+use solidcore::curve::curve::Curve;
+use solidcore::curve::curve_cache::BezierSpan;
+use solidcore::curve::hermite_curve::HermiteCurve;
+use solidcore::geom::extent1d::Extent1d;
 use solidcore::heal::stitch::p1 as st;
 use solidcore::kernel::Kernel;
-use solidcore::math::Point3;
+use solidcore::math::{Point3, Vec3};
+use solidcore::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use solidcore::topology::brep::p1 as bp1;
+use solidcore::topology::brep::p5 as bp5;
+use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::face::p2 as fp2;
+use solidcore::topology::loopuse as lu;
 use solidcore::topology::{edge, vertex, Brep, EdgeId, FaceId, VertexId};
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::heal_stitch_p1::{self as ffi, Op, TY_EDGE, TY_FACE, TY_VERTEX};
@@ -75,6 +104,23 @@ pub(crate) enum StitchBrep {
     Sheets { faces: Vec<SheetFace> },
     /// `SmApiCreateBox(p, size[0], size[1], size[2])`.
     Box { p: [f64; 3], size: [f64; 3] },
+    /// A wire edge over one `SmHermiteCurve` (`P1 D1 P2 D2`), built by each side's own
+    /// native constructors (`CreateWireEdgeFromCurve`, then the edge's and its vertices'
+    /// tolerances), never imported: the shared export flattens a Hermite curve to nothing.
+    /// Its drop builds the approximation cache `SmTol::GetApproxTol3d(&m_crCurve)` sizes,
+    /// the reason the split-point solve must resolve the edge's own tolerance.
+    HermiteWire {
+        p1: [f64; 3],
+        d1: [f64; 3],
+        p2: [f64; 3],
+        d2: [f64; 3],
+        /// The edge's interval inside the curve's natural `[0, 1]`.
+        interval: [f64; 2],
+        /// The edge's `m_sZoneTol3d`.
+        edge_tol: f64,
+        /// Both vertices' tolerance.
+        vertex_tol: f64,
+    },
 }
 
 /// A target: `ty` 0 vertex, 1 edge, 2 face; `sel` a selector.
@@ -103,6 +149,14 @@ enum OpIn {
         s: f64,
         offset: [f64; 3],
         tol: f64,
+        /// Set the B-rep's `m_bEditingEnabled` before the call (`MakeVertexSplitEdge`
+        /// refuses every split with it off). Default off: the existing cases' splits are
+        /// refused, unchanged.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        editing: bool,
+        /// Append a Hermite edge's post-call cache geometry.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        probe: bool,
     },
     VPairs {
         tol: f64,
@@ -187,6 +241,23 @@ pub(crate) fn block_of(b: &StitchBrep) -> Result<Vec<f64>, HarnessError> {
             v.extend(p);
             v.extend(size);
         }
+        StitchBrep::HermiteWire {
+            p1,
+            d1,
+            p2,
+            d2,
+            interval,
+            edge_tol,
+            vertex_tol,
+        } => {
+            v.push(3.0);
+            v.extend(p1);
+            v.extend(d1);
+            v.extend(p2);
+            v.extend(d2);
+            v.extend(interval);
+            v.extend([*edge_tol, *vertex_tol]);
+        }
     }
     Ok(v)
 }
@@ -214,17 +285,26 @@ pub(crate) fn export(b: &StitchBrep) -> Result<Vec<f64>, HarnessError> {
 /// (`CreateFaceFromSurface` per surface into `new (ctx) SmBrep()`, stopping at the
 /// first failure) or `SmApiCreateBox`. It is renumbered into the shim's traversal
 /// order (`walk` then `walk_more`, the `sc_edgeuse_graph.h` walk) and names its
-/// geometry under arena identities ([`Brep::use_arena_naming`], as the import did). The
-/// output of a failed build otherwise.
+/// geometry under arena identities ([`Brep::use_arena_naming`], as the import did). A
+/// [`StitchBrep::HermiteWire`] block has no export, so it is built by the same native
+/// constructors as the shim's ([`native_brep`]) and returned as built. The output of a
+/// failed build otherwise.
 ///
 /// # Errors
 ///
 /// A harness error for a source the shim would not accept either or a dangling
 /// reference in the renumbering.
-pub(crate) fn own_brep(k: &mut Kernel, b: &StitchBrep) -> Result<Result<Brep, Output>, HarnessError> {
+pub(crate) fn own_brep(
+    k: &mut Kernel,
+    b: &StitchBrep,
+) -> Result<Result<Brep, Output>, HarnessError> {
     use crate::own_builder::{build_any, build_status, finish, in_new_brep, Built, Conventions};
     let conv = &Conventions::EDGEUSE_GRAPH;
     let built = match b {
+        // a wire edge over one `SmHermiteCurve`: the shim's `build_block` builds it with
+        // the native constructors ([`native_brep`]), one edge and two vertices, so there
+        // is nothing to renumber
+        StitchBrep::HermiteWire { .. } => return Ok(Ok(native_brep(k, b)?)),
         StitchBrep::Brep {
             brep,
             validate_only,
@@ -298,6 +378,54 @@ pub(crate) fn no_entity() -> Output {
     Output::rejected("no entity of the op's kind in this B-rep: nothing runs on either side")
 }
 
+/// Whether the case's B-rep is built by each side itself instead of imported from the
+/// C++ export ([`StitchBrep::HermiteWire`]).
+pub(crate) fn native(b: &StitchBrep) -> bool {
+    matches!(b, StitchBrep::HermiteWire { .. })
+}
+
+/// The Rust B-rep of a [`StitchBrep::HermiteWire`] block: the same native constructors
+/// the shim runs (`SmBrep()`, `CreateWireEdgeFromCurve` with the Hermite curve, then the
+/// edge's and its vertices' tolerances), so both sides hold an equivalent, independent
+/// object and the comparison never sees a C++ output.
+fn native_brep(k: &mut Kernel, b: &StitchBrep) -> Result<Brep, HarnessError> {
+    let StitchBrep::HermiteWire {
+        p1,
+        d1,
+        p2,
+        d2,
+        interval,
+        edge_tol,
+        vertex_tol,
+    } = b
+    else {
+        return Err(harness("not a natively built B-rep"));
+    };
+    let he = |e: SolidError| harness(format!("hermite wire: {e}"));
+    let mut brep = Brep::new_with_infinite_region().map_err(he)?;
+    let curve = Curve::from(HermiteCurve::new(
+        Point3::new(p1[0], p1[1], p1[2]),
+        Vec3::new(d1[0], d1[1], d1[2]),
+        Point3::new(p2[0], p2[1], p2[2]),
+        Vec3::new(d2[0], d2[1], d2[2]),
+        3,
+    ));
+    let e = bp5::create_wire_edge_from_curve(
+        k,
+        &mut brep,
+        curve,
+        Extent1d::from_raw(interval[0], interval[1]),
+    )
+    .map_err(he)?;
+    edge::set_tolerance(&mut brep, e, *edge_tol, false, false).map_err(he)?;
+    let first = edge::vertex(&brep, e).map_err(he)?;
+    let last = edge::other_vertex(&brep, e, first).map_err(he)?;
+    for v in [first, last].into_iter().flatten() {
+        vertex::set_tolerance(&mut brep, v, *vertex_tol, false, false).map_err(he)?;
+    }
+    Ok(brep)
+}
+
 // ---- resolution ---------------------------------------------------------------------------
 
 /// An op with its selectors resolved and its parameters made concrete on the B-rep.
@@ -318,6 +446,8 @@ enum Resolved {
         edge: EdgeId,
         p: Point3,
         tol: f64,
+        editing: bool,
+        probe: bool,
     },
     VPairs {
         tol: f64,
@@ -422,6 +552,8 @@ fn resolve(k: &Kernel, op: &OpIn, b: &Brep) -> Result<Option<Resolved>, HarnessE
             s,
             offset,
             tol,
+            editing,
+            probe,
         } => {
             let Some(e) = pick(*edge, ne).map(EdgeId::from_index) else {
                 return Ok(None);
@@ -430,6 +562,9 @@ fn resolve(k: &Kernel, op: &OpIn, b: &Brep) -> Result<Option<Resolved>, HarnessE
             let c = edge::curve(b, e)
                 .map_err(|e| harness(e.to_string()))?
                 .ok_or_else(|| harness("edge without curve"))?;
+            if *probe && !matches!(c.kind(), solidcore::curve::curve::CurveKind::Hermite(_)) {
+                return Err(harness("cache probe requires a Hermite edge"));
+            }
             let on = c
                 .evaluate_point(k, t)
                 .map_err(|e| harness(format!("split point: {e}")))?;
@@ -438,6 +573,8 @@ fn resolve(k: &Kernel, op: &OpIn, b: &Brep) -> Result<Option<Resolved>, HarnessE
                 edge: e,
                 p,
                 tol: *tol,
+                editing: *editing,
+                probe: *probe,
             }
         }
         OpIn::VPairs {
@@ -573,8 +710,22 @@ fn args(op: &Resolved) -> (Op, Vec<f64>) {
             v.extend([idx(*edge), *t, *tol]);
             Op::Interior
         }
-        Resolved::Split { edge, p, tol } => {
-            v.extend([idx(*edge), p.x, p.y, p.z, *tol]);
+        Resolved::Split {
+            edge,
+            p,
+            tol,
+            editing,
+            probe,
+        } => {
+            v.extend([
+                idx(*edge),
+                p.x,
+                p.y,
+                p.z,
+                *tol,
+                flag(*editing),
+                flag(*probe),
+            ]);
             Op::Split
         }
         Resolved::VPairs {
@@ -648,16 +799,25 @@ fn guarded_output(o: Vec<f64>) -> Output {
 }
 
 fn run_cpp(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
-    let ex = export(&i.brep)?;
-    let Some((_, graph_at)) = counts(&ex) else {
-        return Ok(build_failure(&ex));
-    };
-    // both sides resolve the selectors and parameters on the Rust build ([`own_brep`]),
-    // so they get the same numbers; the C++ side on the import of its export only when
-    // the Rust build fails
-    let b = match own_brep(&mut Kernel::default(), &i.brep)? {
-        Ok(b) => b,
-        Err(_) => super::topology_brep_p1::import_raw(&ex, graph_at)?.0,
+    // a natively built B-rep ([`StitchBrep::HermiteWire`]) has no export to import: the
+    // shim builds it from the same block, so only [`own_brep`] can resolve the op
+    let b = if native(&i.brep) {
+        match own_brep(&mut Kernel::default(), &i.brep)? {
+            Ok(b) => b,
+            Err(o) => return Ok(o),
+        }
+    } else {
+        let ex = export(&i.brep)?;
+        let Some((_, graph_at)) = counts(&ex) else {
+            return Ok(build_failure(&ex));
+        };
+        // both sides resolve the selectors and parameters on the Rust build ([`own_brep`]),
+        // so they get the same numbers; the C++ side on the import of its export only when
+        // the Rust build fails
+        match own_brep(&mut Kernel::default(), &i.brep)? {
+            Ok(b) => b,
+            Err(_) => super::topology_brep_p1::import_raw(&ex, graph_at)?.0,
+        }
     };
     let Some(op) = resolve(k, &i.op, &b)? else {
         return Ok(no_entity());
@@ -665,7 +825,17 @@ fn run_cpp(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     let (code, a) = args(&op);
     let mut input = block_of(&i.brep)?;
     input.extend(a);
-    let out = ffi::eval(code, &path(&i.brep)?, &input).map_err(|e| harness(format!("c++: {e}")))?;
+    let p = path(&i.brep)?;
+    let call = || ffi::eval(code, &p, &input);
+    // A file B-rep's op runs in a fresh process: after a stitch of an `.smb` B-rep, the
+    // next read of a file in the same process exports differently (state the shim's
+    // context keeps), so a case's C++ result would depend on the cases before it.
+    let out = if p.is_empty() {
+        call()
+    } else {
+        solidcore_ffi::isolate::fresh_process(call)
+    }
+    .map_err(|e| harness(format!("c++: {e}")))?;
     let body = out.get(1..).ok_or_else(|| harness("c++: empty output"))?;
     Ok(guarded_output(body.to_vec()))
 }
@@ -678,10 +848,10 @@ fn run_cpp(k: &Kernel, i: &Inputs) -> Result<Output, HarnessError> {
 fn status_of(e: &SolidError) -> f64 {
     match e {
         SolidError::Upstream { code, .. } => f64::from(*code),
-        SolidError::InvalidInput { operation, .. } if *operation == "heal::stitch::p1" => {
+        SolidError::InvalidInput { operation, .. } | SolidError::PortInvariant { operation, .. } if *operation == "heal::stitch::p1" => {
             NULL_DEREF
         }
-        SolidError::InvalidInput { .. } => SM_ERR_INVALID_INPUT,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => SM_ERR_INVALID_INPUT,
         _ => -9.0,
     }
 }
@@ -715,17 +885,101 @@ fn opt_ids_out(ids: &[Option<VertexId>]) -> Vec<f64> {
     v
 }
 
-/// The B-rep after a mutating op (as the shim's `put_digest`).
-pub(crate) fn digest(b: &Brep, o: &mut Vec<f64>) -> solidcore::Result<()> {
+/// The B-rep after a mutating op (as the shim's `put_digest`): the counts, each vertex's
+/// point and tolerance, then [`topology_digest`].
+pub(crate) fn digest(k: &mut Kernel, b: &Brep, o: &mut Vec<f64>) -> solidcore::Result<()> {
     let fs = bp1::faces(b, None)?;
     let es = bp1::edges(b, None)?;
     let vs = bp1::vertices(b, None)?;
     o.extend([fs.len() as f64, es.len() as f64, vs.len() as f64]);
     for v in vs {
         let p = vertex::point(b, v)?;
-        o.extend([p.x, p.y, p.z]);
+        o.extend([p.x, p.y, p.z, vertex::tolerance(b, v)?]);
+    }
+    topology_digest(k, b, o)
+}
+
+/// The topology after a stitch, in list order (the shim's `put_topology`,
+/// `harness/cpp/shim/sc_stitch_digest.h`): the shell count; per edge its start and end
+/// vertex (index in the vertex list, `-1` none), tolerance, interval and edge use count;
+/// per face its loops, each as its edge uses' edges (index in the edge list) and
+/// orientations. Positions in the lists, not arena ids, so record numbering never
+/// enters the comparison.
+pub(crate) fn topology_digest(k: &mut Kernel, b: &Brep, o: &mut Vec<f64>) -> solidcore::Result<()> {
+    let shells = bp1::shells(k, b, None)?;
+    let fs = bp1::faces(b, None)?;
+    let es = bp1::edges(b, None)?;
+    let vs = bp1::vertices(b, None)?;
+    let vpos = |v: Option<VertexId>| {
+        v.and_then(|v| vs.iter().position(|&x| x == v))
+            .map_or(-1.0, |i| i as f64)
+    };
+    let epos = |e: Option<EdgeId>| {
+        e.and_then(|e| es.iter().position(|&x| x == e))
+            .map_or(-1.0, |i| i as f64)
+    };
+    o.push(shells.len() as f64);
+    for &e in &es {
+        let iv = edge::interval(b, e)?;
+        o.extend([
+            vpos(edge::start_vertex(b, e)?),
+            vpos(edge::end_vertex(b, e)?),
+            edge::tolerance(b, e)?,
+            iv.min(),
+            iv.max(),
+            edge::edgeuses(b, e, None, None)?.len() as f64,
+        ]);
+    }
+    for f in fs {
+        let ls = fp2::loops(b, f, false, None)?;
+        o.push(ls.len() as f64);
+        for l in ls {
+            let eus = lu::loop_edgeuses(b, l)?;
+            o.push(eus.len() as f64);
+            for eu in eus {
+                o.push(epos(eu1::edge(b, eu)?));
+                o.push(match eu1::orientation(b, eu)? {
+                    OrientType::Unknown => 0.0,
+                    OrientType::Same => 1.0,
+                    OrientType::Opposite => 2.0,
+                });
+            }
+        }
     }
     Ok(())
+}
+
+/// The Hermite edge's post-call cache geometry, using the solve's builder and its
+/// memo when valid. No tolerance override is supplied. Layout matches the native
+/// cache's `1 n_spans` followed by each span's subdivision data: `left right c0 c1
+/// max_length max_chord_height_squared max_turning_angle_deg interval_min interval_max`.
+fn push_curve_cache(k: &Kernel, b: &Brep, edge: EdgeId, o: &mut Vec<f64>) -> solidcore::Result<()> {
+    let curve = edge::curve(b, edge)?
+        .ok_or_else(|| SolidError::invalid_input("difftest", "edge without curve"))?;
+    let cache = make_curve_cache::<u32>(k, curve, None)?;
+    o.push(1.0);
+    o.push(cache.span_count() as f64);
+    for span in cache.spans() {
+        push_span(o, span);
+    }
+    Ok(())
+}
+
+/// One span's subdivision data (`SmBezierAux1d`), the first nine values of
+/// `curve.curve_cache`'s `put_aux`.
+fn push_span(o: &mut Vec<f64>, span: &BezierSpan) {
+    let a = &span.aux;
+    o.extend([
+        a.left as f64,
+        a.right as f64,
+        f64::from(a.conts[0] as i32),
+        f64::from(a.conts[1] as i32),
+        a.max_length,
+        a.max_chord_height_squared,
+        a.max_turning_angle_deg,
+        a.interval.min(),
+        a.interval.max(),
+    ]);
 }
 
 #[allow(clippy::too_many_lines)] // one arm per op
@@ -754,22 +1008,38 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                 vec![flag(r)]
             })
         }
-        Resolved::Split { edge, p, tol } => match st::test_and_split_edge(k, b, *edge, *p, *tol) {
-            Ok(r) => {
-                let mut o = vec![
-                    0.0,
-                    f64::from(r.reason as u8),
-                    r.dist_to_edge,
-                    flag(r.new_vertex.is_some()),
-                ];
-                if r.new_vertex.is_some() {
-                    digest(b, &mut o)?;
-                }
-                Ok(o)
+        Resolved::Split {
+            edge,
+            p,
+            tol,
+            editing,
+            probe,
+        } => {
+            if *editing {
+                b.set_editing_enabled(true);
             }
-            Err(e) if e.is_unported() => Err(e),
-            Err(e) => Ok(vec![status_of(&e)]),
-        },
+            let r = match st::test_and_split_edge(k, b, *edge, *p, *tol) {
+                Ok(r) => {
+                    let mut o = vec![
+                        0.0,
+                        f64::from(r.reason as u8),
+                        r.dist_to_edge,
+                        flag(r.new_vertex.is_some()),
+                    ];
+                    if r.new_vertex.is_some() {
+                        digest(k, b, &mut o)?;
+                    }
+                    Ok(o)
+                }
+                Err(e) if e.is_unported() => Err(e),
+                Err(e) => Ok(vec![status_of(&e)]),
+            };
+            let mut o = r?;
+            if *probe {
+                push_curve_cache(k, b, *edge, &mut o)?;
+            }
+            Ok(o)
+        }
         Resolved::VPairs {
             tol,
             ignore,
@@ -788,7 +1058,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                     o.extend(opt_ids_out(&a));
                     o.extend(opt_ids_out(&c));
                     if !r.processed.is_empty() {
-                        digest(b, &mut o)?;
+                        digest(k, b, &mut o)?;
                     }
                     Ok(o)
                 }
@@ -809,7 +1079,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                     o.extend(ids_out(&r.glued));
                     o.extend(ids_out(&r.deleted));
                     if !r.glued.is_empty() {
-                        digest(b, &mut o)?;
+                        digest(k, b, &mut o)?;
                     }
                     Ok(o)
                 }
@@ -836,7 +1106,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                         r.max_edge_gap,
                         r.stitched_edges as f64,
                     ];
-                    digest(b, &mut o)?;
+                    digest(k, b, &mut o)?;
                     Ok(o)
                 }
                 Err(e) if e.is_unported() => Err(e),
@@ -857,6 +1127,7 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                         let d = fp2::uv_domain(b, *f)?;
                         o.extend([d.min().x, d.min().y, d.max().x, d.max().y]);
                     }
+                    digest(k, b, &mut o)?;
                     Ok(o)
                 }
                 Err(e) if e.is_unported() => Err(e),
@@ -873,8 +1144,8 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
             tol,
             flags,
         } => {
-            let brep = if *null_brep { None } else { Some(b) };
-            match which {
+            let brep = if *null_brep { None } else { Some(&mut *b) };
+            let out = match which {
                 0 => status_or(st::api_stitch(k, brep), |()| Vec::new()),
                 1 => status_or(st::api_stitch_face(k, brep, *face), |()| Vec::new()),
                 2 => status_or(st::api_stitch_into_solid(k, brep), |r| {
@@ -911,7 +1182,13 @@ fn run_rust_op(k: &mut Kernel, b: &mut Brep, op: &Resolved) -> solidcore::Result
                         ]
                     })
                 }
+            };
+            // the B-rep after a successful call (the shim's `put_digest`)
+            let mut out = out?;
+            if !*null_brep && out.first() == Some(&0.0) {
+                digest(k, b, &mut out)?;
             }
+            Ok(out)
         }
     }
 }
@@ -1048,6 +1325,10 @@ fn gen_op(rng: &mut Rng) -> OpIn {
                 s: *rng.choose(&ss).unwrap_or(&0.5),
                 offset: [d[0] * m, d[1] * m, d[2] * m],
                 tol: gen_tol(rng),
+                // the split branch is exercised by the `owner_zone_tol` fixtures; the
+                // generated cases keep the pre-existing behaviour (editing off)
+                editing: false,
+                probe: false,
             }
         }
         8..=11 => OpIn::VPairs {

@@ -356,7 +356,11 @@ const fn dangling(reason: &'static str) -> SolidError {
 fn ignore_soft<T>(r: Result<T>) -> Result<Option<T>> {
     match r {
         Ok(v) => Ok(Some(v)),
-        Err(e @ (SolidError::Unported { .. } | SolidError::InvalidInput { .. })) => Err(e),
+        Err(
+            e @ (SolidError::Unported { .. }
+            | SolidError::InvalidInput { .. }
+            | SolidError::PortInvariant { .. }),
+        ) => Err(e),
         Err(_) => Ok(None),
     }
 }
@@ -812,7 +816,14 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
         if k.fixes.imprint_trims_edge_to_proto_vertex
             || k.fixes.imprint_extends_edge_to_proto_vertex
         {
-            self.fit_edge_def_ends_to_proto_vertices(k, brep, ed, start_pv, end_pv)?;
+            self.fit_edge_def_ends_to_proto_vertices(
+                k,
+                brep,
+                ed,
+                start_pv,
+                end_pv,
+                [(start_vtx1, start_vtx2), (end_vtx1, end_vtx2)],
+            )?;
         }
 
         let d = self.ed_ref(ed)?;
@@ -2009,7 +2020,13 @@ impl<O: ClassObject> ProtoTopologyManager<O> {
             // definition to both edges' curves.
             let mid_pt = match d.evaluate_mid(k, brep, true, false) {
                 Ok((Some(p), _)) => p,
-                Err(e) if e.is_unported() || matches!(e, SolidError::InvalidInput { .. }) => {
+                Err(e)
+                    if e.is_unported()
+                        || matches!(
+                            e,
+                            SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }
+                        ) =>
+                {
                     return Err(e)
                 }
                 _ => Vec3::UNDEF,
