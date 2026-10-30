@@ -3,7 +3,7 @@
 //! attribute (`SM_NO_SPLIT_IN_BREP`), a merge gives the survivor the ids it lacks, and
 //! a copy passes copy attributes on.
 //!
-//! One case per SM_API / `SmBrep` call SolidCraft's split family uses: `SM_BO_SLICE`
+//! One case per `SM_API` / `SmBrep` call SolidCraft's split family uses: `SM_BO_SLICE`
 //! and `SM_BO_IMPRINT` through `SmApiBooleanWithOptions` (the latter after
 //! `SmApiBrepCopy`), `SmBrep::LocalOperation`, `SmBrep::StitchAndOrient` and
 //! `SmBrep::RemoveTopologicalEdgesAndVertices`, plus the design's imprint of a box by a
