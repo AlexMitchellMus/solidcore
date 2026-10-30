@@ -1,13 +1,14 @@
 //! Native B-rep construction calls and dependency-limited Rust entrypoints.
 //!
 //! The Rust side builds a wire edge, face or network source itself
-//! ([`crate::own_builder`]) and repeats the shim's setup edits ([`own_setup`]); an
-//! `.smb` file's initial graph is exported after the setup, before either operation. Split refusals compare
+//! ([`crate::own_builder`]), reads an `.smb` file with the Rust reader
+//! ([`crate::own_builder::read_with`]), and repeats the shim's setup edits
+//! ([`own_setup`]) on either, so no C++ state reaches it. Split refusals compare
 //! their retained endpoint as well as the complete semantic topology/geometry
 //! snapshot. Successful native mutations on deferred paths are not parity passes.
 use super::boolean_merge_p1::{graph_reachable, Canon};
 use super::topology_edgeuse_p1::{self as spec, BrepIn};
-use super::topology_vertexuse::{import, import_raw};
+use super::topology_vertexuse::import_raw;
 use crate::{Case, CaseContext, HarnessError, Output, Rng, UnitDiff};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -283,32 +284,29 @@ fn own_setup(
     Ok(Some((b, [-1.0, -1.0])))
 }
 
-/// The Rust B-rep after the shim's setup and the start/end vertex use indices: a
-/// shim-built source built by the Rust kernel ([`crate::own_builder`], then
-/// [`own_setup`]); an `.smb` file imported from the shim's post-setup export.
+/// The Rust B-rep after the shim's setup and the start/end vertex use indices: the
+/// source made by the Rust kernel (a shim-built source by [`crate::own_builder`], an
+/// `.smb` file by the Rust reader, [`crate::own_builder::read_with`], both in the shim's
+/// walk order), then [`own_setup`].
 fn rust_input(i: &Inputs) -> Result<(Brep, [f64; 2]), HarnessError> {
-    use crate::own_builder::{build_with, Built};
+    use crate::own_builder::{build_with, read_with, Built};
     let mut k = Kernel::default();
-    match build_with(&mut k, &i.brep, false, false, &CONVENTIONS)? {
-        Some(Built::Brep(b)) => {
+    let built = match &i.brep {
+        BrepIn::File { rebuild, .. } => {
+            let path = spec::path_of(Some(&i.brep))?;
+            read_with(&mut k, &path, *rebuild, false, false, &CONVENTIONS)?
+        }
+        other => build_with(&mut k, other, false, false, &CONVENTIONS)?
+            .ok_or_else(|| error("source not built by the Rust kernel"))?,
+    };
+    match built {
+        Built::Brep(b) => {
             if i.op > 8 || i.variant > 5 {
                 return Err(error("native request rejected"));
             }
             own_setup(&mut k, *b, i)?.ok_or_else(|| error("native request rejected"))
         }
-        Some(Built::Failed(e)) => Err(error(&format!("native build failed: {e}"))),
-        None => {
-            let path = spec::path_of(Some(&i.brep))?;
-            let block = spec::brep_block_of(Some(&i.brep), false, false)?;
-            let initial = ffi::eval(request(i, &path, &block), true).map_err(|e| error(&e))?;
-            let (b, _) = import(
-                initial
-                    .get(2..)
-                    .ok_or_else(|| error("missing initial export"))?,
-            )?;
-            let vu = |slot: usize| initial.get(slot).copied().unwrap_or(-1.0);
-            Ok((b, [vu(0), vu(1)]))
-        }
+        Built::Failed(e) => Err(error(&format!("native build failed: {e}"))),
     }
 }
 
