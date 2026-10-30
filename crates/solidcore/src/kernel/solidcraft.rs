@@ -72,6 +72,7 @@ macro_rules! solidcraft_preset {
 
 solidcraft_preset! {
     fork: [
+        fillet_torus_rail_on_axis, // WR-592; smlib 994f129
         fillet_retry_radius_as_first, // WR-300; smlib 1d06159
         fillet_rail_rim_on_face, // WR-301; smlib f6ed05a
         fillet_refuse_overlapping_bands, // WR-542; smlib c0d74ee
