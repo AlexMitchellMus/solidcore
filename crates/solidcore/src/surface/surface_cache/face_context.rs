@@ -73,7 +73,6 @@ pub struct MappedCacheFace<'a, O> {
     face_handle: O,
     handle_of: &'a dyn Fn(EntityRef) -> Result<O>,
     entity_of: &'a dyn Fn(O) -> Result<EntityRef>,
-    subdivision_handles: Option<fn(u64) -> O>,
 }
 
 impl<O> Debug for MappedCacheFace<'_, O> {
@@ -106,17 +105,7 @@ impl<'a, O: Copy + PartialEq> MappedCacheFace<'a, O> {
             face_handle,
             handle_of,
             entity_of,
-            subdivision_handles: None,
         })
-    }
-
-    /// Names the subdivision surfaces a tree build splits off with `make`
-    /// ([`CacheFace::subdivision_handles`]); the handles must differ from every
-    /// topology handle of the mappings.
-    #[must_use]
-    pub fn with_subdivision_handles(mut self, make: fn(u64) -> O) -> Self {
-        self.subdivision_handles = Some(make);
-        self
     }
 
     fn mapping_error() -> SolidError {
@@ -150,10 +139,6 @@ impl<'a, O: Copy + PartialEq> MappedCacheFace<'a, O> {
 impl<O: Copy + PartialEq> CacheFace<O> for MappedCacheFace<'_, O> {
     fn face(&self) -> O {
         self.face_handle
-    }
-
-    fn subdivision_handles(&self) -> Option<fn(u64) -> O> {
-        self.subdivision_handles
     }
 
     fn brep_editing_enabled(&self) -> Result<bool> {

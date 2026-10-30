@@ -81,9 +81,6 @@ pub enum CacheObject {
     PolyEdge(PolyEdgeId),
     /// A polygon face.
     PolyFace(PolyFaceId),
-    /// The `n`-th subdivision surface a face cache's tree build split off
-    /// (`SubdivideNode`'s `SmBSplineSurface` halves, freed when the build ends).
-    SubdivisionSurface(u64),
 }
 
 /// The source object of `BuildTrees`.
@@ -486,7 +483,7 @@ impl crate::geom::solution_array::SolutionObject for CacheObject {
         match self {
             Self::Vertex(_) => ObjectKind::Vertex,
             Self::Curve(_) => ObjectKind::Curve,
-            Self::Surface(_) | Self::SubdivisionSurface(_) => ObjectKind::Surface,
+            Self::Surface(_) => ObjectKind::Surface,
             Self::Edge(_) => ObjectKind::Edge,
             Self::Face(_) => ObjectKind::Face,
             Self::PolyVertex(_) => ObjectKind::PolyVertex,
@@ -672,8 +669,6 @@ impl crate::intersect::topology_solver::p1::TopologyObjects<CacheObject> for Bre
                 Some(_) => Err(SolidError::port_invariant(OP, "surface face is not a face")),
                 None => Ok(system),
             },
-            // a subdivision surface belongs to no face: the system's
-            CacheObject::SubdivisionSurface(_) => Ok(system),
             // SmBrep: GetZoneTol3d(const SmBrep*)
             CacheObject::Brep => Ok(self.brep.tolerance()),
             // UNPORTED(query.poly): SmPolyVertex/SmPolyEdge/SmPolyFace::GetTolerance (the
@@ -730,7 +725,7 @@ impl crate::intersect::point_class::ClassObject for CacheObject {
         match self {
             Self::Vertex(_) => ClassObjectKind::Vertex,
             Self::Curve(_) => ClassObjectKind::Curve,
-            Self::Surface(_) | Self::SubdivisionSurface(_) => ClassObjectKind::Surface,
+            Self::Surface(_) => ClassObjectKind::Surface,
             Self::Edge(_) => ClassObjectKind::Edge,
             Self::Face(_) => ClassObjectKind::Face,
             Self::Brep

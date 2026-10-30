@@ -196,14 +196,6 @@ pub trait CacheFace<O> {
     /// The face (`GetFace()`).
     fn face(&self) -> O;
 
-    /// How the cache names the subdivision surfaces its tree build splits off
-    /// (`SubdivideNode`'s new `SmBSplineSurface` halves in `m_sSubdivisionSurfaces`),
-    /// when the caller's handle space has names for them; `None` (the default) when it
-    /// has none, and a build that has to split a subdivision surface then fails.
-    fn subdivision_handles(&self) -> Option<fn(u64) -> O> {
-        None
-    }
-
     /// `GetFace()->GetBrep()->m_bEditingEnabled`.
     ///
     /// # Errors
@@ -703,10 +695,6 @@ impl<O: Copy + PartialEq> TrimSrfCache<O> {
     /// classification.
     pub fn build_tree_with_face(&mut self, k: &Kernel, face: &mut dyn CacheFace<O>) -> Result<()> {
         self.check_face_binding(face.face())?;
-        if !self.base.has_subdivision_handles() {
-            self.base
-                .set_subdivision_handles(face.subdivision_handles());
-        }
         self.build_tree_in(k, Some(face))
     }
 

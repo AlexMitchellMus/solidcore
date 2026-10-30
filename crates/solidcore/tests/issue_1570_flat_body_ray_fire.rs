@@ -1,15 +1,23 @@
 //! The infinite-region ray fire of a near-flat B-rep (#1570, `mat0076`): mirroring
 //! `Solids/revolution.smb` after a rotation and a scale of about `5.6e-11` along one
-//! axis fires rays whose face line solves build the face trees. The flattened faces'
-//! tree builds split subdivision surfaces (`SubdivideNode`'s `SmBSplineSurface`
-//! halves), which the B-rep ray-fire cache could not name ("cache cannot name new
-//! subdivision surfaces"). Every ray then failed and `FindAndSetInfiniteRegion`
-//! returned `SM_ERR`, where the C++ reference succeeds.
+//! axis fires rays whose face line solves fetch each face's surface cache. On a
+//! flattened face the trimmed cache cannot be built (`Evaluate1stDerivatives` finds no
+//! non-zero tangent while implanting a vertex use), so `smsurf_GetSurfaceCache` falls
+//! back to a plain `SmSurfaceCache`, whose `GetTree` builds no face boundary. The ray
+//! fire built that fallback again as a trimmed cache, failed the same way, and every
+//! ray of the search failed: `FindAndSetInfiniteRegion` returned `SM_ERR` where the
+//! C++ reference succeeds.
 //!
 //! The steps are those `SmBrep::Transform(const double[4][4])` takes for the `mat0076`
 //! matrix (its `V` and `Uᵀ` transforms and mirrors), through the placement transform
 //! and the mirror alone. The solid is the upstream test file, read when the pinned
 //! upstream checkout is present (as the difftest SMS tests do).
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)] // test helpers
 
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::axis2_placement::Axis2Placement;
@@ -58,8 +66,16 @@ fn issue_1570_mirror_of_a_flattened_revolution_finds_its_infinite_region() {
     let origin = Vec3::new(0.0, 0.0, 0.0);
     let v = Axis2Placement::new(
         origin,
-        Vec3::new(9.748731915882214e-11, 0.9296172572952511, -0.368526464367018),
-        Vec3::new(1.2211649548646432e-11, 0.3685264643670182, 0.929617257295251),
+        Vec3::new(
+            9.748731915882214e-11,
+            0.9296172572952511,
+            -0.368526464367018,
+        ),
+        Vec3::new(
+            1.2211649548646432e-11,
+            0.3685264643670182,
+            0.929617257295251,
+        ),
     );
     let scale_v = Vec3::new(1.0, 0.9999999999999998, 1.0000000000000002);
     let ut = Axis2Placement::new(
