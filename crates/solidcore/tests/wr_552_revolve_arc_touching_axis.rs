@@ -6,7 +6,7 @@
 //! whose minor circles cross the axis where the sweep collapses the arc's end to a
 //! point, and the face's loop there comes out turned over. With
 //! `revolve_arc_touching_axis_is_horn_torus` the torus is the horn one (its major radius
-//! its minor) and the body passes the check (apart from SmSurface test #5, which the
+//! its minor) and the body passes the check (apart from `SmSurface` test #5, which the
 //! torus fails by itself: see `revolve`).
 
 #![allow(
