@@ -11,7 +11,10 @@
 //! faces are indices into `GetFaces`). Op 2 runs `SmApiIntersectBrepWithPlane`:
 //! `status n curve*`. Op 3 runs `SmSurface::CreatePlanarSectionCurves` on every face's
 //! surface over the face's UV domain: `nfaces (status n3d curve* nuv curve*)*`. A failed
-//! body build returns `-999 status`.
+//! body build returns `-999 status`. Op 4 runs, on every face, the forced-UV
+//! continuation's callees (`DropAndTrimCurve`, `LiftCurve`) for each section curve
+//! without UV curve: `0 nfaces (status nforced (drop_status ndrops (drop lift_status
+//! maxdist lifted)*)*)*`.
 
 use crate::{call_with_buffer, FfiError};
 use std::ffi::CString;
@@ -50,7 +53,7 @@ pub const NARGS: usize = 28;
 /// least 2. A zero normal is allowed (both functions handle it).
 pub fn eval(op: u8, path: &str, args: &[f64; NARGS]) -> Result<Vec<f64>, FfiError> {
     let bad = |m: &str| FfiError::InvalidArgument(m.into());
-    if !(1..=3).contains(&op) || !args.iter().all(|x| x.is_finite()) {
+    if !(1..=4).contains(&op) || !args.iter().all(|x| x.is_finite()) {
         return Err(bad("op or non-finite argument"));
     }
     let flag = |x: f64| x == 0.0 || x == 1.0;

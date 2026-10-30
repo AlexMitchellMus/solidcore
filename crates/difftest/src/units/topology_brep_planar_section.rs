@@ -73,6 +73,9 @@ struct Inputs {
     /// Section every face's surface (`SmSurface::CreatePlanarSectionCurves` over the face's
     /// UV domain) instead.
     faces: bool,
+    /// Run, on every face, the forced-UV continuation's callees (`DropAndTrimCurve` and
+    /// `LiftCurve`) for each section curve without UV curve instead.
+    forced: bool,
     point: [f64; 3],
     normal: [f64; 3],
     /// `cpdOpt3DApproximationTol`.
@@ -99,6 +102,7 @@ impl Default for Inputs {
             },
             api: false,
             faces: false,
+            forced: false,
             point: [5.0, 5.0, 5.0],
             normal: [1.0, 0.0, 0.0],
             tol: None,
@@ -175,7 +179,9 @@ fn args(i: &Inputs) -> [f64; NARGS] {
 
 /// The native record, or `Err(output)` when the FFI guard or the body build refuses.
 fn native(i: &Inputs) -> Result<Result<Vec<f64>, Output>, HarnessError> {
-    let op = if i.faces {
+    let op = if i.forced {
+        4
+    } else if i.faces {
         3
     } else if i.api {
         2
@@ -345,6 +351,146 @@ fn box_strut(k: &mut Kernel, size: [f64; 3], strut: [f64; 3]) -> SolidResult<Bre
     Ok(b)
 }
 
+/// The shim's `put_nurb`: the NURB of a B-spline kind (B-spline, line or conic) curve, `n (x y z w)* nknots
+/// knot* mult*` (unique knots), `-1` for another kind or no NURB.
+fn put_nurb(out: &mut Vec<f64>, c: &Curve) {
+    use solidcore::curve::curve::CurveKind;
+    let base = match c.kind() {
+        CurveKind::BSpline(b) => Some(b),
+        CurveKind::Line(l) => Some(l.base()),
+        CurveKind::Ellipse(e) => Some(e.base()),
+        CurveKind::Hyperbola(h) => Some(h.base()),
+        CurveKind::Parabola(p) => Some(p.base()),
+        _ => None,
+    };
+    let Some((points, (knots, mults))) =
+        base.and_then(|b| Some((b.control_points().ok()?, b.knots(None).ok()?)))
+    else {
+        out.push(-1.);
+        return;
+    };
+    out.push(points.len() as f64);
+    for p in points {
+        out.extend([p.x, p.y, p.z, p.w]);
+    }
+    out.push(knots.len() as f64);
+    out.extend(&knots);
+    out.extend(mults.iter().map(|&m| m as f64));
+}
+
+/// The op 4 record: on every face, for each section curve without UV curve (not
+/// degenerate), `DropAndTrimCurve` onto the face's surface and `LiftCurve` of each drop,
+/// as `CreatePlanarSectionCurves`' forced-UV continuation calls them.
+fn forced_record(
+    k: &Kernel,
+    b: &mut Brep,
+    point: Vec3,
+    normal: Vec3,
+    tol: Option<f64>,
+    ang_tol: Option<f64>,
+) -> SolidResult<Vec<f64>> {
+    use solidcore::intersect::surface_drop_lib::p3::DropSolveContext;
+    use solidcore::math::EFF_ZERO;
+    use solidcore::query::brep::BrepFaceServices;
+    use solidcore::surface::surface::p1::SurfaceSolveContext;
+    use solidcore::surface::surface::p4::NoObject;
+    use solidcore::topology::brep::planar_section::face_planar_section_curves;
+    use solidcore::topology::brep_cache::CacheObject;
+    use solidcore::topology::face::p2 as face2;
+    let code = |e: SolidError| -> SolidResult<f64> {
+        if e.is_unported() {
+            return Err(e);
+        }
+        status(&e).ok_or(e)
+    };
+    let faces = brep1::faces(b, None)?;
+    let mut out = vec![faces.len() as f64];
+    for f in faces {
+        let uv_domain = face2::uv_domain(b, f)?;
+        let surface = face2::surface(b, f)?
+            .ok_or_else(|| SolidError::null_pointer("difftest::topology_brep_planar_section"))?
+            .clone_for_evaluation()?;
+        let face_tol = face2::tolerance(b, f)?;
+        let section = match face_planar_section_curves(
+            k, b, f, &surface, &uv_domain, point, normal, tol, ang_tol,
+        ) {
+            Ok(section) => {
+                out.push(0.);
+                section
+            }
+            Err(e) => {
+                out.extend([code(e)?, 0.]);
+                continue;
+            }
+        };
+        let mut forced = Vec::new();
+        let mut count = 0usize;
+        for (j, c) in section.curves_3d.iter().enumerate() {
+            if section.uv_curves.get(j).is_some_and(Option::is_some)
+                || c.is_degenerate(k, EFF_ZERO, None)?
+            {
+                continue;
+            }
+            count += 1;
+            put_nurb(&mut forced, c);
+            let handle = Some(CacheObject::Surface(f));
+            let mut services = BrepFaceServices::new(&mut *b);
+            let mut cache = services.build_surface_cache(k, &surface, handle)?;
+            let drops = match surface.drop_and_trim_curve_in_context::<NoObject, CacheObject>(
+                k,
+                Some(&mut cache),
+                &uv_domain,
+                c,
+                &c.natural_interval(),
+                face_tol / 3.0,
+                true,
+                true,
+                None,
+                Some(DropSolveContext {
+                    solver: &mut services,
+                    handle,
+                }),
+            ) {
+                Ok(d) => {
+                    forced.push(0.);
+                    d.uv_curves
+                }
+                Err(e) => {
+                    forced.extend([code(e)?, 0.]);
+                    continue;
+                }
+            };
+            forced.push(drops.len() as f64);
+            for drop in &drops {
+                put_curve(k, &mut forced, Some(drop));
+                put_nurb(&mut forced, drop);
+                match surface.lift_curve_with_context(
+                    k,
+                    &uv_domain,
+                    drop,
+                    &drop.natural_interval(),
+                    face_tol / 3.0,
+                    true,
+                    &mut services,
+                    handle,
+                ) {
+                    Ok(lifted) => {
+                        forced.extend([0., lifted.max_approx_dev]);
+                        put_curve(k, &mut forced, Some(&lifted.curve));
+                    }
+                    Err(e) => {
+                        forced.extend([code(e)?, 0.]);
+                        put_curve(k, &mut forced, None);
+                    }
+                }
+            }
+        }
+        out.push(count as f64);
+        out.extend(forced);
+    }
+    Ok(out)
+}
+
 /// The op 3 record: every face surface's section (`status n3d curve* nuv curve*`).
 fn faces_record(
     k: &Kernel,
@@ -449,7 +595,9 @@ impl UnitDiff for Runner {
             point = bbox.evaluate(t, t, t);
         }
         let normal = v(i.normal);
-        let result = if i.faces {
+        let result = if i.forced {
+            forced_record(&k, &mut b, point, normal, i.tol, i.ang_tol)
+        } else if i.faces {
             faces_record(&k, &mut b, point, normal, i.tol, i.ang_tol)
         } else if i.api {
             intersect_brep_with_plane(&k, &mut b, point, normal).map(|curves| {
@@ -484,7 +632,7 @@ impl UnitDiff for Runner {
             }
             Err(e) => match status(&e) {
                 // a failed call: its status, and the empty outputs of the shim's layout
-                Some(_) if i.faces => return Err(herr(e)),
+                Some(_) if i.faces || i.forced => return Err(herr(e)),
                 Some(code) if i.api => vec![code, 0.],
                 Some(code) => vec![
                     code,
