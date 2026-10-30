@@ -5,9 +5,11 @@ of NVIDIA's SMLib (from [USD BRep](https://github.com/NVIDIA-Omniverse/usd-brep)
 Apache-2.0). Not affiliated with or endorsed by NVIDIA.
 
 **Status: 1.0.1.** The version tracks the upstream release it is ported from and
-tested against, usd-brep v1.0.1. All of SMLib is ported:
+tested against, usd-brep v1.0.1. Everything SMLib's own test suites exercise is ported:
 - primitives, booleans, fillets and chamfers, offsets and shells, sweeps, healing, and
-  mass properties;
+  mass properties, plus most of the public SM_API (a few large entry points, such as
+  polygon-mesh booleans, tessellation, point-cloud surface fitting and fillet removal,
+  are not ported yet);
 - a unit is green only after differential testing against the C++ original confirms
   identical topology and values within 1e-9 relative, with any per-key absolute floors
   documented in its report.
