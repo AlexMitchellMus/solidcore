@@ -1802,6 +1802,110 @@
         "want_3d": true,
         "want_uv": true
       }
+    },
+    {
+      "name": "forced_fillet_box_y98",
+      "upstream_ref": "source/SMLib/src/SmBrep.cpp SmBrep::CreatePlanarSectionCurves (its forced-UV continuation: SmSurface::DropAndTrimCurve and LiftCurve per face)",
+      "inputs": {
+        "body": {
+          "box": {
+            "size": [
+              5,
+              10,
+              15
+            ],
+            "fillet": 0.5
+          }
+        },
+        "forced": true,
+        "point": [
+          0,
+          9.8,
+          0
+        ],
+        "normal": [
+          0,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "name": "forced_box_x5",
+      "upstream_ref": "source/SMLib/src/SmBrep.cpp SmBrep::CreatePlanarSectionCurves (its forced-UV continuation: SmSurface::DropAndTrimCurve and LiftCurve per face)",
+      "inputs": {
+        "body": {
+          "box": {
+            "size": [
+              10,
+              10,
+              10
+            ],
+            "fillet": 0.0
+          }
+        },
+        "forced": true,
+        "point": [
+          5,
+          5,
+          5
+        ],
+        "normal": [
+          1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "forced_cylinder_axis",
+      "upstream_ref": "source/SMLib/src/SmBrep.cpp SmBrep::CreatePlanarSectionCurves (its forced-UV continuation: SmSurface::DropAndTrimCurve and LiftCurve per face)",
+      "inputs": {
+        "body": {
+          "file": {
+            "file": "Solids/cylinder.smb"
+          }
+        },
+        "forced": true,
+        "point": [
+          0,
+          0,
+          0
+        ],
+        "normal": [
+          1,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "name": "fillet_box_y98_uv_unforced",
+      "upstream_ref": "source/SMLib/src/SmBrep.cpp SmBrep::CreatePlanarSectionCurves",
+      "inputs": {
+        "body": {
+          "box": {
+            "size": [
+              5,
+              10,
+              15
+            ],
+            "fillet": 0.5
+          }
+        },
+        "point": [
+          0,
+          9.8,
+          0
+        ],
+        "normal": [
+          0,
+          1,
+          0
+        ],
+        "want_3d": true,
+        "want_uv": true
+      }
     }
   ]
 }
