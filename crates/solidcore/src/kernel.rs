@@ -426,6 +426,8 @@ pub struct UpstreamFixes {
     pub curve_tight_box_interval_knots: bool,
     /// `SmTopologyIntersector::IntersectTopology` skips a face pair whose face boxes lie farther apart than the intersection tolerance (a box that cannot be computed, or holds nothing, rules nothing out), and `SmBrep::MakeEdgeInFaceWithVU`, on a plane, leaves in place without classifying an inner loop whose test point lies outside the box of the new face's outer loop (grown by the edges' tolerances, at the retry tolerance). Upstream pairs every face of one sheet with every face of the other through whole-surface checks and classifies every inner loop against each imprinted face, so a 2D boolean of a sheet with n holes takes time in n^2 (WR-527, #1526/#1527; the fork's tangency-labs/smlib@60b1c6a).
     pub boolean_skips_faces_apart: bool,
+    /// `SmBrep::MakeEdgeTopology`, when a new edge joins a wire shell (its start vertex's) to a faceuse shell (its end vertex's), moves the wire shell's wires into the faceuse shell, puts the faceuse shell in the wire shell's place in the region's shell list and deletes the wire shell. Upstream moves every face use of the faceuse shell into the wire shell (and `SmShell::GetWireEdges` passes over every edge of the B-rep), the size of the body for each such edge a boolean makes. The shell left holds the same face uses in the same order and the same wires in the same place, but it is the faceuse shell's object, not the wire shell's (WR-567; the fork's tangency-labs/smlib@be8ac73).
+    pub boolean_wire_edge_keeps_faceuse_shell: bool,
 }
 
 /// Options for [`Kernel::new`].
