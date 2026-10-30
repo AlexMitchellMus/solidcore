@@ -27,11 +27,15 @@ mod offset_fixture;
 
 use offset_fixture::{planar_faces_at, report, shell};
 use solidcore::boolean::api_brep::{boolean_difference, boolean_union};
+use solidcore::curve::curve::Curve;
 use solidcore::error::{SolidError, SM_ERR};
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::math::{Point3, Vec3};
+use solidcore::primitive::api_curves::{create_arc, create_line_segment};
 use solidcore::primitive::api_primitives::{create_box, create_cylinder};
+use solidcore::sweep::api_brep::create_linear_sweep;
 use solidcore::topology::brep::p5::transform;
+use solidcore::topology::proto_topology::p1::api_transform::{api_rotate, TransformObject};
 use solidcore::{Brep, Kernel};
 
 const SHELL_1494: f64 = 8864.598272772;
@@ -170,23 +174,32 @@ fn wr_578_notched_box_open_at_the_floor_shells() {
 
 /// tangency-labs/solidcore#1528's plate: a 27.5 thick plate on three straight sides and
 /// a half circle r 10 (x < 0), a blind hole r 5 along x through the round side at
-/// (y, z) = (12.5, 12.5) from x = -10 to 7.5, shelled 2 inward, open at x = 42.5. Upstream
-/// builds it; the fork's `CloseLoopGaps` refuses it (a gap with neither end at its vertex,
-/// where the hole's tube runs past the round wall's span), and so does the opt-in, which
-/// matches the fork (a documented limit: a fork regression, to be fixed in the fork).
+/// (y, z) = (12.5, 12.5) from x = -10 to 7.5, shelled 2 inward, open at x = 42.5, on a
+/// clean operand. A prior mass-properties query on the operand changes what the shell
+/// reads (UV trims, a snapped trim, gap caches: WR-583), and the opt-in then refuses it;
+/// nothing here measures the operand.
 fn plate_1528(k: &mut Kernel) -> Brep {
-    let slab = create_box(k, Point3::new(0.0, 0.0, 0.0), 42.5, 20.0, 27.5).unwrap();
-    let round = create_cylinder(k, Point3::new(0.0, 10.0, 0.0), 10.0, 27.5).unwrap();
-    let plate = boolean_union(k, slab, round).unwrap();
-    let mut hole = create_cylinder(k, Point3::new(0.0, 0.0, 0.0), 5.0, 17.5).unwrap();
-    // local z (the axis) along +x from x = -10: x = (0, 1, 0), y = (0, 0, 1)
-    let placement = Axis2Placement::new(
+    // the profile swept 27.5 along z (one curved side face), as the #1528 fixture builds it
+    let p = |x: f64, y: f64| Vec3::new(x, y, 0.0);
+    let profile: Vec<Curve> = vec![
+        Curve::from(create_line_segment(p(0.0, 0.0), p(42.5, 0.0)).unwrap()),
+        Curve::from(create_line_segment(p(42.5, 0.0), p(42.5, 20.0)).unwrap()),
+        Curve::from(create_line_segment(p(42.5, 20.0), p(0.0, 20.0)).unwrap()),
+        Curve::from(create_arc(p(0.0, 10.0), 10.0, 90.0, 270.0).unwrap()),
+    ];
+    let refs: Vec<Option<&Curve>> = profile.iter().map(Some).collect();
+    let plate = create_linear_sweep(k, &refs, Vec3::new(0.0, 0.0, 1.0), 27.5, true).unwrap();
+    // a cylinder r 5 along z from (-10, 12.5, 12.5), turned onto +x about its base
+    let mut drill = create_cylinder(k, Point3::new(-10.0, 12.5, 12.5), 5.0, 17.5).unwrap();
+    api_rotate(
+        k,
+        Some(TransformObject::Brep(&mut drill)),
         Point3::new(-10.0, 12.5, 12.5),
         Vec3::new(0.0, 1.0, 0.0),
-        Vec3::new(0.0, 0.0, 1.0),
-    );
-    transform(k, &mut hole, &placement, None, false).unwrap();
-    let mut b = boolean_difference(k, plate, hole).unwrap();
+        90.0,
+    )
+    .unwrap();
+    let mut b = boolean_difference(k, plate, drill).unwrap();
     b.refresh_cached_topology();
     b
 }
@@ -201,17 +214,27 @@ fn shell_1528(fixed: bool) -> (Kernel, solidcore::Result<Brep>) {
 }
 
 #[test]
-fn wr_578_issue_1528_plate_is_refused_as_the_fork_does() {
+fn wr_578_issue_1528_plate_shells_on_a_clean_operand() {
     let (k0, default) = shell_1528(false);
+    let default = default.unwrap();
+    assert_eq!(default.face_list().len(), 16, "the default shell's faces");
+    assert_eq!(default.edge_list().len(), 37, "the default shell's edges");
     assert!(report(
         &k0,
         "wr_578 #1528 plate default",
-        default,
+        Ok(default),
         None,
         0.0
     ));
-    match shell_1528(true).1 {
-        Err(SolidError::Upstream { code, .. }) => assert_eq!(code, SM_ERR),
-        other => panic!("the fork refuses #1528's plate: {other:?}"),
-    }
+    let (k, fixed) = shell_1528(true);
+    let fixed = fixed.unwrap();
+    assert_eq!(fixed.face_list().len(), 16, "the opt-in shell's faces");
+    assert_eq!(fixed.edge_list().len(), 36, "the opt-in shell's edges");
+    assert!(report(
+        &k,
+        "wr_578 #1528 plate opt-in",
+        Ok(fixed),
+        Some(10400.21299138017),
+        1e-9
+    ));
 }
