@@ -170,6 +170,7 @@ solidcraft_preset! {
         offset_closes_loop_gaps, // WR-578; smlib 7ff0a94, 34318f4
         linear_sweep_arc_is_cylinder, // WR-565; smlib 12918e9
         face_tight_box_searches_trim, // WR-588; smlib 9d44c1b
+        cylinder_plane_tangent_within_tolerance, // WR-510; smlib bd20f6e (smlib#55)
     ],
     reported: [
         fillet_refuse_rails_leaving_faces, // WR-302, #1024

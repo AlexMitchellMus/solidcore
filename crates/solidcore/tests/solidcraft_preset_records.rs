@@ -78,6 +78,7 @@ const FORK_RECORDS: &[(&str, &[&str])] = &[
     ("WR-499", &["fillet_nx1_opposite_continuation_side_edge"]),
     ("WR-501", &["torus_major_radius_from_origin"]),
     ("WR-504", &["torus_iso_circle_axis_from_midpoint"]),
+    ("WR-510", &["cylinder_plane_tangent_within_tolerance"]),
     ("WR-513", &["fillet_vertex_error_diagnostics"]),
     ("WR-521", &["taper_tangent_corner_planes"]),
     ("WR-524", &["fillet_3x2_mixed_concave_side_edge"]),
