@@ -4,15 +4,18 @@
 //! curve is reported missing at coordinates of about 10.
 //!
 //! The pinned C++ keeps that unscaled solve (and so does the port by default). With
-//! `Kernel::fixes.extrusion_origin_scaled_zero` the solve takes
-//! `SM_EFF_ZERO * (1.0 + origin.max_dimension())`, as the check's other point tests
-//! scale theirs (WR-511, #1508; tangency-labs/smlib#31).
+//! `Kernel::fixes.extrusion_origin_scaled_zero` test 8 instead uses the issue's
+//! coordinate-aware zero `SM_EFF_ZERO * (1.0 + origin.max_dimension())`; that is its own
+//! factor, not the factor 100 of the neighbouring point tests (WR-511, #1508;
+//! tangency-labs/smlib#31).
 //!
 //! These tests go through the production `Surface::assert_valid`, not the arithmetic of
 //! the tolerance: the default path must still report test 8, the opt-in path must not,
-//! and an origin genuinely off the generator must fail either way. On main this override
-//! returns `Unported`, so the off/on comparison is inside this newly completed port; it
-//! is not a pre-existing main result.
+//! and an origin genuinely off the generator must fail either way. Current main has the
+//! full override; the off/on comparison exercises only the #1508 opt-in branch, not a
+//! pre-existing main regression. The issue-scale case intentionally adds a 5e-12
+//! out-of-plane residual to model the solve's reported residual; it is not an exact
+//! reproduction of the original valid-text-outline/C++ trigger.
 
 #![allow(
     clippy::unwrap_used,
@@ -94,9 +97,10 @@ fn ordinary_origin_is_valid_with_and_without_the_fix() {
 
 #[test]
 fn issue_scale_origin_at_the_solver_residual_needs_the_scaled_zero() {
-    // The C++ solve resolves an origin evaluated on this quadratic to a few 1e-12 at
-    // coordinates of about 10 (#1508); model that residual with a 5e-12 out-of-plane
-    // offset, which the unscaled SM_EFF_ZERO rejects and the scaled zero accepts.
+    // The issue reports the C++ solve resolving an origin evaluated on this quadratic to
+    // a few 1e-12 at coordinates of about 10 (#1508). This intentionally adds a 5e-12
+    // out-of-plane residual to model that; it is not the exact original trigger, but the
+    // unscaled SM_EFF_ZERO rejects it and the scaled zero accepts it.
     let mut k = Kernel::default();
     let s = extrusion(&k, 10.0, Vec3::new(0.0, 0.0, 5.0e-12));
 

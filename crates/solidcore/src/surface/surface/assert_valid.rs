@@ -1,12 +1,14 @@
 //! The surface validity checks (`AssertValid`): the base class `SmSurface` and its
-//! virtual dispatch over the B-spline, plane, cone, cylinder, sphere, torus and
-//! surface-of-revolution overrides, with the predicates only they use.
+//! virtual dispatch over the B-spline, plane, cone, cylinder, sphere, torus,
+//! surface-of-revolution and surface-of-extrusion overrides, with the predicates only
+//! they use.
 //!
 //! Upstream: `source/SMLib/src/SmSurface.cpp`, `source/SMLib/src/SmBSplineSurface.cpp`,
 //! `source/SMLib/src/SmNurbsSrf.cpp`, `source/SMLib/src/SmPlane.cpp`,
 //! `source/SMLib/src/SmCone.cpp`, `source/SMLib/src/SmCylinder.cpp`,
 //! `source/SMLib/src/SmSphere.cpp`, `source/SMLib/src/SmTorus.cpp`,
-//! `source/SMLib/src/SmSurfOfRevolution.cpp`, `source/SMLib/src/SmAxis2Placement.cpp`,
+//! `source/SMLib/src/SmSurfOfRevolution.cpp`, `source/SMLib/src/SmSurfOfExtrusion.cpp`,
+//! `source/SMLib/src/SmAxis2Placement.cpp`,
 //! `source/SMLib/src/SmPointSet.cpp`, `source/SMLib/inc/SmAssertArray.h`.
 //!
 //! | Rust                                  | Upstream                                              |
@@ -21,7 +23,7 @@
 //! | `sphere_assert_valid` (private)       | `SmSphere::AssertValid`                               |
 //! | `torus_assert_valid` (private)        | `SmTorus::AssertValid`                                |
 //! | `surf_of_revolution_assert_valid` (private) | `SmSurfOfRevolution::AssertValid`               |
-//! | `surf_of_extrusion_assert_valid` (private) | `SmSurfOfExtrusion::AssertValid`                |
+//! | `surf_of_extrusion_assert_valid` (private) | `SmSurfOfExtrusion::AssertValid`                 |
 //! | [`axis2_placement_assert_valid`]      | `SmAxis2Placement::AssertValid`                       |
 //! | [`has_knot_multiplicity_greater_than_degree`] | `SmBSplineSurface::HasKnotMultiplicityGreaterThanDegree`, `sm_HasKnotMultiplicityGreaterThanDegree` |
 //! | [`has_internal_pole`]                 | `SmBSplineSurface::HasInternalPole`                   |
@@ -41,50 +43,48 @@
 //!   class. The placement's reports (`m_vPosition.AssertValid`, its own object
 //!   upstream) also name `key`: their reporting type differs, so they never collide
 //!   with the surface's.
-//! - **Context tests** (`SmSurfOfRevolution` 0, 1) always hold: one kernel is the
-//!   only context.
-//! - **Generator owner** (`SmSurfOfRevolution` 14): the generator is held by value, so
-//!   it is owned by the surface unless its owner handle names another object.
-//!   Upstream dereferences a missing generator there; that is
-//!   [`SolidError::InvalidInput`].
+//! - **Context tests** (`SmSurfOfRevolution` 0, 1, `SmSurfOfExtrusion` 27) always
+//!   hold: one kernel is the only context.
+//! - **Generator owner** (`SmSurfOfRevolution` 14, `SmSurfOfExtrusion` 26): the
+//!   generator is held by value, so it is owned by the surface unless its owner handle
+//!   names another object. Upstream dereferences a missing generator there (and in
+//!   `SmSurfOfExtrusion` 7 and 8); that is [`SolidError::InvalidInput`].
+//! - **Angles** (`SmSurfOfExtrusion` 10, 12, 14, 16, 18, 20): a failed `AngleBetween`
+//!   (a zero-length vector) is the angle `0` it writes, as upstream, which ignores its
+//!   status. The `GlobalPropertyAnalysis` of tests 21 and 23 fails for a zero-length
+//!   extrusion vector (its `LocalSolve` `SER`s the same `AngleBetween`); upstream
+//!   ignores that status too and reads the solutions it reset on entry, so it is no
+//!   solution found (`no_tangent_along`).
 //! - **Warnings.** `SmBSplineSurface::AssertValid`'s repeated-end-control-point
 //!   check only issues a `WARN`, so `HasRepeatedEndControlPoints` is not run.
 //! - **Undefined behaviour.** Index arithmetic of `HasInternalPole` that leaves the
 //!   control net (unclamped knot vectors), the first/last polar angle of an empty
 //!   table, missing iso boundaries and a continuity output `CalculateContinuities`
 //!   never wrote are [`SolidError::InvalidInput`]. A failed `CalculateContinuities`
-//!   (status ignored) answers the minimum continuity it had reached.
+//!   (status ignored) answers the minimum continuity it had reached. In
+//!   `SmSurfOfExtrusion::AssertValid` a `plane_point_distance` error is mapped to
+//!   [`SolidError::InvalidInput`]: upstream would read `dDist` uninitialised there, which
+//!   is unreachable, since `IsPlanar`'s normal is never longer than unit.
 //! - **Statuses.** Upstream ignores the statuses of the evaluations and queries in
-//!   these tests; the port propagates their errors (as `validation.rs` does), and a
+//!   these tests; the port propagates their errors (as `validation.rs` does; except
+//!   the extrusion's `GlobalPropertyAnalysis`, see **Angles**), and a
 //!   failed `MakeNurb` is ignored, as upstream.
+//! - **Extrusion origin zero (WR-511, #1508).** Test 8 uses the pinned unscaled
+//!   `SM_EFF_ZERO` by default; `Kernel::fixes.extrusion_origin_scaled_zero` uses
+//!   `SM_EFF_ZERO * (1 + origin.max_dimension())` for that solve only.
 //! - **Unported overrides.** `SmCurveBoundedSurface`, `SmSrfInVolume` and
 //!   `SmOffsetSurface` have their own `AssertValid`, not ported here; they return
-//!   [`SolidError::Unported`]. `SmSTEPSurface` has none and runs the base check.
-//! - **Extrusion test 8.** `SmSurfOfExtrusion::AssertValid` point-solves the origin on
-//!   the generating curve with an unscaled `SM_EFF_ZERO`; the pinned C++ does so, and
-//!   the port keeps that default. With
-//!   [`UpstreamFixes::extrusion_origin_scaled_zero`](crate::kernel::UpstreamFixes::extrusion_origin_scaled_zero)
-//!   the solve takes `SM_EFF_ZERO * (1 + origin.max_dimension())`, as the check's other
-//!   point tests scale theirs (WR-511, #1508).
-//! - **Extrusion angles.** The orientation tests read `AngleBetween` with its status
-//!   ignored, as upstream does: a failed angle is 0 (`SurfOfExtrusion::classify` does
-//!   the same).
-//! - **Extrusion statuses.** The release build's `SE` is a no-op, so the extrusion
-//!   override ignores ordinary failures of its evaluations, conversions, `IsLinear`,
-//!   `IsPlanar`, `GlobalPointSolve` and `GlobalPropertyAnalysis` (a failed solve or
-//!   analysis has no solutions; a failed evaluation leaves a zero point where upstream
-//!   reads an uninitialised one). [`SolidError::Unported`] and
-//!   [`SolidError::PreparationRequired`] still propagate, so difftest defers them.
+//!   [`SolidError::Unported`]. `SmSTEPSurface` has none and
+//!   runs the base check.
 //! - No recursion.
 
 use std::borrow::Cow;
 
 use crate::curve::curve::p1::GlobalPointSolveOptions;
-use crate::curve::curve::p2::{CurvePropertyType, TANGENT_FIELD_TYPE};
-use crate::curve::curve::p5::Linearity;
+use crate::curve::curve::p2::TANGENT_FIELD_TYPE;
 use crate::curve::curve::p7::PropertyAnalysisOptions;
-use crate::curve::curve::{Curve, CurveKind};
-use crate::error::{ignore_status, ignored, Result, SolidError};
+use crate::curve::curve::{Curve, CurveKind, CurvePropertyType};
+use crate::error::{ignore_status, Result, SolidError};
 use crate::geom::a_object;
 use crate::geom::assert_array::labels::{
     AXIS2_PLACEMENT_TYPE, B_SPLINE_SURFACE_TYPE, CONE_TYPE, CRV_ON_SURF_TYPE, CYLINDER_TYPE,
@@ -98,7 +98,6 @@ use crate::geom::extent3d::Extent3d;
 use crate::geom::geom_utility::p1::{line_point_distance, plane_point_distance};
 use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
-use crate::geom::pseudo_box::Planar;
 use crate::geom::solution_array::{OperandObject, SolutionType};
 use crate::geom::tol::{
     approx_tol3d, approx_tol_3d, are_same, are_same_to_tol, is_degenerate_curve, is_zero,
@@ -118,7 +117,7 @@ use crate::nurbs::knots::Side;
 use crate::surface::cone::Cone;
 use crate::surface::plane::Plane;
 use crate::surface::sphere::Sphere;
-use crate::surface::surf_of_extrusion::CurveOrientType;
+use crate::surface::surf_of_extrusion::{CurveOrientType, SurfOfExtrusion};
 use crate::surface::surf_of_revolution::SurfOfRevolution;
 use crate::surface::torus::Torus;
 
@@ -1511,15 +1510,65 @@ fn surf_of_revolution_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>
     Ok(rtn)
 }
 
+/// `ANALYTIC_TOL_SCALE` (`SmConfig.h`).
+const ANALYTIC_TOL_SCALE: f64 = 100.0;
+
+fn extrusion_of(s: &Surface) -> Result<&SurfOfExtrusion> {
+    match s.kind() {
+        SurfaceKind::SurfOfExtrusion(e) => Ok(e),
+        _ => Err(invalid("not an SmSurfOfExtrusion")),
+    }
+}
+
+/// `SmVector3d::AngleBetween` with its status ignored: the angle it writes, `0` when
+/// a vector has zero length.
+fn angle_or_zero(a: Vec3, b: Vec3) -> f64 {
+    a.angle_between(b).unwrap_or(0.0)
+}
+
+/// Whether `angle_rad` is within `SM_EFF_ZERO_RAD` of `0` or `PI`, and its distance to
+/// the nearer one (`smos_Min(smos_Fabs(a), smos_Fabs(a - SM_PI))`).
+fn parallel_angle(angle_rad: f64) -> (bool, f64) {
+    (
+        is_zero_to_tol(angle_rad, EFF_ZERO_RAD) || is_zero_to_tol(angle_rad - PI, EFF_ZERO_RAD),
+        min2(angle_rad.abs(), (angle_rad - PI).abs()),
+    )
+}
+
+/// `GlobalPropertyAnalysis(SM_CP_PARALLEL_TO_VECTOR)` of the generator over its
+/// natural interval with the extrusion vector: whether it found no solution. The
+/// status is ignored, as upstream: a failed analysis leaves `sSolutions` empty (it is
+/// reset on entry, and the failing check, `AngleBetween` of a zero-length extrusion
+/// vector in `SmCurvePropertyGS::LocalSolve`, runs before a solution is kept), so it
+/// counts as none found. [`SolidError::Unported`] still propagates.
+fn no_tangent_along(k: &Kernel, gen: &Curve, extrusion_vec: Vec3, tol: f64) -> Result<bool> {
+    let vectors = [extrusion_vec];
+    let opts = PropertyAnalysisOptions::<OperandObject> {
+        property_value: Some(0.0),
+        opt_vectors: &vectors,
+        want_comb: false,
+        handle: None,
+    };
+    match gen.global_property_analysis(
+        k,
+        &gen.natural_interval(),
+        CurvePropertyType::ParallelToVector,
+        tol,
+        &opts,
+    ) {
+        Ok(found) => Ok(found.solutions.is_empty()),
+        Err(e) if e.is_unported() => Err(e),
+        Err(_) => Ok(true),
+    }
+}
+
 /// `SmSurfOfExtrusion::AssertValid`.
 #[allow(clippy::too_many_lines)]
 fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>) -> Result<bool> {
     const CLASS: i64 = SURF_OF_EXTRUSION_TYPE;
-    // `ANALYTIC_TOL_SCALE` (`SmConfig.h`), as `SurfOfExtrusion::new` uses it.
-    const ANALYTIC_TOL_SCALE: f64 = 100.0;
     let mut rtn = true;
 
-    // call the base class AssertValid (only with a NURB, as upstream)
+    // call the base class AssertValid
     if has_nurb(s) {
         rtn &= if r.bases() {
             b_spline_surface_assert_valid(k, s, r)?
@@ -1528,34 +1577,16 @@ fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>)
         };
     }
 
-    let SurfaceKind::SurfOfExtrusion(ext) = s.kind() else {
-        return Err(invalid("not a surface of extrusion"));
-    };
+    let ext = extrusion_of(s)?;
+    let extrusion_vec = ext.extrusion_vector();
+    let anal = ext.step_uv_domain();
 
-    /*  0 */
-    // m_vExtrusionVec is initialized and nonZero length
-    rtn &= r.report(
-        CLASS,
-        0,
-        0,
-        !ext.extrusion_vector().is_undef(),
-        UNDEF,
-        UNDEF,
-    )?;
-    /*  1 */
-    let extrusion_len = ext.extrusion_vector().length();
-    rtn &= r.report(
-        CLASS,
-        1,
-        0,
-        extrusion_len > EFF_ZERO,
-        EFF_ZERO,
-        extrusion_len,
-    )?;
+    // 0. m_vExtrusionVec is initialized and nonZero length
+    rtn &= r.report(CLASS, 0, 0, !extrusion_vec.is_undef(), UNDEF, UNDEF)?;
+    let length = extrusion_vec.length();
+    rtn &= r.report(CLASS, 1, 0, length > EFF_ZERO, EFF_ZERO, length)?;
 
     // 1. AnalUVDomain Check - it has a nonZero area
-    let anal = ext.step_uv_domain();
-    /*  2 */
     rtn &= r.report(
         CLASS,
         2,
@@ -1564,7 +1595,6 @@ fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>)
         EFF_ZERO,
         anal.x_length(),
     )?;
-    /*  3 */
     rtn &= r.report(
         CLASS,
         3,
@@ -1579,6 +1609,7 @@ fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>)
         /* 24 */
         // GenCurve InsideOut bit (if it has one) must be FALSE
         rtn &= r.report(CLASS, 24, 0, !curve_inside_out(gen), UNDEF, UNDEF)?;
+
         if has_nurb(s) {
             /* 25 */
             // GenCurve must have same parameterization as Surface in GenCurve direction
@@ -1590,58 +1621,40 @@ fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>)
             let same = has_same_parameterization_curve(k, s, SurfParamType::U, nurb_dir, gen)?;
             rtn &= r.report(CLASS, 25, 0, same, EFF_ZERO, UNDEF)?;
         }
+
         /* 26 */
         // GenCurve owner must be this SmSurfOfExtrusion object
         let owner_ok = gen.owner().is_none_or(|o| o.key.0 == r.key.0);
         rtn &= r.report(CLASS, 26, 0, owner_ok, UNDEF, UNDEF)?;
+
         /* 27 */
         // GenCurve context must be this SmSurfOfExtrusion context (one kernel: always)
         rtn &= r.report(CLASS, 27, 0, true, UNDEF, UNDEF)?;
     }
 
     // check that STEP and Nurb representations are the same
-    let d_span_u = anal.u_interval().length();
-    let d_span_v = anal.v_interval().length();
-    let d_tol_u = EFF_ZERO * (1.0 + d_span_u);
-    let d_tol_v = EFF_ZERO * (1.0 + d_span_v);
+    let tol_u = EFF_ZERO * (1.0 + anal.u_interval().length());
+    let tol_v = EFF_ZERO * (1.0 + anal.v_interval().length());
 
     if has_nurb(s) {
-        const CNT: u32 = 3;
-        for ii in 0..=CNT {
-            for jj in 0..=CNT {
-                let step_uv = anal.evaluate(
-                    f64::from(ii) / f64::from(CNT),
-                    f64::from(jj) / f64::from(CNT),
-                );
-                // (the release build's SE ignores the statuses of these conversions and
-                // evaluations; a failed one is reported as a failed sample)
-                let Some(nurb_uv) = ignored(ext.convert_uv_from_step_to_nurbs(k, step_uv))? else {
-                    rtn &= r.report(CLASS, 5, 0, false, d_tol_u, 0.0)?;
-                    continue;
-                };
-                let Some(test_step_uv) = ignored(ext.convert_uv_from_nurbs_to_step(k, nurb_uv))?
-                else {
-                    rtn &= r.report(CLASS, 5, 0, false, d_tol_u, 0.0)?;
-                    continue;
-                };
-                let good_u = is_zero_to_tol(step_uv.x - test_step_uv.x, d_tol_u);
-                let good_v = is_zero_to_tol(step_uv.y - test_step_uv.y, d_tol_v);
+        const COUNT: usize = 3;
+        for ii in 0..=COUNT {
+            for jj in 0..=COUNT {
+                // check UV conversions
+                let step_uv = anal.evaluate(ii as f64 / COUNT as f64, jj as f64 / COUNT as f64);
+                let nurb_uv = s.convert_uv_from_step_to_nurbs(k, step_uv)?;
+                let test_step_uv = s.convert_uv_from_nurbs_to_step(k, nurb_uv)?;
+
+                let good_u = is_zero_to_tol(step_uv.x - test_step_uv.x, tol_u);
+                let good_v = is_zero_to_tol(step_uv.y - test_step_uv.y, tol_v);
                 if !good_u || !good_v {
-                    /* 5 */
-                    rtn &= r.report(CLASS, 5, 0, good_u, d_tol_u, step_uv.x - test_step_uv.x)?;
-                    rtn &= r.report(CLASS, 5, 0, good_v, d_tol_v, step_uv.y - test_step_uv.y)?;
+                    rtn &= r.report(CLASS, 5, 0, good_u, tol_u, step_uv.x - test_step_uv.x)?;
+                    rtn &= r.report(CLASS, 5, 0, good_v, tol_v, step_uv.y - test_step_uv.y)?;
                 }
 
-                /* 6 */
                 // check equivalent evaluations
-                let Some(step_point) = ignored(ext.evaluate_step_point(k, step_uv))? else {
-                    rtn &= r.report(CLASS, 6, 0, false, EFF_ZERO_SQRT, 0.0)?;
-                    continue;
-                };
-                let Some(nurb_point) = ignored(s.evaluate_point(k, nurb_uv))? else {
-                    rtn &= r.report(CLASS, 6, 0, false, EFF_ZERO_SQRT, 0.0)?;
-                    continue;
-                };
+                let step_point = s.evaluate_step_point(k, step_uv)?;
+                let nurb_point = s.evaluate_point(k, nurb_uv)?;
                 let dist = step_point.distance(nurb_point);
                 rtn &= r.report(
                     CLASS,
@@ -1655,121 +1668,71 @@ fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>)
         }
     }
 
+    // (upstream dereferences the generator from here on)
+    let ext = extrusion_of(s)?;
     let gen = ext
         .gen_curve()
         .ok_or_else(|| invalid("surface of extrusion without generator"))?;
 
-    /*  7 */
-    // m_vAnalUVDomain->UInterval is defined by the genCurve analytic interval
-    let step_ivl = curve_step_interval(gen)?;
+    // 3. check that m_vAnalUVDomain->UInterval is defined by the genCurve analytic interval
+    let gen_step = curve_step_interval(gen)?;
     rtn &= r.report(
         CLASS,
         7,
         0,
-        anal.u_interval().are_equal(&step_ivl, d_tol_u),
-        d_tol_u,
+        anal.u_interval().are_equal(&gen_step, tol_u),
+        tol_u,
         UNDEF,
     )?;
 
-    /*  8 */
-    // m_vOrigin is a point on m_pGenCurve (the pinned C++ solves with SM_EFF_ZERO;
-    // WR-511 / #1508 scale it with the origin's size, opt-in)
+    // 4. check that m_vOrigin is a point on m_pGenCurve
+    let gen_ivl = gen.natural_interval();
     let origin = ext.origin();
     let origin_tol = if k.fixes.extrusion_origin_scaled_zero {
         EFF_ZERO * (1.0 + origin.max_dimension())
     } else {
         EFF_ZERO
     };
-    let solutions = ignored(
-        gen.global_point_solve::<crate::surface::surface::p4::NoObject>(
-            k,
-            &gen.natural_interval(),
-            SolverOperation::Intersect,
-            origin,
-            origin_tol,
-            SolutionRequested::All,
-            &GlobalPointSolveOptions::default(),
-        ),
+    let solutions = gen.global_point_solve(
+        k,
+        &gen_ivl,
+        SolverOperation::Intersect,
+        origin,
+        origin_tol,
+        SolutionRequested::All,
+        &GlobalPointSolveOptions::<OperandObject>::default(),
     )?;
-    rtn &= r.report(
-        CLASS,
-        8,
-        0,
-        solutions.is_some_and(|s| !s.is_empty()),
-        UNDEF,
-        UNDEF,
-    )?;
+    rtn &= r.report(CLASS, 8, 0, !solutions.is_empty(), UNDEF, UNDEF)?;
 
     // 5. Check cached m_vCurvePoint/m_vCurveVec information
-    // (the release build's SE ignores the evaluation and query statuses; a failed
-    // evaluation leaves a zero point, where upstream reads it uninitialised)
-    let pnt = ignored(gen.evaluate_point(k, gen.natural_interval().evaluate(0.45678)))?
-        .unwrap_or(Vec3::ZERO);
-    let d_tol =
-        ANALYTIC_TOL_SCALE * EFF_ZERO * (1.0 + origin.max_dimension() + pnt.max_dimension());
+    let pnt = gen.evaluate_point(k, gen_ivl.evaluate(0.45678))?;
+    let tol =
+        ANALYTIC_TOL_SCALE * EFF_ZERO * (1.0 + ext.origin().max_dimension() + pnt.max_dimension());
 
-    let lin = ignored(gen.is_linear(k, d_tol, false))?.unwrap_or(Linearity {
-        linear: false,
-        line_point: Vec3::UNDEF,
-        line_tangent: Vec3::UNDEF,
-        deviation: 0.0,
-    });
-    let planar = ignored(gen.is_planar(k, d_tol))?.unwrap_or(Planar {
-        is_planar: false,
-        point: Vec3::UNDEF,
-        normal: Vec3::UNDEF,
-        deviation: 0.0,
-    });
-    // upstream ignores the AngleBetween status (a failed angle stays 0)
-    let mut angle_rad: f64;
+    let lin = gen.is_linear(k, tol, false)?;
+    let planar = gen.is_planar(k, tol)?;
+    let curve_point = ext.curve_point();
+    let curve_vec = ext.curve_vec();
     if lin.linear {
         // m_vCurvePoint = Point on line, m_vCurveVec = Line Tangent
-        let (dist, _) = line_point_distance(lin.line_point, lin.line_tangent, ext.curve_point());
-        angle_rad = lin
-            .line_tangent
-            .angle_between(ext.curve_vec())
-            .unwrap_or(0.0);
-
-        /* 11 */
+        let (dist, _) = line_point_distance(lin.line_point, lin.line_tangent, curve_point);
+        let (parallel, off) = parallel_angle(angle_or_zero(lin.line_tangent, curve_vec));
         rtn &= r.report(CLASS, 11, 0, is_zero_to_tol(dist, EFF_ZERO), EFF_ZERO, dist)?;
-        /* 12 */
-        rtn &= r.report(
-            CLASS,
-            12,
-            0,
-            is_zero_to_tol(angle_rad, EFF_ZERO_RAD) || is_zero_to_tol(angle_rad - PI, EFF_ZERO_RAD),
-            EFF_ZERO_RAD,
-            min2(angle_rad.abs(), (angle_rad - PI).abs()),
-        )?;
+        rtn &= r.report(CLASS, 12, 0, parallel, EFF_ZERO_RAD, off)?;
     } else if planar.is_planar {
         // m_vCurvePoint = Point on Plane, m_vCurveVec = Plane Normal
-        let dist = ignored(plane_point_distance(
-            planar.point,
-            planar.normal,
-            ext.curve_point(),
-        ))?
-        .unwrap_or(0.0);
-        angle_rad = planar.normal.angle_between(ext.curve_vec()).unwrap_or(0.0);
-
-        /*  9 */
+        let dist = plane_point_distance(planar.point, planar.normal, curve_point)
+            .map_err(|_| invalid("plane distance not computed (uninitialised upstream)"))?;
+        let (parallel, off) = parallel_angle(angle_or_zero(planar.normal, curve_vec));
         rtn &= r.report(CLASS, 9, 0, is_zero_to_tol(dist, EFF_ZERO), EFF_ZERO, dist)?;
-        /* 10 */
-        rtn &= r.report(
-            CLASS,
-            10,
-            0,
-            is_zero_to_tol(angle_rad, EFF_ZERO_RAD) || is_zero_to_tol(angle_rad - PI, EFF_ZERO_RAD),
-            EFF_ZERO_RAD,
-            min2(angle_rad.abs(), (angle_rad - PI).abs()),
-        )?;
+        rtn &= r.report(CLASS, 10, 0, parallel, EFF_ZERO_RAD, off)?;
     }
 
-    // 6. Check that extrusion is valid in that every surface point is unique
-    let extrusion_vec = ext.extrusion_vector();
+    // 6. check that every surface point is unique (no generator tangent along the sweep)
     match ext.orientation() {
         CurveOrientType::Linear => {
-            angle_rad = lin.line_tangent.angle_between(extrusion_vec).unwrap_or(0.0);
-            /* 13 */
+            let (parallel, off) = parallel_angle(angle_or_zero(lin.line_tangent, extrusion_vec));
+            // geometry description check
             rtn &= r.report(
                 CLASS,
                 13,
@@ -1778,20 +1741,11 @@ fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>)
                 EFF_ZERO,
                 UNDEF,
             )?;
-            /* 14 */
-            rtn &= r.report(
-                CLASS,
-                14,
-                0,
-                !is_zero_to_tol(angle_rad, EFF_ZERO_RAD)
-                    && !is_zero_to_tol(angle_rad - PI, EFF_ZERO_RAD),
-                EFF_ZERO_RAD,
-                min2(angle_rad.abs(), (angle_rad - PI).abs()),
-            )?;
+            // unique sweep check
+            rtn &= r.report(CLASS, 14, 0, !parallel, EFF_ZERO_RAD, off)?;
         }
         CurveOrientType::Perpendicular => {
-            angle_rad = extrusion_vec.angle_between(planar.normal).unwrap_or(0.0);
-            /* 15 */
+            let (parallel, off) = parallel_angle(angle_or_zero(extrusion_vec, planar.normal));
             rtn &= r.report(
                 CLASS,
                 15,
@@ -1800,20 +1754,11 @@ fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>)
                 EFF_ZERO,
                 UNDEF,
             )?;
-            /* 16 */
-            rtn &= r.report(
-                CLASS,
-                16,
-                0,
-                is_zero_to_tol(angle_rad, EFF_ZERO_RAD)
-                    || is_zero_to_tol(angle_rad - PI, EFF_ZERO_RAD),
-                EFF_ZERO_RAD,
-                min2(angle_rad.abs(), (angle_rad - PI).abs()),
-            )?;
+            // orthogonal sweep check
+            rtn &= r.report(CLASS, 16, 0, parallel, EFF_ZERO_RAD, off)?;
         }
         CurveOrientType::Independent => {
-            angle_rad = extrusion_vec.angle_between(planar.normal).unwrap_or(0.0);
-            /* 17 */
+            let off = angle_or_zero(extrusion_vec, planar.normal) - PI / 2.0;
             rtn &= r.report(
                 CLASS,
                 17,
@@ -1822,19 +1767,12 @@ fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>)
                 EFF_ZERO,
                 UNDEF,
             )?;
-            /* 18 */
-            rtn &= r.report(
-                CLASS,
-                18,
-                0,
-                !is_zero_to_tol(angle_rad - PI / 2.0, EFF_ZERO_RAD),
-                EFF_ZERO_RAD,
-                angle_rad - PI / 2.0,
-            )?;
+            // nonPlanar sweep check
+            let nonplanar = !is_zero_to_tol(off, EFF_ZERO_RAD);
+            rtn &= r.report(CLASS, 18, 0, nonplanar, EFF_ZERO_RAD, off)?;
         }
         CurveOrientType::Coplanar => {
-            angle_rad = extrusion_vec.angle_between(planar.normal).unwrap_or(0.0);
-            /* 19 */
+            let off = angle_or_zero(extrusion_vec, planar.normal) - PI / 2.0;
             rtn &= r.report(
                 CLASS,
                 19,
@@ -1843,41 +1781,20 @@ fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>)
                 EFF_ZERO,
                 UNDEF,
             )?;
-            /* 20 */
+            // CoPlanar check
             rtn &= r.report(
                 CLASS,
                 20,
                 0,
-                is_zero_to_tol(angle_rad - PI / 2.0, EFF_ZERO_RAD),
+                is_zero_to_tol(off, EFF_ZERO_RAD),
                 EFF_ZERO_RAD,
-                angle_rad - PI / 2.0,
+                off,
             )?;
-
             // look for points of tangency on GenCurve with the extrusion Vec direction
-            let analysis = ignored(
-                gen.global_property_analysis::<crate::surface::surface::p4::NoObject>(
-                    k,
-                    &gen.natural_interval(),
-                    CurvePropertyType::ParallelToVector,
-                    d_tol,
-                    &PropertyAnalysisOptions {
-                        opt_vectors: &[extrusion_vec],
-                        ..PropertyAnalysisOptions::default()
-                    },
-                ),
-            )?;
-            /* 21 */
-            rtn &= r.report(
-                CLASS,
-                21,
-                0,
-                analysis.is_none_or(|a| a.solutions.is_empty()),
-                UNDEF,
-                UNDEF,
-            )?;
+            let none = no_tangent_along(k, gen, extrusion_vec, tol)?;
+            rtn &= r.report(CLASS, 21, 0, none, UNDEF, UNDEF)?;
         }
         CurveOrientType::NotPlanar => {
-            /* 22 */
             rtn &= r.report(
                 CLASS,
                 22,
@@ -1886,29 +1803,9 @@ fn surf_of_extrusion_assert_valid(k: &Kernel, s: &Surface, r: &mut Reporter<'_>)
                 EFF_ZERO,
                 UNDEF,
             )?;
-
             // look for points of tangency on GenCurve with the extrusion Vec direction
-            let analysis = ignored(
-                gen.global_property_analysis::<crate::surface::surface::p4::NoObject>(
-                    k,
-                    &gen.natural_interval(),
-                    CurvePropertyType::ParallelToVector,
-                    d_tol,
-                    &PropertyAnalysisOptions {
-                        opt_vectors: &[extrusion_vec],
-                        ..PropertyAnalysisOptions::default()
-                    },
-                ),
-            )?;
-            /* 23 */
-            rtn &= r.report(
-                CLASS,
-                23,
-                0,
-                analysis.is_none_or(|a| a.solutions.is_empty()),
-                UNDEF,
-                UNDEF,
-            )?;
+            let none = no_tangent_along(k, gen, extrusion_vec, tol)?;
+            rtn &= r.report(CLASS, 23, 0, none, UNDEF, UNDEF)?;
         }
         CurveOrientType::Undefined => {}
     }
@@ -2552,6 +2449,64 @@ mod tests {
                 4,
                 "Included Singularity",
                 "Analytic V Direction Domain places v=-90 pole within domain interior",
+            )],
+        );
+    }
+
+    /// A surface of extrusion of the quadratic arc through (0, 0, 0), (1, 1, 0),
+    /// (2, 0, 0) along `vec`, over the generator's interval by `v`, with the origin
+    /// `origin` (the generator point at `0.3` when `None`).
+    fn extrusion(vec: Vec3, v: (f64, f64), origin: Option<Point3>) -> Surface {
+        let k = Kernel::default();
+        let pts = vec![
+            CPoint::new(0.0, 0.0, 0.0, NOW),
+            CPoint::new(1.0, 1.0, 0.0, NOW),
+            CPoint::new(2.0, 0.0, 0.0, NOW),
+        ];
+        let arc = NlCurve::new(pts, 2, vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
+        let gen = Curve::from(BSplineCurve::from_nurb(arc, 3, false));
+        let origin = origin.unwrap_or_else(|| gen.evaluate_point(&k, 0.3).unwrap());
+        let d = Extent2d::from_bounds(0.0, v.0, 1.0, v.1);
+        Surface::from(SurfOfExtrusion::new(&k, gen, origin, vec, d, false).unwrap())
+    }
+
+    #[test]
+    fn valid_extrusion_passes_at_every_level() {
+        let s = extrusion(Vec3::new(0.0, 0.0, 1.0), (0.0, 2.0), None);
+        assert_clean(&s);
+        assert_clean(&with_nurb(s));
+    }
+
+    #[test]
+    fn extrusion_without_extent() {
+        let s = extrusion(Vec3::new(0.0, 0.0, 1.0), (1.0, 1.0), None);
+        expect(
+            &s,
+            0,
+            &[(
+                SURF_OF_EXTRUSION_TYPE,
+                3,
+                "Analytic Y",
+                "m_vAnalUVDomain YLength must be non-zero",
+            )],
+        );
+    }
+
+    #[test]
+    fn extrusion_origin_off_the_generator() {
+        let s = extrusion(
+            Vec3::new(0.0, 0.0, 1.0),
+            (0.0, 2.0),
+            Some(Point3::new(5.0, 5.0, 5.0)),
+        );
+        expect(
+            &s,
+            0,
+            &[(
+                SURF_OF_EXTRUSION_TYPE,
+                8,
+                "Origin",
+                "m_vOrigin is a point on m_pGenCurve",
             )],
         );
     }

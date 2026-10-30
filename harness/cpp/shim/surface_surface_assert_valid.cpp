@@ -12,7 +12,9 @@
 //   4 sphere:   O X Y domain[4] r swap inside
 //   5 torus:    O X Y domain[4] major minor swap inside
 //   6 revolution: O X Y domain[4] swap, generator: p n rational pts[n*4] knots[n+p+1]
-//   7 extrusion: O E u0 u1 v0 v1 swap, generator: p n rational pts[n*4] knots[n+p+1]
+//   7 extrusion: origin[3] vec[3] domain[4] swap, generator: p n rational pts[n*4]
+//                knots[n+p+1], then `stale cp[3] cv[3]` (stale != 0: SetCurvePoint(cp)
+//                and SetCurveVec(cv) after construction, a stale cached plane or line)
 // `make` calls MakeNurb before the check. Output: `result n` then per report
 // `type list test assert_type ok reporter owner other owner_type other_type tol value
 // dist3d name message message_for_file owner_string other_string` (texts as
@@ -53,6 +55,20 @@ struct AvRevolution : SmSurfOfRevolution
                  const SmExtent2d& d, SmBoolean swap)
         : SmSurfOfRevolution(gen, o, x, y, d, swap)
     {
+    }
+};
+
+struct AvExtrusion : SmSurfOfExtrusion
+{
+    AvExtrusion(SmBSplineCurve* gen, const SmPoint3d& o, const SmVector3d& v, const SmExtent2d& d,
+                SmBoolean swap)
+        : SmSurfOfExtrusion(gen, o, v, d, swap)
+    {
+    }
+    void stale(const SmPoint3d& cp, const SmVector3d& cv)
+    {
+        SetCurvePoint(cp);
+        SetCurveVec(cv);
     }
 };
 
@@ -154,30 +170,6 @@ SC_EXPORT int32_t sc_surface_surface_assert_valid_eval(const double* input, int6
                                              (ULONG)(nu + p), (ULONG)(nv + q), rows.data(),
                                              ku.data(), kv.data());
     }
-    else if (kind == 7)
-    {
-        SmPoint3d o = rd.vec();
-        SmVector3d e = rd.vec();
-        double u0 = rd.num(), u1 = rd.num();
-        double v0 = rd.num(), v1 = rd.num();
-        SmBoolean swap = rd.b();
-        int64_t p = rd.idx(), cn = rd.idx();
-        bool rational = rd.num() != 0.0;
-        if (p < 1 || cn < 2 || cn > 64)
-            return SC_ERR_ARG;
-        std::vector<gw_CPOINT> pts(cn);
-        for (auto& c : pts)
-            c = av_point(rd, rational);
-        std::vector<double> k(cn + p + 1);
-        for (auto& v : k)
-            v = rd.num();
-        if (!rd.ok)
-            return SC_ERR_ARG;
-        SmBSplineCurve* gen = new (ctx)
-            SmBSplineCurve(3, (ULONG)(cn - 1), (ULONG)(cn + p), (short)p, pts.data(), k.data());
-        surface = new (ctx)
-            SmSurfOfExtrusion(gen, o, e, SmExtent2d(u0, v0, u1, v1), swap);
-    }
     else if (kind >= 1 && kind <= 6)
     {
         SmPoint3d o = rd.vec();
@@ -257,6 +249,34 @@ SC_EXPORT int32_t sc_surface_surface_assert_valid_eval(const double* input, int6
             placement = &r->GetPosition();
             surface = r;
         }
+    }
+    else if (kind == 7)
+    {
+        SmPoint3d o = rd.vec();
+        SmVector3d v = rd.vec();
+        SmExtent2d d = rd.dom();
+        SmBoolean swap = rd.b();
+        int64_t p = rd.idx(), cn = rd.idx();
+        bool rational = rd.num() != 0.0;
+        if (p < 1 || cn < 2 || cn > 64)
+            return SC_ERR_ARG;
+        std::vector<gw_CPOINT> pts(cn);
+        for (auto& c : pts)
+            c = av_point(rd, rational);
+        std::vector<double> k(cn + p + 1);
+        for (auto& x : k)
+            x = rd.num();
+        bool stale = rd.num() != 0.0;
+        SmPoint3d cp = rd.vec();
+        SmVector3d cv = rd.vec();
+        if (!rd.ok)
+            return SC_ERR_ARG;
+        SmBSplineCurve* gen = new (ctx)
+            SmBSplineCurve(3, (ULONG)(cn - 1), (ULONG)(cn + p), (short)p, pts.data(), k.data());
+        AvExtrusion* e = new (ctx) AvExtrusion(gen, o, v, d, swap);
+        if (stale)
+            e->stale(cp, cv);
+        surface = e;
     }
     else
         return SC_ERR_ARG;
