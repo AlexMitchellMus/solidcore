@@ -267,9 +267,15 @@ fn plain_edits_split_and_delete_as_upstream() {
             .expect("piece keeps the edge attribute");
         assert_eq!(found.long_value(), Some(7));
     }
+}
 
+#[test]
+fn plain_remove_faces_clears_the_deleted_face_attributes() {
     // a reference attribute on two faces loses the user `remove_faces` deletes; a
     // standalone attribute of the deleted face survives without users
+    let mut k = Kernel::default();
+    let mut b = create_box(&mut k, Point3::new(0.0, 0.0, 0.0), 1.0, 1.0, 1.0).expect("box");
+    b.set_editing_enabled(true);
     let faces = b.face_list().to_vec();
     let shared = b
         .add_attribute(
