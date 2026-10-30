@@ -2452,9 +2452,8 @@ pub(crate) fn glue_edges_general(
         )
     });
     let restored = state.restore_attributes(b);
-    let r = r??;
-    restored?;
-    Ok(r)
+    r??;
+    restored
 }
 
 /// `SmBrep::SqueezeEdge(edge, keep)` (unit `topology.brep_p3`,
