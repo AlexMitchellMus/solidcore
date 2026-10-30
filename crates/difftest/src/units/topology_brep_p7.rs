@@ -476,16 +476,41 @@ fn resolve(i: &Inputs) -> Result<Result<(Inputs, Option<Rc<Vec<f64>>>), Output>,
     Ok(Ok((r, Some(ex))))
 }
 
+fn own_face_owner(f: FaceId) -> ObjectRef {
+    key_of(EntityRef::Face(f))
+}
+
+fn own_edge_owner(e: EdgeId) -> (ObjectRef, ObjectRef) {
+    (
+        key_of(EntityRef::Edge(e)),
+        key_of(EntityRef::Brep(solidcore::topology::BrepId::from_index(0))),
+    )
+}
+
+fn own_edgeuse_owner(eu: solidcore::topology::EdgeuseId) -> ObjectRef {
+    key_of(EntityRef::Edgeuse(eu))
+}
+
+/// The shim's build conventions (`sc_topology_fixture.h`), with the geometry owned under
+/// this runner's [`key_of`] identities: the names its notification environments give the
+/// library, so the B-rep caches the operations build (`brep_p2::caller_cache_key` of
+/// `env.key_of`, as `TestClosureSplitRegion`'s) find each edge and face from its
+/// geometry's owner, as upstream finds it by pointer.
+const CONVENTIONS: crate::own_builder::Conventions<'static> = crate::own_builder::Conventions {
+    face_owner: &own_face_owner,
+    edge_owner: &own_edge_owner,
+    edgeuse_owner: &own_edgeuse_owner,
+    ..crate::own_builder::Conventions::TOPOLOGY_FIXTURE
+};
+
 /// The Rust side's fixture B-rep: the source built by the Rust kernel as the shim
 /// builds it ([`crate::own_builder::build_as`]), or its `.smb` file read by the Rust
 /// reader ([`crate::own_builder::read_with`]), renumbered into the shim's walk order under
-/// `Conventions::TOPOLOGY_FIXTURE` (a face's surface owned by `(SmFace_TYPE, 1 + index)`,
-/// the face identity [`key_of`] and [`this_face`] name). A failed build is its output as
-/// the C++ side reports the shim's (`-1` and the status), or the deferral of an unported
-/// callee.
+/// [`CONVENTIONS`]. A failed build is its output as the C++ side reports the shim's (`-1`
+/// and the status), or the deferral of an unported callee.
 fn own_brep(k: &mut Kernel, brep: &BrepIn) -> Result<Result<Brep, Output>, HarnessError> {
-    use crate::own_builder::{build_as, build_status, read_with, Built, Conventions};
-    let conv = &Conventions::TOPOLOGY_FIXTURE;
+    use crate::own_builder::{build_as, build_status, read_with, Built};
+    let conv = &CONVENTIONS;
     let built = match brep {
         BrepIn::File { rebuild, .. } => {
             read_with(k, &shared::path_of(brep)?, *rebuild, false, false, conv)?
