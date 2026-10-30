@@ -189,6 +189,10 @@ pub struct UpstreamFixes {
     pub trim_boundary_seam_wrap: bool,
     /// `SmBSplineCurve::AssertValid` reads the minimum radius of curvature before tests 13/14 compare it (WR-382, #475).
     pub bspline_check_min_radius: bool,
+    /// `SmBSplineCurve::AssertValid` measures a UV trim on its face's surface: the radius of curvature test (13, live with `bspline_check_min_radius`) and the coincident interior control point test (15) run on the trim mapped by the surface's first fundamental form at its middle (the Cholesky factor: exact on a plane), with the mapped trim's tolerance and spacing for test 13 (WR-560, #1524; tangency-labs/smlib b4f8c57, 54ca3e0).
+    pub uv_trim_checks_on_surface: bool,
+    /// `SmFace::ComputeLoopOrientation`'s 3D path holds a loop's dimensionless area to a floor relative to the loop's own bounding box instead of the face's whole domain, so a loop far smaller than its face (a 0.002 hole in a 3 m plate) is oriented (WR-561, #1523; tangency-labs/smlib 54ca3e0).
+    pub loop_orientation_floor_from_loop_box: bool,
     /// The curve property solves ignore a failed guess in `SolveOscillating`'s sign-change search (WR-253, #481).
     pub oscillating_skips_failed_guesses: bool,
     /// `sm_RefineCCSolutions` judges a range end's shift by its distance from 1 (WR-383, #527).
@@ -289,6 +293,8 @@ pub struct UpstreamFixes {
     pub found_torus_sphere_keep_tested_nurb: bool,
     /// `SmBSplineSurface::HasInternalPole` tests the row through each interior knot (`knots - 1 - degree`), not one row further for each repeated copy of the knot, so a horn torus's corner rows on its axis are not taken for an internal pole (WR-505, #1515; tangency-labs/smlib#41).
     pub internal_pole_row_through_knot: bool,
+    /// `SmSurfOfExtrusion::AssertValid` test 8 point-solves the origin on the generating curve with an unscaled `SM_EFF_ZERO`, so an origin evaluated on the curve at coordinates of about 10 (a text outline's quadratic Bezier) resolves to a few 1e-12 and is reported missing; with this fix that solve uses the issue's coordinate-aware zero `SM_EFF_ZERO * (1.0 + origin.max_dimension())`, its own factor rather than the factor 100 of the neighbouring point tests (WR-511, #1508; tangency-labs/smlib#31).
+    pub extrusion_origin_scaled_zero: bool,
     /// A sheet sweep's open-profile wires are glued where the curves meet (WR-409, #1113).
     pub sheet_sweep_joins_profile_wires: bool,
     /// `FindPolygonGuess` keeps a suspicious control-net triangle guess as a candidate against the nearest control point's, and returns the nearer one on the surface, so a rational surface whose control points are farther apart than its neighbouring parts does not lose a good guess (WR-444, #1164).
