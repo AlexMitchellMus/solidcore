@@ -207,6 +207,8 @@ pub struct UpstreamFixes {
     pub revolve_arc_centre_near_axis_is_sphere: bool,
     /// A taper extrude's corner whose links meet at both ends pivots on the joint nearest its offset curve (WR-402, #479).
     pub taper_pivot_nearest_corner: bool,
+    /// A taper extrude with linear-extension (tangent) corners of a profile of lines and circular arcs with a sharp corner continues each wall as its tangent plane to meet its neighbour along their exact seam (a line's wall is its own plane, so two lines meet at a corner edge), and refuses a corner it cannot close (`create_taper_extrude_with_corner` reports why and where), instead of ruling separate corner faces from offset extension lines; with fillet corners, or a profile with another curve kind, nothing changes (WR-521, #1449; SolidCraft change, tangency-labs/smlib e8f23e0).
+    pub taper_tangent_corner_planes: bool,
     /// A full-turn rotational sweep makes a closed shell inside another solid its cavity (WR-403, #478).
     pub revolve_nested_shells_as_cavities: bool,
     /// A curve sweep caps from the side faces at the sweep's start and end (WR-404, #411).
@@ -345,6 +347,8 @@ pub struct UpstreamFixes {
     pub fillet_trace_rejects_short_step: bool,
     /// `SmCurve::CalculateTightBoundingBox` adds only the B-spline knots strictly inside the queried interval (the interval's ends are already in the box). Upstream adds every tangent-discontinuous knot and always the last knot whatever the interval, so the tight box of an edge on part of a NURBS curve (an imported sphere cap's seam, 30 deg of a quarter-circle NURBS) reaches points the edge never does (WR-474, #1054; the fork's \"a curve's tight box holds the knots inside its interval only\").
     pub tight_box_interval_knots_only: bool,
+    /// `SmTopologyIntersector::IntersectTopology` skips a face pair whose face boxes lie farther apart than the intersection tolerance (a box that cannot be computed, or holds nothing, rules nothing out), and `SmBrep::MakeEdgeInFaceWithVU`, on a plane, leaves in place without classifying an inner loop whose test point lies outside the box of the new face's outer loop (grown by the edges' tolerances, at the retry tolerance). Upstream pairs every face of one sheet with every face of the other through whole-surface checks and classifies every inner loop against each imprinted face, so a 2D boolean of a sheet with n holes takes time in n^2 (WR-527, #1526/#1527; the fork's tangency-labs/smlib@60b1c6a).
+    pub boolean_skips_faces_apart: bool,
 }
 
 /// Options for [`Kernel::new`].
