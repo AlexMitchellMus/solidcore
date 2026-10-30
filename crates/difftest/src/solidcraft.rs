@@ -1431,11 +1431,16 @@ fn enable_fix(k: &mut Kernel, name: &str) -> Result<(), String> {
         "cone_parallel_line_midpoint" => &mut k.fixes.cone_parallel_line_midpoint,
         "analytic_copy_keeps_parameterization" => &mut k.fixes.analytic_copy_keeps_parameterization,
         "precise_properties_body_length_scale" => &mut k.fixes.precise_properties_body_length_scale,
+        "boolean_wire_edge_keeps_faceuse_shell" => {
+            &mut k.fixes.boolean_wire_edge_keeps_faceuse_shell
+        }
+        "boolean_new_face_closure_both_sides" => &mut k.fixes.boolean_new_face_closure_both_sides,
         "precise_properties_split_at_surface_knots" => {
             &mut k.fixes.precise_properties_split_at_surface_knots
         }
         "precise_properties_trim_base_v" => &mut k.fixes.precise_properties_trim_base_v,
         "revolve_nested_shells_as_cavities" => &mut k.fixes.revolve_nested_shells_as_cavities,
+        "stitch_solid_nests_cavities" => &mut k.fixes.stitch_solid_nests_cavities,
         "sphere_small_circle_not_touching" => &mut k.fixes.sphere_small_circle_not_touching,
         "curve_tight_box_interval_knots" => &mut k.fixes.curve_tight_box_interval_knots,
         _ => return Err(format!("unknown `fixes` entry `{name}`")),
