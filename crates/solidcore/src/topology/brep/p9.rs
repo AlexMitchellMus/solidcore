@@ -2151,10 +2151,16 @@ fn delete_loop_records(b: &mut Brep, loop_: LoopId, env: &mut edge::NotifyEnv<'_
         ))?;
     }
     // `delete` of the loop and both loop uses (RemoveLoop already unlinked both loop
-    // uses from their face uses): their records leave the arenas.
+    // uses from their face uses): their records leave the arenas, and the loop leaves
+    // its face's cached loop list (`Face::loops`), so no later read of that cache
+    // reaches the removed record.
+    let face = b.loop_(loop_)?.face;
     b.remove_loopuse_record(a)?;
     b.remove_loopuse_record(z)?;
     b.remove_loop_record(loop_)?;
+    if let Ok(record) = b.face_mut(face) {
+        record.loops.retain(|&x| x != loop_);
+    }
     Ok(())
 }
 
