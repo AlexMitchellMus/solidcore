@@ -6,6 +6,12 @@
 //! from the origin, heights 0 to 10, drafted by 0.1 rad about z = 0 (leaning in). Its solid is
 //! the frustum of radii R = 5 and r = R - 10 tan 0.1, of volume
 //! pi h (R^2 + R r + r^2) / 3 = 638.3350153968712.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)] // test helpers
 
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::extent2d::Extent2d;
