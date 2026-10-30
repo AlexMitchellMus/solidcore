@@ -5,6 +5,12 @@
 //! The issue's cases on the unit cube `[0,1]^3`: every vertex maps to `v·A + t`, the
 //! volume becomes `|det A|` and the shell stays outward (positive volume) under a
 //! reflection.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)] // test helpers
 
 use solidcore::geom::attribute::{AttributeStore, ObjectKey};
 use solidcore::geom::matrix::Matrix;
