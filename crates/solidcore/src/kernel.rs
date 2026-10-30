@@ -145,6 +145,8 @@ impl Caches {
 #[allow(clippy::struct_excessive_bools)]
 #[non_exhaustive]
 pub struct UpstreamFixes {
+    /// `SmFilletGeom::Trim` returns the first curve/surface trim or interval-intersection error instead of dropping it and continuing with an unset interval (WR-604, #483). Earlier successful edits remain; off by default for pinned C++ parity.
+    pub fillet_trim_status: bool,
     /// `CalcRailIntEdgeuse`'s retry rail search holds a variable round's radius only where its first search does (at a corner calculated as constant radius), so the rail misses the arc it would meet only at that radius and the corner cuts the round off against the body; needs `fillet_nx1_end_rib_global_merge` there (WR-300, #1023).
     pub fillet_retry_radius_as_first: bool,
     /// `TestRollOver` joins a rail's neighbouring intervals on its face or the face's boundary before the rollover, so a rail along its face's rim does not fail "Unable to Process Rollover" (WR-301, #485).
@@ -226,7 +228,7 @@ pub struct UpstreamFixes {
     pub uv_trim_checks_on_surface: bool,
     /// `SmFace::ComputeLoopOrientation`'s 3D path holds a loop's dimensionless area to a floor relative to the loop's own bounding box instead of the face's whole domain, so a loop far smaller than its face (a 0.002 hole in a 3 m plate) is oriented (WR-561, #1523; tangency-labs/smlib 54ca3e0).
     pub loop_orientation_floor_from_loop_box: bool,
-    /// The curve property solves ignore a failed guess in `SolveOscillating`'s sign-change search (WR-253, #481).
+    /// The one-dimensional local solves ignore a failed guess in `SolveOscillating`'s sign-change search (WR-253, #481).
     pub oscillating_skips_failed_guesses: bool,
     /// `sm_RefineCCSolutions` judges a range end's shift by its distance from 1 (WR-383, #527).
     pub refine_cc_range_ends: bool,
