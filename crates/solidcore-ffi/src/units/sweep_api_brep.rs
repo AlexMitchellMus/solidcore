@@ -38,10 +38,23 @@
 //! | `Taper`            | 9  | curves `height angle fillet caps`             |
 //! | `LinearReps`       | 10 | curves `D[3] dist reps cap`                   |
 //! | `RotationalReps`   | 11 | curves `B[3] A[3] angle reps cap`             |
+//! | `FromBoxFace`      | 14 | `O[3] l w h face`, sweep-args                 |
 //!
 //! The output is the API status (`0` = `SM_SUCCESS`, else the `SmStatus`), then on
 //! success `has` and, when there is a B-rep, its face, edge and vertex counts; the
-//! curve sweeps then add the start, side and end face counts.
+//! curve sweeps then add the start, side and end face counts. `FromBoxFace` then adds,
+//! when there is a B-rep, the `SmApiBrepComputeVolume` status and volume (accuracy
+//! `1e-6`; `0` unless it succeeds).
+//!
+//! `FromFaces` / `FromEdges` with `attributed` are ops `12` / `13`: `behavior`, then
+//! the args of op `7` / `8`. They first give every face (`GetFaces` order) and edge
+//! (`GetEdges` order) of disc `d` its own `SmLongAttribute`, whose id and value are
+//! [`ATTRIBUTE_BASE`] plus `1000 d + 500 kind + index` (kind 0 face, 1 edge), with
+//! behaviour `behavior` (an `SmAttributeBehaviorType` value). The record then ends
+//! with the result's attribute rows (on success) and each disc's:
+//! `faces rows... edges rows...`, a row being `n` then per attribute in ascending
+//! order `id behavior value users` (users: the topology users), the rows of each
+//! list sorted.
 //!
 //! [`run`] accepts only what upstream handles without undefined behaviour or a hang:
 //! finite data; `SmApiCreateCurve` with 4 to 512 points and positive arc / circle
@@ -72,6 +85,9 @@ use crate::{call_with_buffer, FfiError};
 pub const MAX_CURVES: usize = 64;
 /// Most points of an `SmApiCreateCurve` curve.
 pub const MAX_POINTS: usize = 512;
+/// The first attribute id of the attributed `FromFaces` / `FromEdges`.
+pub const ATTRIBUTE_BASE: u64 = 10007;
+
 /// Most planar circle faces of `FromFaces` / `FromEdges`.
 pub const MAX_DISCS: usize = 16;
 /// Most repetitions of `LinearReps` / `RotationalReps`.
@@ -240,11 +256,27 @@ pub enum Call {
         circles: Vec<([f64; 3], f64)>,
         /// Path, scale curves and options.
         args: SweepArgs,
+        /// `Some(behavior)`: op `12` (see the module docs).
+        attributed: Option<u8>,
     },
     /// `SmApiCreateCurveSweepFromEdges` on the edges of those faces.
     FromEdges {
         /// Planar circles `(center, radius)`.
         circles: Vec<([f64; 3], f64)>,
+        /// Path, scale curves and options.
+        args: SweepArgs,
+        /// `Some(behavior)`: op `13` (see the module docs).
+        attributed: Option<u8>,
+    },
+    /// `SmApiCreateCurveSweepFromFaces` on face `face` (in `GetFaces` order) of an
+    /// `SmApiCreateBox(origin, size)` B-rep, then the result's volume.
+    FromBoxFace {
+        /// Box corner.
+        origin: [f64; 3],
+        /// Box length, width and height.
+        size: [f64; 3],
+        /// The box face index (`0..6`).
+        face: u64,
         /// Path, scale curves and options.
         args: SweepArgs,
     },
@@ -634,13 +666,47 @@ fn encode(call: &Call) -> Result<Vec<f64>, FfiError> {
             push_curves(&mut o, profile, false, true, false)?;
             push_sweep_args(&mut o, args)?;
         }
-        Call::FromFaces { circles, args } | Call::FromEdges { circles, args } => {
-            o.push(if matches!(call, Call::FromFaces { .. }) {
+        Call::FromFaces {
+            circles,
+            args,
+            attributed,
+        }
+        | Call::FromEdges {
+            circles,
+            args,
+            attributed,
+        } => {
+            let op = if matches!(call, Call::FromFaces { .. }) {
                 7.0
             } else {
                 8.0
-            });
+            };
+            match attributed {
+                None => o.push(op),
+                Some(behavior) if *behavior <= 4 => o.extend([op + 5.0, f64::from(*behavior)]),
+                Some(_) => return Err(bad("behavior is not an SmAttributeBehaviorType value")),
+            }
             push_discs(&mut o, circles)?;
+            push_sweep_args(&mut o, args)?;
+        }
+        Call::FromBoxFace {
+            origin,
+            size,
+            face,
+            args,
+        } => {
+            finite(origin, "box")?;
+            finite(size, "box")?;
+            if size.iter().any(|d| *d <= 0.0) {
+                return Err(bad("box: sizes must be positive"));
+            }
+            if *face >= 6 {
+                return Err(bad("box: face index must be below 6"));
+            }
+            o.push(14.0);
+            o.extend_from_slice(origin);
+            o.extend_from_slice(size);
+            o.push(*face as f64);
             push_sweep_args(&mut o, args)?;
         }
     }

@@ -179,6 +179,16 @@ enum Fixture {
     /// tolerance, as `smOffsetTest.cpp`'s `ShellBrep` reads it; the case's
     /// `tolerance` is not applied.
     File { path: String },
+    /// A one-face cylinder sheet: `CreateFaceFromSurface` on a bounded `SmCylinder`
+    /// (X axis `(1,0,0)`, Y axis `(0,1,0)`, 0 to 360 degrees, `height` up, line
+    /// generator) over its natural domain, closed round along a seam edge. Thickened
+    /// (`create_offset_solid`), it is a tube whose end rings are the walls on its two
+    /// circles (tangency-labs/solidcore#1599).
+    CylinderSheet {
+        origin: [f64; 3],
+        radius: f64,
+        height: f64,
+    },
 }
 impl Fixture {
     fn native(&self) -> ffi::Fixture {
@@ -220,6 +230,15 @@ impl Fixture {
             },
             Self::Sphere { origin, radius } => ffi::Fixture::Sphere { origin, radius },
             Self::File { ref path } => ffi::Fixture::File { path: path.clone() },
+            Self::CylinderSheet {
+                origin,
+                radius,
+                height,
+            } => ffi::Fixture::CylinderSheet {
+                origin,
+                radius,
+                height,
+            },
         }
     }
     /// Built by a native primitive constructor (and its Rust port), or read from an
@@ -227,7 +246,11 @@ impl Fixture {
     const fn primitive(&self) -> bool {
         matches!(
             self,
-            Self::Box { .. } | Self::Cylinder { .. } | Self::Sphere { .. } | Self::File { .. }
+            Self::Box { .. }
+                | Self::Cylinder { .. }
+                | Self::Sphere { .. }
+                | Self::File { .. }
+                | Self::CylinderSheet { .. }
         )
     }
     /// The face count a selection index is checked against; a file's faces are
@@ -235,7 +258,7 @@ impl Fixture {
     const fn face_count(&self) -> usize {
         match self {
             Self::Empty | Self::Wire { .. } => 0,
-            Self::PlaneSheet { .. } | Self::Sphere { .. } => 1,
+            Self::PlaneSheet { .. } | Self::Sphere { .. } | Self::CylinderSheet { .. } => 1,
             Self::Box { .. } => 6,
             Self::Cylinder { .. } => 3,
             Self::File { .. } => ffi::MAX_FILE_FACES,
@@ -514,6 +537,17 @@ fn validate(input: &Inputs) -> HResult<()> {
                 finite(&[height, origin[2] + height])?;
             }
             Fixture::Sphere { origin, radius } => primitive_finite(origin, radius)?,
+            Fixture::CylinderSheet {
+                origin,
+                radius,
+                height,
+            } => {
+                primitive_finite(origin, radius)?;
+                finite(&[height, origin[2] + height])?;
+                if radius <= 0.0 || height <= 0.0 {
+                    return Err(bad("cylinder sheet needs a positive radius and height"));
+                }
+            }
         }
     }
     Ok(())
@@ -761,6 +795,51 @@ fn build(kernel: &mut Kernel, fixture: &Fixture, tolerance: f64, namespace: u64)
                 point2(scale),
                 &domain,
             ));
+            let mut records = solidcore::topology::topology::NotifyRecords::new();
+            let mut attributes = AttributeStore::default();
+            let key_of = |entity| notification_key(entity, namespace);
+            let mut env = solidcore::topology::edge::NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: None,
+                key_of: &key_of,
+            };
+            let mut marks = solidcore::topology::topology_traverser::Marks::default();
+            let this_face = |face: FaceId| key_of(EntityRef::Face(face));
+            let mut fenv = solidcore::topology::brep::p8::FaceBuildEnv {
+                env: &mut env,
+                marks: &mut marks,
+                this_face: &this_face,
+            };
+            solidcore::topology::brep::p8::create_face_from_surface(
+                kernel,
+                &mut brep,
+                Some(surface),
+                &domain,
+                &mut fenv,
+            )
+            .map_err(setup)?;
+        }
+        Fixture::CylinderSheet {
+            origin,
+            radius,
+            height,
+        } => {
+            // The native fixture: `CreateFaceFromSurface(new SmCylinder(..),
+            // GetNaturalUVDomain())` on the new B-rep.
+            let surface = Surface::from(solidcore::surface::cone::p1::Cone::new_cylinder_bounded(
+                v3(origin),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                radius,
+                0.0,
+                360.0,
+                height,
+                false,
+                false,
+                false,
+            ));
+            let domain = surface.natural_uv_domain_with_nurb(kernel).map_err(setup)?;
             let mut records = solidcore::topology::topology::NotifyRecords::new();
             let mut attributes = AttributeStore::default();
             let key_of = |entity| notification_key(entity, namespace);
@@ -1419,12 +1498,13 @@ fn unchanged(before: Option<&ffi::BrepSnapshot>, after: Option<&ffi::BrepSnapsho
     match (before, after) {
         (None, None) => true,
         (Some(a), Some(b)) => {
-            a.integers == b.integers
-                && a.values.len() == b.values.len()
-                && a.values
-                    .iter()
-                    .zip(&b.values)
-                    .all(|(a, b)| a.to_bits() == b.to_bits())
+            // The gap caches count too: the Rust side's purity state is the whole
+            // B-rep, caches included, and both kernels refresh some of them on the
+            // source (`CalcVertexFaceGap` resets every same-face use's cache).
+            let same = |x: &[f64], y: &[f64]| {
+                x.len() == y.len() && x.iter().zip(y).all(|(a, b)| a.to_bits() == b.to_bits())
+            };
+            a.integers == b.integers && same(&a.values, &b.values) && same(&a.caches, &b.caches)
         }
         _ => false,
     }
@@ -1608,15 +1688,15 @@ fn notification_key(entity: EntityRef, namespace: u64) -> ObjectRef {
     }
 }
 
-fn original_notification_key(entity: EntityRef) -> ObjectRef {
+pub(super) fn original_notification_key(entity: EntityRef) -> ObjectRef {
     notification_key(entity, 1)
 }
 
-fn result_notification_key(entity: EntityRef) -> ObjectRef {
+pub(super) fn result_notification_key(entity: EntityRef) -> ObjectRef {
     notification_key(entity, 3)
 }
 
-fn original_curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
+pub(super) fn original_curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
     ObjectRef {
         key: ObjectKey((5_u64 << 60) | ((type_code as u64) << 32) | u64::from(edge.index())),
         type_code,
@@ -1624,7 +1704,7 @@ fn original_curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
 }
 
 // Source lists are opaque notification handles, disjoint from topology and curves.
-fn boolean_source_lists(result: bool, region: RegionId) -> [ObjectRef; 2] {
+pub(super) fn boolean_source_lists(result: bool, region: RegionId) -> [ObjectRef; 2] {
     let namespace = if result { 7_u64 } else { 6_u64 };
     [0_u64, 1].map(|list| ObjectRef {
         key: ObjectKey((namespace << 60) | (list << 32) | u64::from(region.index())),
@@ -1632,7 +1712,7 @@ fn boolean_source_lists(result: bool, region: RegionId) -> [ObjectRef; 2] {
     })
 }
 
-fn result_curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
+pub(super) fn result_curve_key(edge: EdgeId, type_code: i64) -> ObjectRef {
     ObjectRef {
         key: ObjectKey((4_u64 << 60) | ((type_code as u64) << 32) | u64::from(edge.index())),
         type_code,
@@ -1675,7 +1755,7 @@ fn copy_source_lists(region: RegionId) -> [ObjectRef; 2] {
 /// and below the kernel's reserved bit 63: bits 58-59 tell topology (1), curves (2)
 /// and source lists (3) apart, bits 46-57 hold the merge-store handle, bits 32-45 the
 /// type code.
-struct MergeBodies;
+pub(super) struct MergeBodies;
 impl MergeBodies {
     fn key(class: u64, brep: BrepId, kind: u64, index: u32) -> ObjectKey {
         ObjectKey(
@@ -1732,10 +1812,10 @@ impl SweepIdentities for MergeBodies {
 }
 
 /// The notification namespace of the source fixture's identities.
-const NAMESPACE_SOURCE: u64 = 1;
+pub(super) const NAMESPACE_SOURCE: u64 = 1;
 /// The notification namespace of the foreign fixture's identities.
 const NAMESPACE_FOREIGN: u64 = 2;
-fn register_notification_brep(
+pub(super) fn register_notification_brep(
     records: &mut solidcore::topology::topology::NotifyRecords,
     brep: &mut Brep,
     namespace: u64,
@@ -2229,6 +2309,7 @@ mod tests {
         ffi::BrepSnapshot {
             integers: vec![1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
             values: vec![tolerance],
+            caches: Vec::new(),
         }
     }
     fn empty_snapshot(status: i32) -> ffi::Snapshot {
@@ -2671,6 +2752,7 @@ mod tests {
         let mut block = ffi::BrepSnapshot {
             integers: ints,
             values,
+            caches: Vec::new(),
         };
         let decoded = decode_block(&block).unwrap();
         let fixture = sheet([0.0; 3], 1.0, 0);
@@ -2700,6 +2782,13 @@ mod tests {
         assert_eq!(changed.ints["input.pure"], [0, 1]);
         snapshot.source_after = snapshot.source_before.clone();
         snapshot.source_after.as_mut().unwrap().values[0] = 2e-6;
+        assert_eq!(
+            native_output(&input, &snapshot).unwrap().ints["input.pure"],
+            [0, 1]
+        );
+        // A reset gap cache alone also breaks purity, as on the Rust side.
+        snapshot.source_after = snapshot.source_before.clone();
+        snapshot.source_after.as_mut().unwrap().caches = vec![0.0; 5];
         assert_eq!(
             native_output(&input, &snapshot).unwrap().ints["input.pure"],
             [0, 1]

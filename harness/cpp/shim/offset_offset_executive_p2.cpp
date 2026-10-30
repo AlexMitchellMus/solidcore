@@ -28,8 +28,10 @@
 #include <SmBSplineSurface.h>
 #include <SmBrep.h>
 #include <SmContext.h>
+#include <SmCylinder.h>
 #include <SmEdge.h>
 #include <SmEdgeuse.h>
+#include <SmGap.h>
 #include <SmFace.h>
 #include <SmFaceuse.h>
 #include <SmLine.h>
@@ -42,6 +44,7 @@
 #include <SmRegion.h>
 #include <SmShell.h>
 #include <SmVertex.h>
+#include <SmVertexuse.h>
 #include <nurbs.h>
 #include <algorithm>
 #include <array>
@@ -92,12 +95,12 @@ struct Spec {
     std::string path; // kind 7: an ASCII .smb file
     int64_t faces() const {
         return kind == 3 ? 1 : kind == 4 ? 6 : kind == 5 ? 3 : kind == 6 ? 1
-            : kind == 7 ? max_file_faces : 0;
+            : kind == 7 ? max_file_faces : kind == 8 ? 1 : 0;
     }
 };
 Spec read_spec(Reader& rd) {
     Spec s;
-    s.kind = (int)rd.integer(0, 7);
+    s.kind = (int)rd.integer(0, 8);
     if (s.kind == 7) {
         // the byte count, then one value per byte (no NUL)
         int64_t n = rd.integer(1, max_file_path);
@@ -105,7 +108,7 @@ Spec read_spec(Reader& rd) {
         return s;
     }
     int n = s.kind == 2 ? 10 : s.kind == 3 ? 15 : s.kind == 4 ? 6 : s.kind == 5 ? 5
-        : s.kind == 6 ? 4 : 0;
+        : s.kind == 6 ? 4 : s.kind == 8 ? 5 : 0;
     for (int i=0; i<n; ++i) s.v[i] = rd.number();
     const auto& v = s.v;
     if (s.kind == 2) {
@@ -133,6 +136,11 @@ Spec read_spec(Reader& rd) {
         for (int i=0; i<3; ++i) { finite(v[i]+v[3]); finite(v[i]-v[3]); }
         finite(v[3]*v[3]);
         if (s.kind == 5) finite(v[2]+v[4]);
+    } else if (s.kind == 8) {
+        // Cylinder sheet (origin, radius, height): positive radius and height.
+        for (int i=0; i<3; ++i) { finite(v[i]+v[3]); finite(v[i]-v[3]); }
+        finite(v[3]*v[3]); finite(v[2]+v[4]);
+        if (!(v[3] > 0) || !(v[4] > 0)) throw Argument{};
     }
     return s;
 }
@@ -318,6 +326,17 @@ SmBrep* build(const Spec& s, SmContext& ctx, double tolerance) {
         // pending guard only deletes it if it still has no native topology owner.
         constructed(result->MakeWireEdge(nullptr, first, second, line, trim, SM_OT_SAME, edge));
         if (!edge) throw std::runtime_error("successful wire constructor returned null");
+    } else if (s.kind == 8) {
+        // A cylinder sheet: CreateFaceFromSurface on a bounded SmCylinder over its
+        // natural domain (closed round along a seam edge).
+        PendingGeometry<SmSurface> pending{
+            new (ctx) SmCylinder(point(v,0), SmVector3d(1,0,0), SmVector3d(0,1,0), v[3],
+                                 0.0, 360.0, v[4], FALSE, FALSE, FALSE, &ctx)
+        };
+        SmExtent2d domain = pending.ptr->GetNaturalUVDomain();
+        SmFace* face = nullptr;
+        constructed(result->CreateFaceFromSurface(pending.ptr, domain, face));
+        if (!face) throw std::runtime_error("successful sheet constructor returned null");
     } else if (s.kind == 3) {
         SmExtent2d domain(SmPoint2d(v[11],v[12]), SmPoint2d(v[13],v[14]));
         PendingGeometry<SmSurface> pending{
@@ -393,8 +412,29 @@ int curve_kind(SmCurve* curve) {
 }
 struct Block {
     bool present = false;
-    std::vector<double> integers, values;
+    std::vector<double> integers, values, caches;
 };
+// The lazily filled topology caches the Rust purity check also sees (its whole B-rep
+// state): per vertex use (GetVertexuses order) the vertex/edge gap's init flag and edge
+// parameter and the vertex/face gap's init flag and face UV, per edge use (GetEdgeuses
+// order) the max edge/face gap's init flag. Read through the const getters only when
+// already initialised, so observing never fills a cache.
+void put_caches(std::vector<double>& out, SmBrep* brep,
+                const SmTArray<SmEdgeuse*>& edgeuses) {
+    SmTArray<SmVertexuse*> uses;
+    brep->GetVertexuses(uses);
+    if ((size_t)uses.GetSize() + edgeuses.GetSize() > max_output/64)
+        throw std::length_error("native snapshot cache budget");
+    for (ULONG i=0; i<uses.GetSize(); ++i) {
+        SmVertexuse* vu = uses[i];
+        SmVertexEdgeGap* edge = vu->IsVertexEdgeGapInit() ? vu->GetVertexEdgeGap() : nullptr;
+        SmVertexFaceGap* face = vu->IsVertexFaceGapInit() ? vu->GetVertexFaceGap() : nullptr;
+        out.insert(out.end(), {edge ? 1.0 : 0.0, edge ? edge->GetEdgeT() : 0.0,
+            face ? 1.0 : 0.0, face ? face->GetFaceUV().x : 0.0, face ? face->GetFaceUV().y : 0.0});
+    }
+    for (ULONG i=0; i<edgeuses.GetSize(); ++i)
+        out.push_back(edgeuses[i]->IsMaxEdgeFaceGapInit() ? 1.0 : 0.0);
+}
 template<class T> void put_ids(std::vector<double>& out, const SmTArray<T*>& list,
                               const SmTArray<T*>& traversal) {
     out.push_back((double)list.GetSize());
@@ -502,6 +542,7 @@ Block snapshot(SmBrep* brep) {
         put_point(vals,vertices[i]->GetPoint());
         vals.push_back((double)vertices[i]->GetTolerance());
     }
+    put_caches(block.caches,brep,edgeuses);
     return block;
 }
 void put_block(std::vector<double>& out, const Block& block) {
@@ -513,6 +554,10 @@ void put_block(std::vector<double>& out, const Block& block) {
     out.insert(out.end(),block.integers.begin(),block.integers.end());
     out.push_back((double)block.values.size());
     out.insert(out.end(),block.values.begin(),block.values.end());
+    if (block.caches.size() + out.size() + 1 > max_output)
+        throw std::length_error("native snapshot output budget");
+    out.push_back((double)block.caches.size());
+    out.insert(out.end(),block.caches.begin(),block.caches.end());
 }
 
 // Attributed cases (#1462): every source face (GetFaces order) and edge (GetEdges order)

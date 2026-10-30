@@ -110,7 +110,7 @@
 //! its PRE-operation index; absent/null indices are `-1`. No address is emitted.
 //!
 //! Each optional B-rep is `0`, or `1, integer_count, integers..., value_count,
-//! values...`. Integers and floats are separated by the safe decoder into
+//! values..., cache_count, caches...`. Integers and floats are separated by the safe decoder into
 //! [`BrepSnapshot`]; counted lists below are `count, traversal IDs...`. IDs are
 //! zero-based in native traversal order, `-1` null, `-2` not in that traversal.
 //! B-rep integer layout:
@@ -140,6 +140,10 @@
 //! Samples are observations, not
 //! an exact serialization of arbitrary returned geometry. In particular they
 //! must not be advertised as complete offset/shell equivalence.
+//! Cache layout (only compared before/after on the native side, for `input.pure`):
+//! per vertex use in `GetVertexuses` order `edge_gap_init, edge_t, face_gap_init,
+//! face_u, face_v` (zeros when not initialised), then per edgeuse
+//! `max_edge_face_gap_init`. They are read only through already-initialised caches.
 
 use crate::{call_with_buffer, FfiError};
 
@@ -247,13 +251,25 @@ pub enum Fixture {
         /// Path of the file: non-empty, at most [`MAX_FILE_PATH`] bytes, no NUL.
         path: String,
     },
+    /// A one-face cylinder sheet: `CreateFaceFromSurface` on a bounded `SmCylinder`
+    /// (`origin`, X axis `(1,0,0)`, Y axis `(0,1,0)`, 0 to 360 degrees, `height` up,
+    /// line generator) over its natural domain, closed round along a seam edge. Its
+    /// two circles are lamina edges, so thickening it builds a wall on each.
+    CylinderSheet {
+        /// Centre of the base circle.
+        origin: [f64; 3],
+        /// Radius.
+        radius: f64,
+        /// Height along Z.
+        height: f64,
+    },
 }
 
 impl Fixture {
     fn face_count(&self) -> usize {
         match self {
             Self::EmptyBrep | Self::Wire { .. } => 0,
-            Self::PlaneSheet { .. } | Self::Sphere { .. } => 1,
+            Self::PlaneSheet { .. } | Self::Sphere { .. } | Self::CylinderSheet { .. } => 1,
             Self::Box { .. } => 6,
             Self::Cylinder { .. } => 3,
             Self::File { .. } => MAX_FILE_FACES,
@@ -345,6 +361,9 @@ pub struct BrepSnapshot {
     /// Actual tolerances, domains, intervals, points and sampled normals.
     /// The exact layout is documented in the module header.
     pub values: Vec<f64>,
+    /// The lazily filled vertex-use and edge-use gap caches (layout in the module
+    /// header), observed without filling any cache.
+    pub caches: Vec<f64>,
 }
 
 /// Final inherited executive state, observed before its destructor runs.
@@ -549,6 +568,20 @@ fn pack_fixture(fixture: Option<&Fixture>, out: &mut Vec<f64>) -> Result<(), Ffi
             out.push(bytes.len() as f64);
             out.extend(bytes.iter().map(|&b| f64::from(b)));
         }
+        Fixture::CylinderSheet {
+            origin,
+            radius,
+            height,
+        } => {
+            primitive_finite(origin, *radius)?;
+            finite(&[*height, origin[2] + height])?;
+            if *radius <= 0.0 || *height <= 0.0 {
+                return Err(invalid("cylinder sheet needs a positive radius and height"));
+            }
+            out.push(8.0);
+            out.extend_from_slice(origin);
+            out.extend_from_slice(&[*radius, *height]);
+        }
     }
     Ok(())
 }
@@ -745,7 +778,20 @@ impl Reader<'_> {
             .remaining
             .get(count..)
             .ok_or_else(|| invalid("truncated native geometry"))?;
-        Ok(Some(BrepSnapshot { integers, values }))
+        let count = self.count()?;
+        let Some(caches) = self.remaining.get(..count) else {
+            return Err(invalid("truncated native caches"));
+        };
+        let caches = caches.to_vec();
+        self.remaining = self
+            .remaining
+            .get(count..)
+            .ok_or_else(|| invalid("truncated native caches"))?;
+        Ok(Some(BrepSnapshot {
+            integers,
+            values,
+            caches,
+        }))
     }
 }
 
@@ -1718,8 +1764,11 @@ mod tests {
         r.config.extend_convex = true;
         r.faces = vec![FaceSelection::Foreign(0), FaceSelection::Source(0)];
         let mut input = pack(&r).unwrap();
-        // Malformed later selectors remain rejected despite the first foreign face.
-        *input.last_mut().unwrap() = 1.0;
+        // Malformed later selectors remain rejected despite the first foreign face: the
+        // last selector's index (before the trailing `attributed`) names a face the
+        // one-face source does not have.
+        let at = input.len() - 2;
+        input[at] = 1.0;
         invalid_inputs.push(input);
         for input in invalid_inputs {
             let mut out = [42.0; 2];
