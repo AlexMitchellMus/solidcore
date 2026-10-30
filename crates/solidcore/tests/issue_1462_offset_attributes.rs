@@ -189,3 +189,31 @@ fn shell_box_inner_faces_carry_their_sources() {
         assert_eq!(box_faces(&b), source);
     }
 }
+
+#[test]
+fn rounded_offset_edges_keep_their_sources_through_the_stitch() {
+    let mut k = Kernel::default();
+    let mut b = tagged_box(&mut k, Behavior::Copy);
+    let r = offset_brep_simple(
+        &mut k,
+        &mut b,
+        OffsetOptions {
+            distance: 1.0,
+            extend_convex_edges: false,
+            merge_results: false,
+        },
+    )
+    .expect("offset");
+    // each source edge's offset edges on both of its faces' offsets (sm_NotifyEdgeAndVertices
+    // at SmOffsetExecutive.cpp:3066) keep its id through the stitch that glues them to the
+    // rounding faces: every one of the 12 ids on exactly 2 edges, as the C++ reference
+    let mut count = std::collections::BTreeMap::new();
+    for &e in r.edge_list() {
+        for id in caller_ids(ids(&r, EntityRef::Edge(e))) {
+            *count.entry(id).or_insert(0) += 1;
+        }
+    }
+    let expected: std::collections::BTreeMap<u64, i32> =
+        (0..12).map(|i| (EDGE_BASE + i, 2)).collect();
+    assert_eq!(count, expected);
+}
