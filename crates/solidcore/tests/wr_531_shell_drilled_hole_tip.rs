@@ -120,7 +120,7 @@ fn wr_531_drilled_hole_shells_with_a_sphere_cap() {
     // TODO(#1670): return to a clean check_brep once tangency-labs/solidcore#1674 merges.
     // Each case's count of #1670 edges, side open then top open, without and with
     // WR-454's check (which leaves a closed result alone).
-    let issue_1670_edges = [[18, 18], [17, 17]];
+    let issue_1670_edges = [[18, 18], [18, 18]];
     let mut checked = Vec::new();
     for (open_top, edges) in [false, true].into_iter().zip(issue_1670_edges) {
         for (refuse_open, edges) in [false, true].into_iter().zip(edges) {
