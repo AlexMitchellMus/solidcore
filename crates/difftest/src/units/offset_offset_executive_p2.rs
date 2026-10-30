@@ -454,7 +454,7 @@ fn operand_state(brep: Option<&Brep>) -> HResult<Vec<f64>> {
             CurveKind::Line(x) => Some(x.base()),
             _ => None,
         };
-        let points = base.and_then(|b| b.gw_nurb()).map(|n| n.cpts());
+        let points = base.and_then(|b| b.gw_nurb()).map(solidcore::nurbs::crv_basic::Curve::cpts);
         match points.and_then(|p| p.first().zip(p.last())) {
             Some((first, last)) => {
                 out.push(1.0);
