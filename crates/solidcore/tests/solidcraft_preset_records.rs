@@ -126,7 +126,9 @@ const FORK_RECORDS: &[(&str, &[&str])] = &[
     ("WR-579", &["proto_edge_splits_at_captured_vertices"]),
     ("WR-580", &["imprint_reuses_coincident_face_edge"]),
     ("WR-584", &["boolean_new_face_closure_both_sides"]),
+    ("WR-585", &["boolean_wire_edge_keeps_faceuse_shell"]),
     ("WR-588", &["face_tight_box_searches_trim"]),
+    ("WR-593", &["fillet_nx1_tangent_corner_edge"]),
     ("WR-596", &["box_face_failures_propagate"]),
 ];
 

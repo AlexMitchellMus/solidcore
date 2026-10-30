@@ -171,6 +171,8 @@ solidcraft_preset! {
         linear_sweep_arc_is_cylinder, // WR-565; smlib 12918e9
         face_tight_box_searches_trim, // WR-588; smlib 9d44c1b
         cylinder_plane_tangent_within_tolerance, // WR-510; smlib bd20f6e (smlib#55)
+        fillet_nx1_tangent_corner_edge, // WR-593; smlib 1ff7353, d5ebcb3
+        boolean_wire_edge_keeps_faceuse_shell, // WR-585; smlib be8ac73
     ],
     reported: [
         fillet_refuse_rails_leaving_faces, // WR-302, #1024
