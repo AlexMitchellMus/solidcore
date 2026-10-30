@@ -1104,6 +1104,35 @@ impl Brep {
         Ok(copy)
     }
 
+    /// A copy of this B-rep to put back with [`Brep::restore_from`] if an operation
+    /// on it is refused (not upstream: an operation's rollback). The edge and edge use
+    /// arenas are shared copy-on-write, so their curves keep their owners, and the face
+    /// surfaces keep theirs; the surfaces start with empty cache slots (a cache the
+    /// operation builds on the edited faces is not one of the copy's), and the copy's
+    /// objects, being copies, carry no notification identities.
+    #[must_use]
+    pub fn clone_for_rollback(&self) -> Self {
+        let mut copy = self.copy(true);
+        for (id, face) in self.faces.iter() {
+            if let (Some(original), Ok(face_copy)) = (face.surface.as_ref(), copy.face_mut(id)) {
+                if let Some(surface) = face_copy.surface.as_mut() {
+                    face::p2::RescueSurfaceOwner::new(original).restore(surface);
+                }
+            }
+        }
+        copy
+    }
+
+    /// Puts back the contents of `saved`, a [`Brep::clone_for_rollback`] of this
+    /// B-rep taken earlier, keeping this value's own identity (its notification
+    /// identity and progress tag, which a copy does not carry), so the B-rep is again
+    /// the one it was when `saved` was taken (not upstream: an operation's rollback).
+    pub fn restore_from(&mut self, mut saved: Self) {
+        std::mem::swap(&mut saved.notify_identity, &mut self.notify_identity);
+        std::mem::swap(&mut saved.progress_tag, &mut self.progress_tag);
+        *self = saved;
+    }
+
     /// Ends the innermost [`Brep::begin_surface_owner_cleared`] scope of face `f`.
     pub fn end_surface_owner_cleared(&mut self, f: FaceId) {
         if let Some(i) = self.surface_owner_cleared.iter().rposition(|&g| g == f) {
@@ -1380,6 +1409,36 @@ impl Brep {
             EntityRef::Edgeuse(x) => self.edgeuses.get(x).is_some(),
             EntityRef::Vertexuse(x) => self.vertexuses.get(x).is_some(),
         }
+    }
+
+    /// The faces, edges and vertices on the B-rep's lists (an edit can unlink one and
+    /// leave its record in the arena: upstream's `delete` of it), for
+    /// [`Brep::still_has`].
+    pub(crate) fn listed_entities(&self) -> std::collections::BTreeSet<EntityRef> {
+        self.face_list()
+            .iter()
+            .map(|&f| EntityRef::Face(f))
+            .chain(self.edge_list().iter().map(|&e| EntityRef::Edge(e)))
+            .chain(self.vertex_list().iter().map(|&v| EntityRef::Vertex(v)))
+            .collect()
+    }
+
+    /// Whether `e` is an object the B-rep still has, as an operation that renamed its
+    /// objects hands their attributes back ([`Brep::is_live_entity`], and for a face,
+    /// edge or vertex on its list, `listed` from [`Brep::listed_entities`]): an object
+    /// upstream deleted has cleared its attributes.
+    pub(crate) fn still_has(
+        &self,
+        listed: &std::collections::BTreeSet<EntityRef>,
+        e: EntityRef,
+    ) -> bool {
+        self.is_live_entity(e)
+            && match e {
+                EntityRef::Face(_) | EntityRef::Edge(_) | EntityRef::Vertex(_) => {
+                    listed.contains(&e)
+                }
+                _ => true,
+            }
     }
 
     fn attributed_key(&self, e: EntityRef, operation: &'static str) -> Result<ObjectKey> {
