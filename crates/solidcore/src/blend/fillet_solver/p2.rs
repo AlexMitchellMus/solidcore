@@ -347,19 +347,44 @@ fn fsg_type(s: &FilletSolver) -> Result<FilletSurfaceGeneratorType> {
         .ok_or_else(|| invalid("no fillet surface generator"))
 }
 
-/// Not upstream (WR-581): whether every point of the centre line (`m_v3DCurvePV[0]`, the
-/// first offset surface's point) lies within `tol` of the axis of `frame`.
+/// Not upstream (WR-581): whether every centre-line point lies on the axis of `frame`, to
+/// `dAnalyticTol` scaled by one plus the arc's radius `arc_radius`. Each point is the
+/// first offset surface's point at the fillet point's first UV position
+/// (`GetSurface(0)->EvaluatePoint`, as the section's centre `sArcCenter` is taken), an
+/// evaluation that keeps no extension, so a blend that is refused here leaves the solver
+/// as it was; a point that does not evaluate is not on the axis.
 ///
 /// # Errors
 ///
-/// `SM_ERR_INVALID_INPUT` from `Unitize` of a zero axis.
-fn centre_line_on_axis(frame: &Axis2Placement, tsects: &[TsectPnt], tol: f64) -> Result<bool> {
+/// `SM_ERR_INVALID_INPUT` from `Unitize` of a zero axis; [`SolidError::InvalidInput`]
+/// without the offset surface; [`SolidError::Unported`] from the evaluation.
+fn centre_line_on_axis(
+    k: &Kernel,
+    s: &FilletSolver,
+    frame: &Axis2Placement,
+    arc_radius: f64,
+    tsects: &[TsectPnt],
+) -> Result<bool> {
     let axis = frame.z_axis().unitize()?;
     let origin = frame.origin();
-    Ok(tsects.iter().all(|t| {
-        let off = t.curve_pv[0] - origin;
-        (off - axis * off.dot(axis)).length() < tol
-    }))
+    let tol = ANALYTIC_TOL * (1.0 + arc_radius);
+    let slot = s.surface(0)?.ok_or_else(|| invalid("no offset surface"))?;
+    for t in tsects {
+        let centre = match slot
+            .surface
+            .surface
+            .evaluate_point(k, t.uv_pos(SrfIndex::First))
+        {
+            Ok(p) => p,
+            Err(e @ SolidError::Unported { .. }) => return Err(e),
+            Err(_) => return Ok(false),
+        };
+        let off = centre - origin;
+        if (off - axis * off.dot(axis)).length() >= tol {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 /// Not upstream (WR-581): the blend curve cross section of the solver's
@@ -951,12 +976,12 @@ impl FilletSolver {
         if section != FilletSurfaceGeneratorType::Circular && !linear_section && !blend_section {
             return Err(sm_err());
         }
-        let Some((ref_frame, _arc_radius, start_ang, _end_ang)) =
+        let Some((ref_frame, arc_radius, start_ang, _end_ang)) =
             curve.is_arc(k, 11, ANALYTIC_TOL)?
         else {
             return Err(sm_err());
         };
-        if blend_section && !centre_line_on_axis(&ref_frame, tsects, s.approx_tol_3d)? {
+        if blend_section && !centre_line_on_axis(k, s, &ref_frame, arc_radius, tsects)? {
             return Err(sm_err());
         }
 

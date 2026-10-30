@@ -96,10 +96,10 @@ fn volume_under(k: &Kernel, dome: &Surface) -> f64 {
     let (mu, mv) = (0.5 * lo.x + 0.5 * hi.x, 0.5 * lo.y + 0.5 * hi.y);
     // the meridian runs from the rim (r 10) to the apex (r 0); a parallel keeps its radius
     let along_v = (radius(at(mu, lo.y)) - radius(at(mu, hi.y))).abs() > 1.0;
-    let n = 20_000;
+    let n: u32 = 20_000;
     let pts: Vec<Point3> = (0..=n)
         .map(|i| {
-            let s = i as f64 / n as f64;
+            let s = f64::from(i) / f64::from(n);
             if along_v {
                 at(mu, lo.y + s * (hi.y - lo.y))
             } else {
