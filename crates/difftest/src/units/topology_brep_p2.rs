@@ -975,6 +975,10 @@ fn face_owner(f: FaceId) -> ObjectRef {
     key_of(EntityRef::Face(f))
 }
 
+fn edgeuse_owner(eu: EdgeuseId) -> ObjectRef {
+    key_of(EntityRef::Edgeuse(eu))
+}
+
 fn edge_owner(e: EdgeId) -> (ObjectRef, ObjectRef) {
     (
         key_of(EntityRef::Edge(e)),
@@ -989,8 +993,10 @@ const CONVENTIONS: crate::own_builder::Conventions<'static> = crate::own_builder
     prefix_lists: true,
     vertex_edge_gaps: true,
     vertex_lists_last: false,
+    skip_edge_list: false,
     face_owner: &face_owner,
     edge_owner: &edge_owner,
+    edgeuse_owner: &edgeuse_owner,
 };
 
 /// The Rust B-rep of the case and its entity counts, or the build failure's output:
@@ -1131,10 +1137,10 @@ fn merge_ssi_rust(
         .iter()
         .map(|c| rust_curve(c).map(SmCurve::from))
         .collect::<Result<_, _>>()?;
-    let uv: Option<Vec<SmCurve>> = uv_curves
+    let uv: Option<Vec<Option<SmCurve>>> = uv_curves
         .map(|uv| {
             uv.iter()
-                .map(|c| rust_curve(c).map(SmCurve::from))
+                .map(|c| rust_curve(c).map(|c| Some(SmCurve::from(c))))
                 .collect::<Result<_, _>>()
         })
         .transpose()?;

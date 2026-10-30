@@ -14,6 +14,8 @@
 //! | `order_edgeuses_by_brep` (private) | `sm_OrderEdgeusesByBrep` |
 //! | [`api_shell_brep_full`], [`ShellCopyIdentities`] | `SmApiShellBrepFull` (and its working copy's identities) |
 //! | [`api_offset_brep_full`] | `SmApiOffsetBrepFull` |
+//! | [`offset_brep_simple`], [`shell_brep_simple`] | (not upstream) the API calls with their own notification identities |
+//! | [`faceuse_offset`] | `SmOffsetGeometryCreation::FaceuseOffset` over the owned B-rep |
 //!
 //! Deviations: original B-reps and the kernel are explicit arguments, not retained
 //! pointers. Options replace scalar flag lists; owned results replace output pointers.
@@ -43,10 +45,13 @@
 //! every `Result` exit. The shell difference delegates native context/error state
 //! to the real Boolean adapter; late deferred errors report actual operand ownership,
 //! not parity with the native ownership flag.
+//! Every entry point carries the source B-rep's own attributes ([`Brep::add_attribute`])
+//! through the caller's stores to the returned B-rep (`attributes`).
 //! There is no new recursion; all owned loops are bounded by existing arena/relation lengths.
 
 use std::collections::BTreeSet;
 
+use super::attributes;
 use super::p1::{OffsetExecutive, OffsetOperation};
 use crate::boolean::merge::p4::{
     BooleanKernels, KernelManifoldIntersector, ManifoldKernelAdapter, ManifoldNotificationKeys,
@@ -74,6 +79,7 @@ use crate::topology::proto_topology::p1::CopyBrepMap;
 
 #[cfg(test)]
 use crate::geom::attribute::ObjectKey;
+use crate::offset::offset_geometry_creation::make_edges_on_analytics_exact;
 use crate::sweep::topology_sweep::store::SweepIdentities;
 use crate::topology::edge::{NotificationStores, NotifyState};
 use crate::topology::edgeuse::{p1 as eu, p2 as eu2};
@@ -199,6 +205,26 @@ impl ShellOutcome {
     }
 }
 
+/// Opt-in (WR-545; the fork's tangency-labs/smlib@cd85d34): with
+/// `Kernel::fixes.shell_edges_on_analytics_exact`, the last step of `ShellBrep`,
+/// `SmOffsetGeometryCreation::MakeEdgesOnAnalyticsExact(crContext, rpShellBrep)`, on
+/// the shell's result under its notification identities. An error drops the shell.
+fn make_shell_edges_exact(
+    kernel: &mut Kernel,
+    shell: &mut Brep,
+    notifications: &mut OffsetNotifications<'_>,
+) -> Result<()> {
+    if !kernel.fixes.shell_edges_on_analytics_exact {
+        return Ok(());
+    }
+    let mut stores = NotificationStores {
+        records: &mut *notifications.records,
+        attributes: &mut *notifications.attributes,
+        key_of: notifications.result_key_of,
+    };
+    make_edges_on_analytics_exact(kernel, shell, &mut stores)
+}
+
 /// Static offset entry point, with a non-null original and an owned result.
 ///
 /// Only ordinary inner failures collapse to native `SM_ERR` (1001).
@@ -210,13 +236,24 @@ pub fn offset_brep(
     options: OffsetOptions,
     notifications: &mut OffsetNotifications<'_>,
 ) -> Result<Brep> {
+    // (not upstream) the source's own attributes go to the caller's stores, as
+    // upstream's live on the objects the offset copies
+    attributes::seed_attributes(
+        original,
+        notifications.original_key_of,
+        notifications.attributes,
+    )?;
+    let original_key = original.key();
     let mut executive = configured_executive(original, options);
-    collapse_offset_status(executive.do_solid_offset(
+    let mut result = collapse_offset_status(executive.do_solid_offset(
         kernel,
         Some(original),
         SolidOffsetOptions::default(),
         notifications,
-    ))
+    ))?;
+    // (not upstream) the attributes the notifications left on the result's objects
+    attributes::finish_attributes(&mut result, original_key, notifications)?;
+    Ok(result)
 }
 
 impl OffsetExecutive {
@@ -234,9 +271,17 @@ impl OffsetExecutive {
         faces: &[FaceId],
         notifications: &mut OffsetNotifications<'_>,
     ) -> ShellOutcome {
+        let original_key = original.key();
         let mut input = Some(original);
         let result = (|| {
             let original = required(input.as_mut(), OP_SHELL)?;
+            // (not upstream) the source's own attributes go to the caller's stores, as
+            // upstream's live on the objects the shell copies and edits
+            attributes::seed_attributes(
+                original,
+                notifications.original_key_of,
+                notifications.attributes,
+            )?;
             // cpp:206–215: do not move the guard before this real query.
             let radius = options.offset.distance.abs();
             let tolerance = original.tolerance();
@@ -281,7 +326,9 @@ impl OffsetExecutive {
                 // stop when no lamina edges remain or the next tolerance exceeds
                 // abs(distance) / 2.0. Preserve retained input on MergeBrep error,
                 // but report ownership transferred on a later stitch error.
-                // the sheet's faces as copied into the shell (#978; only with the opt-in)
+                // the sheet's faces as copied into the shell (#978, #1599; only with an opt-in)
+                let side_walls =
+                    options.merge_sheet_side_walls || kernel.fixes.thicken_planar_side_walls;
                 let mut sheet_faces: Vec<FaceId> = Vec::new();
                 {
                     let source = required(input.as_ref(), OP_SHELL)?;
@@ -295,7 +342,7 @@ impl OffsetExecutive {
                     // and bAddAnalytics = TRUE; the opt-in keeps the sheet-to-copy map
                     // (the fork's MergeBrep(*pBrepToShell, NULL, &sSheetToCopy): original to copy)
                     let mut sheet_to_copy = CopyBrepMap::new();
-                    let reverse_map = options.merge_sheet_side_walls.then_some(&mut sheet_to_copy);
+                    let reverse_map = side_walls.then_some(&mut sheet_to_copy);
                     NotifyState::from_kernel_stores(&mut stores).with_kernel_env(
                         kernel,
                         |kernel, env| {
@@ -311,7 +358,7 @@ impl OffsetExecutive {
                             )
                         },
                     )?;
-                    if options.merge_sheet_side_walls {
+                    if side_walls {
                         for f in bp1::faces(source, None)? {
                             match sheet_to_copy.get_at(Some(EntityRef::Face(f)))? {
                                 Some(EntityRef::Face(copy)) => sheet_faces.push(copy),
@@ -339,22 +386,36 @@ impl OffsetExecutive {
                     }
                     ii += 1;
                 }
-                if options.merge_sheet_side_walls {
+                if side_walls {
                     // SER_DELETE: an error drops the shell
-                    merge_sheet_side_walls(kernel, &mut shell, &sheet_faces, notifications)?;
+                    merge_sheet_side_walls(
+                        kernel,
+                        &mut shell,
+                        &sheet_faces,
+                        options.merge_sheet_side_walls,
+                        notifications,
+                    )?;
                 }
+                make_shell_edges_exact(kernel, &mut shell, notifications)?;
                 return Ok(shell);
             }
 
-            shell_difference(
+            let mut shell = shell_difference(
                 kernel,
                 &mut input,
                 shell,
                 options.offset.distance,
                 tolerance,
                 notifications,
-            )
+            )?;
+            make_shell_edges_exact(kernel, &mut shell, notifications)?;
+            Ok(shell)
         })();
+        // (not upstream) the attributes the notifications left on the result's objects
+        let result = result.and_then(|mut shell| {
+            attributes::finish_attributes(&mut shell, original_key, notifications)?;
+            Ok(shell)
+        });
         ShellOutcome {
             result,
             retained_input: input,
@@ -710,6 +771,16 @@ impl OffsetExecutive {
                 }
             }
 
+            // Not upstream (opt-in, fork tangency-labs/smlib 5d428ae and 7ff0a94): a local
+            // operation closes the loop gaps its step walls leave at their ends, then splits
+            // the edges that run past a step wall's corner
+            let step_walls = kernel.fixes.local_operation_step_walls
+                && self.operation() == OffsetOperation::LocalOperation;
+            if step_walls {
+                self.close_loop_gaps(kernel, notifications)?;
+                self.split_edges_at_step_corners(kernel, notifications)?;
+            }
+
             // Not upstream (WR-341, tangency-labs/solidcore#977), opt-in
             // `Kernel::fixes.offset_excess_faces_after_merge`: the excess faces are found after
             // the merge only, where each merged face lies wholly on the offset or wholly in
@@ -1024,11 +1095,17 @@ impl OffsetExecutive {
     ) -> Result<()> {
         let operation = if extended { OP_EXTENDED } else { OP_SOLID };
         let faceuse = select_offset_faceuse(original, id, extended, self.inset(), operation)?;
-        let creator = crate::offset::offset_geometry_creation::OffsetGeometryCreation::new(
-            self.offset_distance(),
-            self.approximation_tol_3d(),
-        );
-        let (mut surface, ssi) = super::face::build(kernel, &creator, original, faceuse, true)?;
+        let (mut surface, ssi) = if self.local_faces.is_empty() {
+            let creator = crate::offset::offset_geometry_creation::OffsetGeometryCreation::new(
+                self.offset_distance(),
+                self.approximation_tol_3d(),
+            );
+            super::face::build(kernel, &creator, original, faceuse, true)?
+        } else {
+            // SmLocalOperationGeometryCreation::FaceuseOffset: the surface given per face. The
+            // creator object decides upstream (virtual call), not `m_eOffsetOperation`.
+            super::face::build_local(original, &self.local_faces, &self.local_surfaces, faceuse)?
+        };
         // Not upstream (WR-346, tangency-labs/solidcore#397), opt-in
         // `Kernel::fixes.offset_collapsed_rounds_mated`: an inset face whose offset collapses (a
         // convex round thinner than the wall) gets no offset face; the faces beside it are
@@ -1294,7 +1371,14 @@ pub fn api_shell_brep_full(
     // cpp:2389–2393: SmCopyBrepMap sOriginalToCopyMap; new SmBrep(*pBrep, NULL,
     // &sOriginalToCopyMap) with bCopyAttributes = bAddAnalytics = TRUE.
     let mut original_to_copy = CopyBrepMap::new();
-    let working = {
+    // (not upstream) the source's own attributes go to the caller's stores, so the
+    // copy's Copy notifications carry them to the working copy (bCopyAttributes)
+    attributes::seed_attributes(
+        original.brep,
+        notifications.original_key_of,
+        notifications.attributes,
+    )?;
+    let mut working = {
         let source_key = notifications.original_key_of;
         let mut stores = NotificationStores {
             records: &mut *notifications.records,
@@ -1314,6 +1398,10 @@ pub fn api_shell_brep_full(
             )
         })?
     };
+
+    // (not upstream) the working copy's attributes are those the copy notified into the
+    // caller's stores; the shell must not seed them a second time
+    working.set_attributes(AttributeStore::default());
 
     // cpp:2395–2404: map every selection in order.
     let mut working_faces = Vec::with_capacity(faces.len());
@@ -1371,6 +1459,110 @@ pub fn api_offset_brep_full(
     // (not upstream: the port's cached topology, true again for the caller)
     result.refresh_cached_topology();
     Ok(result)
+}
+
+/// (not upstream) [`api_offset_brep_full`] with notification identities of its own:
+/// for a caller that keeps no notification stores. The source's attributes
+/// ([`Brep::add_attribute`]) reach the result as upstream's notifications carry them
+/// (each offset face copies its source face's, `SmOffsetExecutive.cpp:1237`); the
+/// source keeps its own, and its [`Brep::key`] is restored.
+///
+/// # Errors
+///
+/// Those of [`api_offset_brep_full`].
+pub fn offset_brep_simple(
+    kernel: &mut Kernel,
+    original: &mut Brep,
+    options: OffsetOptions,
+) -> Result<Brep> {
+    let saved_key = original.key();
+    original.set_key(attributes::original_key(EntityRef::Brep(BrepId::from_index(0))).key);
+    let mut records = attributes::simple_records(original);
+    let mut store = AttributeStore::default();
+    let mut notifications = OffsetNotifications {
+        records: &mut records,
+        attributes: &mut store,
+        original_key_of: &attributes::original_key,
+        result_key_of: &attributes::result_key,
+        original_curve_ref: &attributes::original_curve,
+        result_curve_ref: &attributes::result_curve,
+        boolean_source_lists: &attributes::source_lists,
+        result_brep: attributes::result_key(EntityRef::Brep(BrepId::from_index(0))),
+        merge_identities: Some(&attributes::SimpleIdentities),
+    };
+    let result = api_offset_brep_full(kernel, Some(original), options, &mut notifications);
+    original.set_key(saved_key);
+    result
+}
+
+/// (not upstream) [`api_shell_brep_full`] with notification identities of its own,
+/// on faces of `original` (`faces` removed: open faces; empty: a closed shell). The
+/// source's attributes reach the result as upstream's notifications carry them; the
+/// source is not changed.
+///
+/// # Errors
+///
+/// Those of [`api_shell_brep_full`].
+pub fn shell_brep_simple(
+    kernel: &mut Kernel,
+    original: &Brep,
+    options: ShellOptions,
+    faces: &[FaceId],
+) -> Result<Brep> {
+    let source_id = BrepId::from_index(0);
+    let mut source = original.clone();
+    source.set_key(attributes::original_key(EntityRef::Brep(source_id)).key);
+    let mut records = attributes::simple_records(&source);
+    let mut store = AttributeStore::default();
+    let mut notifications = OffsetNotifications {
+        records: &mut records,
+        attributes: &mut store,
+        original_key_of: &attributes::original_key,
+        result_key_of: &attributes::result_key,
+        original_curve_ref: &attributes::original_curve,
+        result_curve_ref: &attributes::result_curve,
+        boolean_source_lists: &attributes::source_lists,
+        result_brep: attributes::result_key(EntityRef::Brep(source_id)),
+        merge_identities: Some(&attributes::SimpleIdentities),
+    };
+    let selections: Vec<Option<FaceKey>> = faces.iter().map(|&f| Some((source_id, f))).collect();
+    api_shell_brep_full(
+        kernel,
+        Some(BrepRef {
+            brep: &source,
+            handle: source_id,
+        }),
+        options,
+        &selections,
+        &ShellCopyIdentities {
+            key_of: &attributes::copy_key,
+            curve_ref: &attributes::copy_curve,
+            boolean_source_lists: &attributes::copy_source_lists,
+        },
+        &mut notifications,
+    )
+}
+
+/// `SmOffsetGeometryCreation(distance, approx_tol_3d).FaceuseOffset(faceuse, TRUE)`: the
+/// face's surface offset by `distance` along the normal of the source face use (against
+/// it for an opposite one), made analytic when possible, its self-intersections skipped.
+/// `None` when no offset surface was made.
+///
+/// # Errors
+///
+/// Those of `FaceuseOffset` (the face use's face, its surface, the offset surface).
+pub fn faceuse_offset(
+    kernel: &Kernel,
+    original: &Brep,
+    faceuse: FaceuseId,
+    distance: f64,
+    approx_tol_3d: f64,
+) -> Result<Option<crate::surface::surface::Surface>> {
+    let creator = crate::offset::offset_geometry_creation::OffsetGeometryCreation::new(
+        distance,
+        approx_tol_3d,
+    );
+    Ok(super::face::build(kernel, &creator, original, faceuse, true)?.0)
 }
 
 fn configured_executive(original: &Brep, options: OffsetOptions) -> OffsetExecutive {
@@ -1546,6 +1738,11 @@ fn collapse_offset_status<T>(result: Result<T>) -> Result<T> {
 /// and every topological vertex, are kept), each wall it bounds first going onto its plane
 /// ([`put_planar_face_on_its_plane`]). Editing is enabled meanwhile.
 ///
+/// With [`crate::kernel::UpstreamFixes::thicken_planar_side_walls`] (WR-564, #1599; the
+/// fork's tangency-labs/smlib#62) every wall goes onto its plane first, in the shell's
+/// face order, and its old surface's seams are deleted; the walls are then merged only
+/// with `merge` (the #978 opt-in).
+///
 /// # Errors
 ///
 /// Those of the plane replacement and of `RemoveTopologicalEdgesAndVertices`.
@@ -1553,6 +1750,7 @@ fn merge_sheet_side_walls(
     kernel: &mut Kernel,
     shell: &mut Brep,
     sheet_faces: &[FaceId],
+    merge: bool,
     notifications: &mut OffsetNotifications<'_>,
 ) -> Result<()> {
     // the walls: the faces along the sheet's boundary, other than the sheet's own
@@ -1587,7 +1785,8 @@ fn merge_sheet_side_walls(
             }
         }
     }
-    if merging.is_empty() {
+    let every_wall = kernel.fixes.thicken_planar_side_walls;
+    if merging.is_empty() && !every_wall {
         return Ok(());
     }
 
@@ -1595,8 +1794,20 @@ fn merge_sheet_side_walls(
     let editing = shell.editing_enabled();
     shell.set_editing_enabled(true);
     let result = (|| {
-        for &f in &merging {
-            put_planar_face_on_its_plane(kernel, shell, f, notifications)?;
+        if every_wall {
+            // every wall onto its plane, in GetFaces order (#1599)
+            for f in bp1::faces(shell, None)? {
+                if walls.contains(&f) {
+                    put_planar_face_on_its_plane(kernel, shell, f, true, notifications)?;
+                }
+            }
+        } else {
+            for &f in &merging {
+                put_planar_face_on_its_plane(kernel, shell, f, false, notifications)?;
+            }
+        }
+        if !merge || merging.is_empty() {
+            return Ok(());
         }
         crate::topology::brep::p5::remove_topological_edges_and_vertices(
             kernel,
@@ -1616,6 +1827,13 @@ fn merge_sheet_side_walls(
 /// with as much again round them; `ReplaceSurface(.., FALSE, NULL, TRUE)` remakes its
 /// UV trim curves. A face on a plane, or on a surface that is not planar, is left.
 ///
+/// With `delete_seams` (WR-564, #1599; the fork's tangency-labs/smlib#62) the face's
+/// edges that are seams of its old surface (`SmEdge::IsSeam`, found before the
+/// replacement) are deleted after it: a surface closed round on itself (the wall
+/// between a circle and its offset about one axis, a flat ring) bounds the face along
+/// its seam too, which on the plane is a slit through the ring; `DeleteEdge` splits the
+/// loop into the ring's outer and inner circles.
+///
 /// # Errors
 ///
 /// `SM_ERR_NULL_POINTER` for a face without surface; those of the planarity test, the
@@ -1624,6 +1842,7 @@ fn put_planar_face_on_its_plane(
     kernel: &mut Kernel,
     b: &mut Brep,
     f: FaceId,
+    delete_seams: bool,
     notifications: &mut OffsetNotifications<'_>,
 ) -> Result<()> {
     use crate::nurbs::knots::Side;
@@ -1682,6 +1901,16 @@ fn put_planar_face_on_its_plane(
         crate::math::Point2::new(u_max + margin, v_max + margin),
     );
 
+    // the old surface's seams (#1599; only with the opt-in)
+    let mut seams: Vec<EdgeId> = Vec::new();
+    if delete_seams {
+        for e in crate::topology::face::p4::edges(&*b, f, None, false, None)? {
+            if crate::topology::edge::is_seam_of_surface(kernel, b, e, f)? {
+                seams.push(e);
+            }
+        }
+    }
+
     let mut plane = Plane::new(
         origin,
         x_axis,
@@ -1706,8 +1935,17 @@ fn put_planar_face_on_its_plane(
             face_ref,
             crate::topology::brep::p2::OldSurface::Delete,
             true,
-        )
-        .map(drop)
+        )?;
+        for &e in &seams {
+            crate::topology::brep::p4::delete_edge(
+                kernel,
+                b,
+                &mut crate::topology::brep::p4::DeleteEnv::from_notify(env),
+                e,
+                None,
+            )?;
+        }
+        Ok(())
     })
 }
 
@@ -1839,6 +2077,41 @@ mod tests {
     use crate::surface::plane::Plane;
     use crate::surface::surface::Surface;
     use crate::topology::{Faceuse, FaceuseId, Region, Shell};
+
+    /// `faceuse_offset` offsets a box face's plane: a plane parallel to it, `distance` away.
+    #[test]
+    fn faceuse_offset_of_a_box_face_is_a_plane_at_the_distance() {
+        use crate::math::Point2;
+        use crate::surface::surface::p2::SurfaceKind;
+        let mut k = Kernel::default();
+        let brep = crate::primitive::api_primitives::create_box(
+            &mut k,
+            crate::math::Point3::new(0.0, 0.0, 0.0),
+            1.0,
+            2.0,
+            3.0,
+        )
+        .unwrap();
+        let f = bp1::faces(&brep, None).unwrap()[0];
+        let faceuse = face::faceuses(&brep, f).unwrap().0.unwrap();
+        let SurfaceKind::Plane(source) = face::surface(&brep, f).unwrap().unwrap().kind() else {
+            panic!("a box face is a plane");
+        };
+        let on_source = source.evaluate_point(Point2::new(0.0, 0.0));
+        let made = faceuse_offset(&k, &brep, faceuse, 0.25, 1e-6)
+            .unwrap()
+            .unwrap();
+        let SurfaceKind::Plane(made) = made.kind() else {
+            panic!("an offset plane stays a plane");
+        };
+        let [a, b, c] = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+            .map(|(u, v)| made.evaluate_point(Point2::new(u, v)));
+        let normal = (b - a).cross(c - a);
+        let normal = normal * (1.0 / normal.length());
+        for q in [a, b, c] {
+            assert!(((q - on_source).dot(normal).abs() - 0.25).abs() < 1e-12);
+        }
+    }
 
     /// `sm_OrderEdgeusesByBrep`: the B-rep's edge uses come from the end of its
     /// face/face-use/edge-use order, each once; an edge use not in the B-rep goes last.

@@ -80,7 +80,7 @@ use serde_json::Value;
 use solidcore::curve::curve::{Curve, CurveKind};
 use solidcore::curve::line::Line;
 use solidcore::error::EntityRef;
-use solidcore::geom::attribute::{AttributeStore, ObjectKey};
+use solidcore::geom::attribute::{Attribute, AttributeStore, Behavior, ObjectKey};
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::object::{FaceKey, ObjectRef};
@@ -173,6 +173,22 @@ enum Fixture {
     },
     /// `SmApiCreateSphere(origin, radius)`.
     Sphere { origin: [f64; 3], radius: f64 },
+    /// An upstream ASCII `.smb` file (`{"$upstream_file": ..}` in the fixture):
+    /// `SmBrep::ReadFromFile` in the shim, read by the Rust reader on the Rust side
+    /// (`own_reader::read_file_or_fail`). The file keeps its own
+    /// tolerance, as `smOffsetTest.cpp`'s `ShellBrep` reads it; the case's
+    /// `tolerance` is not applied.
+    File { path: String },
+    /// A one-face cylinder sheet: `CreateFaceFromSurface` on a bounded `SmCylinder`
+    /// (X axis `(1,0,0)`, Y axis `(0,1,0)`, 0 to 360 degrees, `height` up, line
+    /// generator) over its natural domain, closed round along a seam edge. Thickened
+    /// (`create_offset_solid`), it is a tube whose end rings are the walls on its two
+    /// circles (tangency-labs/solidcore#1599).
+    CylinderSheet {
+        origin: [f64; 3],
+        radius: f64,
+        height: f64,
+    },
 }
 impl Fixture {
     fn native(&self) -> ffi::Fixture {
@@ -213,21 +229,39 @@ impl Fixture {
                 height,
             },
             Self::Sphere { origin, radius } => ffi::Fixture::Sphere { origin, radius },
+            Self::File { ref path } => ffi::Fixture::File { path: path.clone() },
+            Self::CylinderSheet {
+                origin,
+                radius,
+                height,
+            } => ffi::Fixture::CylinderSheet {
+                origin,
+                radius,
+                height,
+            },
         }
     }
-    /// Built by a native primitive constructor (and its Rust port).
+    /// Built by a native primitive constructor (and its Rust port), or read from an
+    /// upstream file: projected as a solid (face, edge and vertex counts and bounds).
     const fn primitive(&self) -> bool {
         matches!(
             self,
-            Self::Box { .. } | Self::Cylinder { .. } | Self::Sphere { .. }
+            Self::Box { .. }
+                | Self::Cylinder { .. }
+                | Self::Sphere { .. }
+                | Self::File { .. }
+                | Self::CylinderSheet { .. }
         )
     }
+    /// The face count a selection index is checked against; a file's faces are
+    /// only known once it is read, so its selections are checked when built.
     const fn face_count(&self) -> usize {
         match self {
             Self::Empty | Self::Wire { .. } => 0,
-            Self::PlaneSheet { .. } | Self::Sphere { .. } => 1,
+            Self::PlaneSheet { .. } | Self::Sphere { .. } | Self::CylinderSheet { .. } => 1,
             Self::Box { .. } => 6,
             Self::Cylinder { .. } => 3,
+            Self::File { .. } => ffi::MAX_FILE_FACES,
         }
     }
 }
@@ -335,6 +369,12 @@ struct Inputs {
     /// `plan/findings/offset.offset_executive_p2--exact-2tol-shell-heap-layout.md`).
     #[serde(default)]
     heap_ordered_vertices: bool,
+    /// Attributed case (#1462, fixtures only): every source face and edge gets its own
+    /// long attribute of this `SmAttributeBehaviorType` (0 to 4) before the call (the
+    /// shim's `SmLongAttribute`s, [`Brep::add_attribute`] here), and the result's face
+    /// and edge attribute sets are compared (`attributes`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attributed: Option<u8>,
 }
 impl Inputs {
     fn native(&self) -> ffi::Request {
@@ -345,6 +385,7 @@ impl Inputs {
             faces: self.faces.iter().copied().map(Selection::native).collect(),
             tolerance: self.tolerance,
             config: self.config.native(),
+            attributed: self.attributed,
         }
     }
 }
@@ -376,6 +417,9 @@ fn interval(range: [f64; 2], strict: bool) -> HResult<()> {
     Ok(())
 }
 fn validate(input: &Inputs) -> HResult<()> {
+    if input.attributed.is_some_and(|b| b > 4) {
+        return Err(bad("attributed behaviour outside SmAttributeBehaviorType"));
+    }
     let cfg = &input.config;
     finite(&[
         input.tolerance,
@@ -435,7 +479,7 @@ fn validate(input: &Inputs) -> HResult<()> {
     }
     for fixture in input.source.iter().chain(&input.foreign) {
         match *fixture {
-            Fixture::Empty => {}
+            Fixture::Empty | Fixture::File { .. } => {}
             Fixture::Wire {
                 start,
                 end,
@@ -493,6 +537,17 @@ fn validate(input: &Inputs) -> HResult<()> {
                 finite(&[height, origin[2] + height])?;
             }
             Fixture::Sphere { origin, radius } => primitive_finite(origin, radius)?,
+            Fixture::CylinderSheet {
+                origin,
+                radius,
+                height,
+            } => {
+                primitive_finite(origin, radius)?;
+                finite(&[height, origin[2] + height])?;
+                if radius <= 0.0 || height <= 0.0 {
+                    return Err(bad("cylinder sheet needs a positive radius and height"));
+                }
+            }
         }
     }
     Ok(())
@@ -642,6 +697,12 @@ fn primitive_finite(origin: [f64; 3], radius: f64) -> HResult<()> {
 }
 
 fn build(kernel: &mut Kernel, fixture: &Fixture, tolerance: f64, namespace: u64) -> HResult<Brep> {
+    if let Fixture::File { path } = fixture {
+        // The Rust reader alone (`SmBrep::ReadFromFile` into `new SmBrep(ctx)`, as the
+        // shim reads it); it records the geometry owners under arena identities, as a
+        // kernel-built B-rep does.
+        return crate::own_reader::read_file_or_fail(kernel, path);
+    }
     if let Fixture::Box { origin, size } = *fixture {
         return build_box(kernel, origin, size, tolerance);
     }
@@ -759,7 +820,55 @@ fn build(kernel: &mut Kernel, fixture: &Fixture, tolerance: f64, namespace: u64)
             )
             .map_err(setup)?;
         }
-        Fixture::Box { .. } | Fixture::Cylinder { .. } | Fixture::Sphere { .. } => {
+        Fixture::CylinderSheet {
+            origin,
+            radius,
+            height,
+        } => {
+            // The native fixture: `CreateFaceFromSurface(new SmCylinder(..),
+            // GetNaturalUVDomain())` on the new B-rep.
+            let surface = Surface::from(solidcore::surface::cone::p1::Cone::new_cylinder_bounded(
+                v3(origin),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.0, 1.0, 0.0),
+                radius,
+                0.0,
+                360.0,
+                height,
+                false,
+                false,
+                false,
+            ));
+            let domain = surface.natural_uv_domain_with_nurb(kernel).map_err(setup)?;
+            let mut records = solidcore::topology::topology::NotifyRecords::new();
+            let mut attributes = AttributeStore::default();
+            let key_of = |entity| notification_key(entity, namespace);
+            let mut env = solidcore::topology::edge::NotifyEnv {
+                records: &mut records,
+                attributes: &mut attributes,
+                context: None,
+                key_of: &key_of,
+            };
+            let mut marks = solidcore::topology::topology_traverser::Marks::default();
+            let this_face = |face: FaceId| key_of(EntityRef::Face(face));
+            let mut fenv = solidcore::topology::brep::p8::FaceBuildEnv {
+                env: &mut env,
+                marks: &mut marks,
+                this_face: &this_face,
+            };
+            solidcore::topology::brep::p8::create_face_from_surface(
+                kernel,
+                &mut brep,
+                Some(surface),
+                &domain,
+                &mut fenv,
+            )
+            .map_err(setup)?;
+        }
+        Fixture::Box { .. }
+        | Fixture::Cylinder { .. }
+        | Fixture::Sphere { .. }
+        | Fixture::File { .. } => {
             return Err(bad("primitive fixtures use the primitive constructors"))
         }
     }
@@ -788,8 +897,10 @@ fn build_box(
 
 const SOURCE: BrepId = BrepId::from_index(17);
 const FOREIGN: BrepId = BrepId::from_index(43);
+/// The `index`th face of the native `GetFaces` list (the order `observe_selections`
+/// reports): a file import's arena order need not follow it.
 fn face_at(brep: Option<&Brep>, index: usize) -> HResult<FaceId> {
-    brep.and_then(|brep| brep.faces().iter().nth(index).map(|(id, _)| id))
+    brep.and_then(|brep| brep.face_list().get(index).copied())
         .ok_or_else(|| bad("selected face absent from Rust origin traversal"))
 }
 fn selections(
@@ -1467,7 +1578,81 @@ fn native_output(input: &Inputs, snapshot: &ffi::Snapshot) -> HResult<Output> {
             .transpose()?;
         output = project_result(output, key, projection, input.heap_ordered_vertices);
     }
+    if input.attributed.is_some() {
+        let rows = snapshot
+            .attributes
+            .clone()
+            .ok_or_else(|| bad("native attributed snapshot without attributes"))?;
+        output = output.ints("attributes", rows);
+    }
     Ok(output)
+}
+
+/// The shim's `tag_source`: every face (`GetFaces` order) and edge (`GetEdges` order)
+/// gets its own long attribute, id = value = `ATTRIBUTE_BASE + index` (`+ 500` for an
+/// edge).
+fn tag_source(brep: &mut Brep, behavior: u8) -> HResult<()> {
+    let behavior =
+        Behavior::from_code(i32::from(behavior)).map_err(|e| bad(format!("behaviour: {e}")))?;
+    let faces = brep_p1::faces(brep, None).map_err(setup)?;
+    let edges = brep_p1::edges(brep, None).map_err(setup)?;
+    let tagged = faces
+        .into_iter()
+        .enumerate()
+        .map(|(i, f)| (EntityRef::Face(f), i as u64))
+        .chain(
+            edges
+                .into_iter()
+                .enumerate()
+                .map(|(i, e)| (EntityRef::Edge(e), 500 + i as u64)),
+        );
+    for (entity, offset) in tagged {
+        let id = ffi::ATTRIBUTE_BASE + offset;
+        let value = i64::try_from(id).map_err(|_| bad("attribute id overflow"))?;
+        brep.add_attribute(entity, Attribute::long(id, value, behavior))
+            .map_err(setup)?;
+    }
+    Ok(())
+}
+
+/// The shim's `put_attributes`: `present`, then `count` and the face rows then edge
+/// rows, each sorted; a row is `n` then per attribute (ascending) `id behavior value`.
+fn attribute_rows(brep: Option<&Brep>) -> HResult<Vec<i64>> {
+    let Some(brep) = brep else {
+        return Ok(vec![0]);
+    };
+    let row = |entity: EntityRef| -> Vec<i64> {
+        let mut entries: Vec<[i64; 3]> = brep
+            .entity_attributes(entity)
+            .into_iter()
+            .map(|(_, a)| {
+                [
+                    a.attribute_id() as i64,
+                    i64::from(a.behavior() as u8),
+                    a.long_value().unwrap_or(0),
+                ]
+            })
+            .collect();
+        entries.sort_unstable();
+        let mut row = vec![entries.len() as i64];
+        row.extend(entries.into_iter().flatten());
+        row
+    };
+    let mut rows = Vec::new();
+    let faces = brep_p1::faces(brep, None).map_err(setup)?;
+    let edges = brep_p1::edges(brep, None).map_err(setup)?;
+    for list in [
+        faces.into_iter().map(EntityRef::Face).collect::<Vec<_>>(),
+        edges.into_iter().map(EntityRef::Edge).collect(),
+    ] {
+        let mut part: Vec<Vec<i64>> = list.into_iter().map(row).collect();
+        part.sort();
+        rows.push(part.len() as i64);
+        rows.extend(part.into_iter().flatten());
+    }
+    let mut out = vec![1, rows.len() as i64];
+    out.extend(rows);
+    Ok(out)
 }
 fn native_outcome(input: &Inputs, outcome: ffi::Outcome) -> HResult<Output> {
     match outcome {
@@ -1703,6 +1888,9 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
     let mut attributes = AttributeStore::default();
     if let Some(brep) = source.as_mut() {
         register_notification_brep(&mut records, brep, NAMESPACE_SOURCE);
+        if let Some(behavior) = input.attributed {
+            tag_source(brep, behavior)?;
+        }
     }
     if let Some(brep) = foreign.as_mut() {
         register_notification_brep(&mut records, brep, NAMESPACE_FOREIGN);
@@ -1873,6 +2061,9 @@ fn rust_output(input: &Inputs) -> RResult<Output> {
         vec![i64::from(source_pure), i64::from(foreign_pure)],
     )
 ;
+    if input.attributed.is_some() {
+        output = output.ints("attributes", attribute_rows(result.as_ref())?);
+    }
     let heap_ordered = input.heap_ordered_vertices;
     output = project_result(output, "result", result_projection, heap_ordered);
     output = project_result(output, "executive_offset", offset_projection, heap_ordered);
@@ -1983,6 +2174,7 @@ fn generated(rng: &mut Rng) -> Inputs {
             skip_stitch_merge: flags & 16 != 0,
         },
         heap_ordered_vertices: false,
+        attributed: None,
     };
     match category {
         0 | 1 => {
@@ -2101,6 +2293,7 @@ mod tests {
             tolerance: 1e-6,
             config: Config::default(),
             heap_ordered_vertices: false,
+            attributed: None,
         }
     }
     fn case(input: &Inputs) -> Case {
@@ -2133,6 +2326,7 @@ mod tests {
             foreign_after: None,
             result: None,
             executive_offset: None,
+            attributes: None,
         }
     }
 

@@ -17,6 +17,7 @@
 //! | [`stitch_and_orient`] | `SmBrep::StitchAndOrient` |
 //! | [`squeeze_face`] | `SmBrep::SqueezeFace` |
 //! | [`transform`] | `SmBrep::Transform(const SmAxis2Placement&, ...)` (the 4x4 matrix overload is not owned by this unit) |
+//! | [`turn_to_nurbs_plain`] | `SmBrep::TurnToNURBS()` as a plain entry point (the edit is `topology.brep_p3`'s) |
 //! | [`PendingTopology`] | `SmPendingTopologyDelete` constructor/destructor and `Clear` (co-port) |
 //!
 //! Deviations: dependency-limited editing. All twelve owned editing
@@ -120,7 +121,8 @@ const OP: &str = "topology::brep::p5";
 
 /// Runs `f` with the caller's notification environment, or, for a plain entry point
 /// (`notifications` is `None`: the caller keeps no notification state of its own),
-/// with an [`brep_p2::ArenaNotifyState`] of `b` notifying through `context`. `f`'s last
+/// with an [`brep_p2::ArenaNotifyState`] of `b` (holding `b`'s own attributes for the
+/// edit) notifying through `context`. `f`'s last
 /// argument is the context the caller's own environment falls back to (`context`
 /// then; `None` for the arena state, which already holds it).
 pub(super) fn with_notifications<R>(
@@ -136,9 +138,13 @@ pub(super) fn with_notifications<R>(
     if let Some(env) = notifications {
         f(b, env, context)
     } else {
-        let mut state = brep_p2::ArenaNotifyState::new(b);
-        let mut env = state.env(context);
-        f(b, &mut env, None)
+        // (not upstream) with `b`'s own attributes, given back afterwards
+        let mut state = brep_p2::ArenaNotifyState::with_attributes_of(b);
+        let r = f(b, &mut state.env(context), None);
+        let restored = state.restore_attributes(b);
+        let r = r?;
+        restored?;
+        Ok(r)
     }
 }
 
@@ -757,8 +763,8 @@ pub fn delete_topological_vertex_with_notifications(
     // that metadata. Coincidence classification still handles equal geometry.
     let mut same_geometry = false;
     if !same_geometry {
-        let delete_curve = edge_curve(b, deleted)?;
-        let survive_curve = edge_curve(b, survivor)?;
+        let delete_curve = edge_curve_with_tolerance(b, deleted)?;
+        let survive_curve = edge_curve_with_tolerance(b, survivor)?;
         let deleted_range = delete_curve.natural_interval();
         let survivor_range = survive_curve.natural_interval();
         // The native overload defaults bSnapToEnds to TRUE. Its additional-work
@@ -767,7 +773,7 @@ pub fn delete_topological_vertex_with_notifications(
             crate::error::ignored(delete_curve.global_coincidence_checker::<JoinCurve>(
                 k,
                 &deleted_range,
-                survive_curve,
+                &survive_curve,
                 &survivor_range,
                 0.001,
                 true,
@@ -914,6 +920,16 @@ fn edge_curve(b: &Brep, edge: EdgeId) -> Result<&Curve> {
         .as_ref()
         .ok_or_else(|| SolidError::null_pointer(OP))
 }
+
+/// An evaluation copy of the edge's curve carrying the edge's tolerance
+/// ([`Curve::set_owner_zone_tol_3d`]), so the caches its solves build use it as
+/// upstream's over the edge-owned curve (`SmTol::GetApproxTol3d(&m_crCurve)`).
+fn edge_curve_with_tolerance(b: &Brep, edge: EdgeId) -> Result<Curve> {
+    let mut curve = edge_curve(b, edge)?.clone_for_evaluation()?;
+    curve.set_owner_zone_tol_3d(Some(b.edge(edge)?.tolerance));
+    Ok(curve)
+}
+
 /// The two curves of `DeleteTopologicalVertex`'s coincidence check as its solutions
 /// name them (upstream's `pDeleteCurve`, `pSurviveCurve`), with the natural interval
 /// `IdenticalSolutions` reads through them (`SmCurve::GetNaturalInterval`).
@@ -2693,6 +2709,18 @@ fn transform_in(
         }
     }
     Ok(())
+}
+
+/// `SmBrep::TurnToNURBS()` as a plain entry point (the caller keeps no notification
+/// state of its own: `plain_edit`), with the geometry owners [`transform`]'s
+/// conversion uses.
+///
+/// # Errors
+///
+/// Those of [`crate::topology::brep::p3::turn_to_nurbs`]; `InvalidInput` for a call
+/// inside another lent edit (before anything changes).
+pub fn turn_to_nurbs_plain(k: &mut Kernel, b: &mut Brep) -> Result<()> {
+    turn_to_nurbs(k, b, None)
 }
 
 /// `SmBrep::TurnToNURBS()` ([`crate::topology::brep::p3::turn_to_nurbs`]), notifying as

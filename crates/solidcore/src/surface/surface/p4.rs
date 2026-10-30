@@ -821,15 +821,19 @@ impl SurfaceEval<'_> {
     /// (`EvalNormal`, co-ported from unit `surface.surface_p3`): `Du x Dv`, at a
     /// singular point the mixed partial's cross product, then `EvaluateNormal`.
     ///
+    /// A failed evaluation does not stop it: as upstream, which ignores `Eval`'s
+    /// status, the normal is made from the matrix the failed evaluation wrote (the
+    /// derivatives before a failed zero-tangent correction).
+    ///
     /// # Errors
     ///
-    /// Those of [`SurfaceEval::eval`] (upstream ignores that status and reads the
-    /// stale matrix) and of `EvaluateNormal`.
+    /// [`SolidError::Unported`] from [`SurfaceEval::eval`]; those of `EvaluateNormal`.
     pub fn eval_normal(&mut self, k: &Kernel) -> Result<()> {
         if *self.state_mut().normal_set {
             return Ok(());
         }
-        self.eval()?;
+        // upstream ignores the status (`Eval();`) and reads the matrix as it stands
+        ignore_status(self.eval())?;
 
         let uv = self.uv();
         let (u_left, v_left) = self.sides();
@@ -1460,6 +1464,45 @@ impl Surface {
         )
     }
 
+    /// [`Surface::global_point_solve_into_with_context`] with the surface cache's point
+    /// testing off for the call (`m_bPointTestEnabled` FALSE, as `SmSurface::DropCurve`
+    /// sets it for its whole call): the fast drop keeps every solution, the face's trim
+    /// boundaries are not tested.
+    ///
+    /// # Errors
+    /// As [`Surface::global_point_solve_into_with_context`].
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn global_point_solve_into_with_context_point_test_off<O: SolutionObject>(
+        &self,
+        k: &Kernel,
+        surface: Option<O>,
+        cache: Option<&crate::surface::surface_cache::SurfaceCache<O>>,
+        context: &mut dyn super::p1::SurfaceSolveContext<O>,
+        uv_domain: &Extent2d,
+        op: SolverOperation,
+        test_point: Point3,
+        src_zone_tol_3d: f64,
+        opt_target_distance: Option<f64>,
+        requested: SolutionRequested,
+        solutions: &mut SolutionArray<O>,
+    ) -> Result<()> {
+        self.global_point_solve_in(
+            k,
+            surface,
+            cache,
+            Some(context),
+            uv_domain,
+            op,
+            test_point,
+            src_zone_tol_3d,
+            opt_target_distance,
+            requested,
+            solutions,
+            None,
+            true,
+        )
+    }
+
     /// [`Surface::global_point_solve`] of a face's surface by a caller that holds the
     /// face and the surface's cache: the trim boundary test of the fast drop
     /// (`pFace->PointClassify(uv, tol, TRUE, FALSE, ..)` of each solution, keeping
@@ -1622,12 +1665,24 @@ impl Surface {
                             }
                         }
                     } else {
-                        get_surface_cache(k, self, None::<NoObject>)?;
-                        // DISPATCH GAP: SmFace::PointClassify (bare face-owned surface without FaceQueries)
-                        return Err(SolidError::unported(
-                            "SmFace::PointClassify",
-                            "query.face_p2",
-                        ));
+                        // Without a context the surface's own cache is made here. For a
+                        // face-owned surface its trimmed cache needs the face's
+                        // topology, so `get_surface_cache` already returns `Unported`
+                        // when it would build one; a plain cache it falls back to is not
+                        // an SmTrimSrfCache (SM_CAST_PTR gives NULL): no test, as
+                        // upstream.
+                        let cache = get_surface_cache(k, self, None::<NoObject>)?;
+                        if cache.is_trimmed()
+                            && cache.point_test_enabled
+                            && !cache.face_was_modified
+                        {
+                            // SmFace::PointClassify of a bare face-owned surface: the
+                            // classifier is the context's FaceQueries
+                            return Err(SolidError::unported(
+                                "SmFace::PointClassify",
+                                "query.face_p2",
+                            ));
+                        }
                     }
                 }
 

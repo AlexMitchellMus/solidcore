@@ -175,15 +175,7 @@ fn disagreement_except(cpp: &[&[f64]], rust: &[&[f64]], skip: &[&str]) -> Option
 
 /// Files where upstream's result is a known C++ defect and the port's is right: the file,
 /// the quantities the defect affects (empty: the whole result) and the evidence.
-const KNOWN_CPP_DEFECTS: [(&str, &[&str], &str); 2] = [
-    (
-        "Fillet/sphere_diff_3cylinders.smb",
-        &["area", "volume"],
-        "plan/upstream-issues/WR-449--sphere-diff-3cylinders-one-fillet-face-integrates-0-6-too-large.md: \
-         upstream's fillet face 7 integrates 0.60 more area and 2.14 more volume than its five \
-         symmetric siblings, which the port matches; the trims differ on edge 30, made on demand \
-         (CreateUVTrimCurve / DropCurve / sm_FixUVTrimCurves), the diverging step not yet pinned",
-    ),
+const KNOWN_CPP_DEFECTS: [(&str, &[&str], &str); 1] = [
     (
         "Solids/fillet_ts.smb",
         &[],
@@ -482,10 +474,10 @@ pub fn run_child(args: &[String]) -> ExitCode {
 /// system temp directory for the C++ round trip's file and removed with everything in it
 /// when dropped (on every return path). `create_dir` fails on any existing entry,
 /// a planted symlink included, and the next name is tried.
-struct PrivateDir(PathBuf);
+pub(super) struct PrivateDir(pub(super) PathBuf);
 
 impl PrivateDir {
-    fn new() -> std::io::Result<Self> {
+    pub(super) fn new() -> std::io::Result<Self> {
         let base = std::env::temp_dir();
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

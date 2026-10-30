@@ -591,6 +591,9 @@ pub struct Curve {
     /// Not upstream: the memo of the curve's cache ([`CurveMemo`]), shared by clones
     /// and emptied by every edit of the geometry.
     memo: CurveMemo,
+    /// Not upstream: the tolerance of the edge whose shape this curve defines, with the
+    /// owner it was recorded under ([`Curve::set_owner_zone_tol_3d`]).
+    owner_zone_tol_3d: Option<(Option<ObjectRef>, f64)>,
 }
 
 /// The copy constructor: copies the geometry, resets the owner (and the identity: a
@@ -602,6 +605,7 @@ impl Clone for Curve {
             owner: None,
             notify_identity: IdentitySlot::new(),
             memo: self.memo.share(),
+            owner_zone_tol_3d: None,
         }
     }
 }
@@ -637,6 +641,7 @@ impl Curve {
             // an evaluation snapshot is never notified under the original's identity
             notify_identity: IdentitySlot::new(),
             memo: self.memo.share(),
+            owner_zone_tol_3d: self.owner_zone_tol_3d,
         }
     }
 }
@@ -794,6 +799,7 @@ impl Curve {
             owner: self.owner,
             notify_identity: IdentitySlot::new(),
             memo: self.memo.share(),
+            owner_zone_tol_3d: self.owner_zone_tol_3d,
         })
     }
 
@@ -806,6 +812,7 @@ impl Curve {
             owner: None,
             notify_identity: IdentitySlot::new(),
             memo: CurveMemo::new(),
+            owner_zone_tol_3d: None,
         }
     }
 
@@ -823,6 +830,7 @@ impl Curve {
             owner: None,
             notify_identity: IdentitySlot::new(),
             memo: CurveMemo::new(),
+            owner_zone_tol_3d: None,
         })
     }
 
@@ -1189,6 +1197,31 @@ impl Curve {
     #[must_use]
     pub const fn owner(&self) -> Option<ObjectRef> {
         self.owner
+    }
+
+    /// The tolerance of the edge whose shape this curve defines
+    /// (`SmTol::GetZoneTol3d(const SmObject*)` on a curve: `GetEdge()->GetTolerance()`),
+    /// when a caller holding the edge recorded it on this curve value
+    /// ([`Curve::set_owner_zone_tol_3d`]) and the owner has not changed since; `None`
+    /// otherwise (the curve's caches then use the system tolerance).
+    #[must_use]
+    pub fn owner_zone_tol_3d(&self) -> Option<f64> {
+        match self.owner_zone_tol_3d {
+            Some((recorded, tol)) if recorded == self.owner => Some(tol),
+            _ => None,
+        }
+    }
+
+    /// Records the tolerance of the edge whose shape this curve defines (`None` clears
+    /// it), for the caches built over this value (`SmCurve::CacheMakeOrValidate` reads
+    /// it through the owner, `SmTol::GetApproxTol3d(&m_crCurve)`). Not upstream: the
+    /// port's curves cannot reach their edge, so a caller that holds the edge records
+    /// its tolerance on its evaluation copy of the edge's curve
+    /// ([`Curve::clone_for_evaluation`] keeps it; a [`Clone`], a new curve without
+    /// owner as upstream's copy, does not). A later owner change
+    /// ([`Curve::set_owner`]) makes the record unreadable.
+    pub fn set_owner_zone_tol_3d(&mut self, tol: Option<f64>) {
+        self.owner_zone_tol_3d = tol.map(|t| (self.owner, t));
     }
 
     /// Sets the owner and returns the previous one (`SetOwner`), plus the
@@ -4053,6 +4086,21 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CurvePropertyGs<'t, O> {
         let k = self.kernel;
         self.local_solve_branch(k, branch)
     }
+
+    /// `SmGlobalSolver::IdenticalSolutions` (not overridden upstream), with the
+    /// solution curve's natural interval read from the curve the tree decomposes (see
+    /// `TreeCurves`), as for `CcGlobalSolver`.
+    fn identical_solutions(
+        &self,
+        sol1: &Solution<O>,
+        sol2: &Solution<O>,
+    ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
+        let domains = TreeCurves {
+            trees: [self.base.trees[0], None],
+            curves: [self.curve, None],
+        };
+        self.base.identical_solutions_in(sol1, sol2, &domains)
+    }
 }
 
 /// Curve/curve intersection global solver (`SmCCIGlobalSolver`): two curve trees,
@@ -4132,6 +4180,22 @@ impl<'t, O: SolutionObject + 't> GlobalSolve<'t, O> for CciGlobalSolver<'t, O> {
 
     fn local_solve(&mut self, branch: &Branch) -> Result<bool> {
         self.local_solve_branch(branch)
+    }
+
+    /// `SmGlobalSolver::IdenticalSolutions` (not overridden upstream), with each
+    /// solution curve's natural interval read from the curve its tree decomposes (see
+    /// `TreeCurves`), as for `CcGlobalSolver`.
+    fn identical_solutions(
+        &self,
+        sol1: &Solution<O>,
+        sol2: &Solution<O>,
+    ) -> Result<(SolutionPairType, Option<PreferredSolution>)> {
+        let trees = [self.base.trees[0], self.base.trees[1]];
+        let curves = self
+            .curves
+            .map_or([None, None], |[c1, c2]| [Some(c1), Some(c2)]);
+        let domains = TreeCurves { trees, curves };
+        self.base.identical_solutions_in(sol1, sol2, &domains)
     }
 }
 
@@ -4393,7 +4457,15 @@ mod tests {
         surface.set_owner(Some(face));
         surface.set_owner_zone_tol_3d(Some(0.125));
         let source = Curve::from(
-            IsoCurve::from_surface(surface, SurfParamType::U, 0.25, false, false).unwrap(),
+            IsoCurve::from_surface(
+                &Kernel::default(),
+                surface,
+                SurfParamType::U,
+                0.25,
+                false,
+                false,
+            )
+            .unwrap(),
         );
         let copy = source.clone_for_evaluation().unwrap();
         let CurveKind::Iso(iso) = copy.kind() else {
@@ -4485,7 +4557,8 @@ mod tests {
         loop {
             let mut s = SurfOfExtrusion::empty();
             s.gen_curve = Some(curve.clone());
-            match IsoCurve::from_surface(Surface::from(s), SurfParamType::U, 0.0, true, false) {
+            let k = Kernel::default();
+            match IsoCurve::from_surface(&k, Surface::from(s), SurfParamType::U, 0.0, true, false) {
                 Ok(iso) => curve = Curve::from(iso),
                 Err(e) => {
                     assert!(matches!(e, SolidError::InvalidInput { .. }));
@@ -4700,5 +4773,105 @@ mod tests {
             )
             .unwrap();
         assert_eq!(gap.max_distance, 1.0);
+    }
+
+    /// Curve handles that cannot report their curve's natural interval (as
+    /// `FilletObject` and `LoopObject` cannot) still get `IdenticalSolutions`' interval
+    /// from the curve their tree decomposes, as upstream reads it from the `SmCurve`:
+    /// a curve/curve intersection naming them merges as one naming interval-carrying
+    /// handles.
+    #[test]
+    fn curve_intersection_reads_bare_handles_intervals_from_the_trees() {
+        use crate::curve::curve::p8::CurveIntersectOptions;
+        use crate::geom::solution_array::ObjectKind;
+
+        #[derive(Debug, Clone, Copy, PartialEq)]
+        enum Bare {
+            A,
+            B,
+        }
+        impl SolutionObject for Bare {
+            fn kind(&self) -> ObjectKind {
+                ObjectKind::Curve
+            }
+        }
+        #[derive(Debug, Clone, Copy, PartialEq)]
+        struct Named(u8, Extent1d);
+        impl SolutionObject for Named {
+            fn kind(&self) -> ObjectKind {
+                ObjectKind::Curve
+            }
+            fn natural_interval(&self) -> Option<Extent1d> {
+                Some(self.1)
+            }
+        }
+
+        fn params<O>(sols: &[Solution<O>]) -> Vec<(u64, u64, u64)> {
+            sols.iter()
+                .map(|s| {
+                    (
+                        s.start.parameters[0].to_bits(),
+                        s.start.parameters[1].to_bits(),
+                        s.start.solution_value.to_bits(),
+                    )
+                })
+                .collect()
+        }
+
+        // two planar cubic waves, y = +-c * 6t(1-t)(1-2t) over x = 3t: they cross at
+        // t = 0, 1/2 and 1 (several solutions naming the same pair of curves)
+        let wave = |c: f64| {
+            let pts = [
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 2.0 * c, 0.0),
+                Vec3::new(2.0, -2.0 * c, 0.0),
+                Vec3::new(3.0, 0.0, 0.0),
+            ];
+            Curve::from(
+                BSplineCurve::create_canonical(&CanonicalData {
+                    dim: 3,
+                    degree: 3,
+                    control_points: &pts,
+                    form: BSplineCurveForm::Unspecified,
+                    knot_multiplicities: &[4, 4],
+                    knots: &[0.0, 1.0],
+                    knot_type: KnotType::Unspecified,
+                    weights: None,
+                    trim: None,
+                })
+                .unwrap(),
+            )
+        };
+        let (a, b) = (wave(1.0), wave(-0.5));
+        let k = Kernel::default();
+        let (ia, ib) = (a.natural_interval(), b.natural_interval());
+        let named = a
+            .global_curve_intersect(
+                &k,
+                &ia,
+                &b,
+                &ib,
+                1e-6,
+                &CurveIntersectOptions {
+                    handles: [Some(Named(0, ia)), Some(Named(1, ib))],
+                    ..CurveIntersectOptions::default()
+                },
+            )
+            .unwrap();
+        let bare = a
+            .global_curve_intersect(
+                &k,
+                &ia,
+                &b,
+                &ib,
+                1e-6,
+                &CurveIntersectOptions {
+                    handles: [Some(Bare::A), Some(Bare::B)],
+                    ..CurveIntersectOptions::default()
+                },
+            )
+            .unwrap();
+        assert!(named.len() >= 2, "{named:?}");
+        assert_eq!(params(bare.as_slice()), params(named.as_slice()));
     }
 }

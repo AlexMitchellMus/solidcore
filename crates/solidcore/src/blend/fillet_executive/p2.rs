@@ -18,6 +18,7 @@
 //! | `revert_change` (private) | `SmTemporaryRadiusChange::Revert` |
 //! | [`FilletLaw::linear`] | `SmLinearFilletLaw::SmLinearFilletLaw` |
 //! | [`FilletLaw::bspline_elliptical`] | `SmBSplineFilletLaw::SmBSplineFilletLaw` (elliptical blend) |
+//! | [`FilletLaw::bspline`] | `SmBSplineFilletLaw::SmBSplineFilletLaw(SmBSplineCurve*, const SmExtent1d&)` |
 //!
 //! Deviations:
 //! - **Object model.** As in `p3`, solvers, corners, fillet geometry, surface
@@ -220,6 +221,23 @@ impl FilletLaw {
         if let Some(map) = edge_map {
             law.edge_map = *map;
         }
+        if law.edge_map.length() < EFF_ZERO {
+            law.edge_map = Extent1d::from_raw(0.0, 1.0);
+        }
+        law
+    }
+
+    /// `SmBSplineFilletLaw(pCurve, crEdgeMap)`: the radius is the x coordinate of
+    /// `law_curve` (which the law takes over), and `edge_map` is the part of the
+    /// curve's parameter range that maps onto the edge; `[0, 1]` when it is shorter
+    /// than `SM_EFF_ZERO`.
+    #[must_use]
+    pub fn bspline(law_curve: BSplineCurve, edge_map: &Extent1d) -> Self {
+        let mut law = Self::new(FilletLawKind::BSpline {
+            law_curve,
+            extended_law: None,
+        });
+        law.edge_map = *edge_map;
         if law.edge_map.length() < EFF_ZERO {
             law.edge_map = Extent1d::from_raw(0.0, 1.0);
         }
@@ -644,6 +662,7 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
             .ok_or_else(|| first("no radius"))?;
         let mut generator: Option<O> = None;
 
+        let at_thirds = self.blend_curve_at_thirds;
         let generator_spec = |kind: FilletSurfaceGeneratorType, circular_tol: f64| match kind {
             FilletSurfaceGeneratorType::Linear => Some(FilletSurfaceGenerator::Linear),
             FilletSurfaceGeneratorType::Circular => Some(FilletSurfaceGenerator::circular(
@@ -652,10 +671,13 @@ impl<O: ClassObject + SolutionObject + Ord> FilletExecutive<O> {
                 false,
                 false,
             )),
-            FilletSurfaceGeneratorType::BlendCurve => Some(FilletSurfaceGenerator::blend_curve(
-                params.thumbweight,
-                params.continuity,
-            )),
+            FilletSurfaceGeneratorType::BlendCurve => {
+                Some(FilletSurfaceGenerator::blend_curve_at_thirds(
+                    params.thumbweight,
+                    params.continuity,
+                    at_thirds,
+                ))
+            }
             FilletSurfaceGeneratorType::Unknown => None,
         };
 
@@ -1921,6 +1943,31 @@ mod tests {
         assert_eq!((law.edge_map.min(), law.edge_map.max()), (0.25, 0.75));
         let short = Extent1d::from_min_max(0.5, 0.5);
         let law = FilletLaw::linear(1.0, 2.0, Some(&short));
+        assert_eq!((law.edge_map.min(), law.edge_map.max()), (0.0, 1.0));
+    }
+
+    #[test]
+    fn bspline_law_keeps_curve_and_edge_map() {
+        let curve = || {
+            BSplineCurve::create_line_segment(
+                3,
+                Point3::new(2.0, 0.0, 0.0),
+                Point3::new(4.0, 0.0, 0.0),
+            )
+            .unwrap()
+        };
+        let map = Extent1d::from_min_max(0.25, 0.75);
+        let law = FilletLaw::bspline(curve(), &map);
+        assert!(matches!(
+            law.kind,
+            FilletLawKind::BSpline {
+                extended_law: None,
+                ..
+            }
+        ));
+        assert_eq!((law.edge_map.min(), law.edge_map.max()), (0.25, 0.75));
+        let short = Extent1d::from_min_max(0.5, 0.5);
+        let law = FilletLaw::bspline(curve(), &short);
         assert_eq!((law.edge_map.min(), law.edge_map.max()), (0.0, 1.0));
     }
 

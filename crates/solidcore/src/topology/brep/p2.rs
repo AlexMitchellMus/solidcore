@@ -716,7 +716,7 @@ pub fn region_only_key(e: EntityRef) -> ObjectRef {
 pub struct RegionNotifyState {
     /// The regions' `SmTopology` records.
     pub records: crate::topology::topology::NotifyRecords,
-    /// The (empty) attribute store.
+    /// The attribute store (empty, or the edited B-rep's own attributes).
     pub attributes: AttributeStore,
 }
 
@@ -756,8 +756,8 @@ impl RegionNotifyState {
 /// without a notification environment, the heal path, `CopyEdges`). Upstream every object
 /// carries its `SmTopology` part and attributes; such a caller models neither, so the
 /// notification runs on a default record for every object of the B-rep, keyed by its
-/// arena identity (`loopuse::notify_ref`), and an
-/// empty attribute store. The records are never read back: they exist so that
+/// arena identity (`loopuse::notify_ref`), and an attribute store that is empty, or
+/// holds the B-rep's own attributes for the edit ([`Self::with_attributes_of`]). The records are never read back: they exist so that
 /// `SmTopology::Notify`'s flag propagation finds both objects, as upstream it always does.
 /// The identities are unique within one B-rep only.
 #[derive(Debug, Default)]
@@ -805,6 +805,31 @@ impl ArenaNotifyState {
         }
     }
 
+    /// [`Self::new`] holding `b`'s own attributes ([`Brep::add_attribute`], keyed by the
+    /// same arena identities), so the edit's notifications propagate them with SMLib's
+    /// handlers, as upstream's live on the objects the edit changes. `b` holds none
+    /// until [`Self::restore_attributes`] gives them back. Only for an edit of `b`
+    /// alone: a second B-rep [`Self::seed`]ed in shares its identities.
+    pub(crate) fn with_attributes_of(b: &mut Brep) -> Self {
+        let mut state = Self::new(b);
+        state.attributes = b.take_attributes();
+        state
+    }
+
+    /// Gives `b` the attributes this state's notifications left on its live objects
+    /// (pair of [`Self::with_attributes_of`]); the lists of objects the edit deleted
+    /// are cleared, as upstream's destructors do.
+    ///
+    /// # Errors
+    /// None in practice.
+    pub(crate) fn restore_attributes(&mut self, b: &mut Brep) -> Result<()> {
+        restore_decoded_attributes(
+            b,
+            core::mem::take(&mut self.attributes),
+            &crate::topology::loopuse::entity_of_notify_key,
+        )
+    }
+
     /// The [`NotifyEnv`] over this state, notifying through `context` (the kernel's,
     /// when the caller holds it mutably: its notify callbacks see the events, as upstream
     /// the B-rep's context's do).
@@ -819,6 +844,91 @@ impl ArenaNotifyState {
             key_of: &crate::topology::loopuse::notify_ref,
         }
     }
+}
+
+/// (not upstream: upstream attributes live on the objects.) Moves `source`, a B-rep's
+/// own attribute store (keyed by [`crate::topology::loopuse::notify_ref`]), into an
+/// operation's `store` under that operation's identities `key_of` of the same objects.
+///
+/// # Errors
+/// [`SolidError::InvalidInput`] for a list whose key names no object; a store that
+/// cannot grow.
+pub(crate) fn seed_brep_attributes(
+    store: &mut AttributeStore,
+    source: AttributeStore,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) -> Result<()> {
+    store.absorb(source, &|key| {
+        crate::topology::loopuse::entity_of_notify_key(key)
+            .map(|e| key_of(e).key)
+            .ok_or(SolidError::invalid_input(
+                "topology::brep::p2::seed_brep_attributes",
+                "attribute list names no object",
+            ))
+    })
+}
+
+/// (not upstream) Ends an operation's naming of `b`: `b`'s own attributes become the
+/// lists `store` holds for its live objects, named by `decode` (an operation identity
+/// to the entity it names); every other list is cleared, as upstream's object
+/// destructor does ([`AttributeStore::retain_rekeyed`]).
+///
+/// # Errors
+/// None in practice.
+pub(crate) fn restore_decoded_attributes(
+    b: &mut Brep,
+    mut store: AttributeStore,
+    decode: &dyn Fn(ObjectKey) -> Option<EntityRef>,
+) -> Result<()> {
+    if !store.attributed_objects().is_empty() {
+        let live = &*b;
+        let listed = live.listed_entities();
+        store.retain_rekeyed(&|key| {
+            decode(key)
+                .filter(|&e| live.still_has(&listed, e))
+                .map(|e| crate::topology::loopuse::notify_ref(e).key)
+        })?;
+    }
+    b.set_attributes(store);
+    Ok(())
+}
+
+/// [`restore_decoded_attributes`] for identities `key_of` without a decoder: `b`'s
+/// live objects are named by `key_of` and given the lists `store` holds for them;
+/// `store` itself is left as it is.
+///
+/// # Errors
+/// None in practice.
+pub(crate) fn restore_keyed_attributes(
+    b: &mut Brep,
+    store: &AttributeStore,
+    key_of: &dyn Fn(EntityRef) -> ObjectRef,
+) -> Result<()> {
+    if store.attributed_objects().is_empty() {
+        b.set_attributes(AttributeStore::default());
+        return Ok(());
+    }
+    let names: BTreeMap<ObjectKey, EntityRef> = live_entities(b)
+        .into_iter()
+        .map(|e| (key_of(e).key, e))
+        .collect();
+    restore_decoded_attributes(b, store.clone(), &|key| names.get(&key).copied())
+}
+
+/// Every live object of `b` that can carry attributes (all but the B-rep itself).
+fn live_entities(b: &Brep) -> Vec<EntityRef> {
+    let mut all = Vec::new();
+    all.extend(b.regions().iter().map(|(x, _)| EntityRef::Region(x)));
+    all.extend(b.shells().iter().map(|(x, _)| EntityRef::Shell(x)));
+    all.extend(b.faceuses().iter().map(|(x, _)| EntityRef::Faceuse(x)));
+    all.extend(b.faces().iter().map(|(x, _)| EntityRef::Face(x)));
+    all.extend(b.loopuses().iter().map(|(x, _)| EntityRef::Loopuse(x)));
+    all.extend(b.loops().iter().map(|(x, _)| EntityRef::Loop(x)));
+    all.extend(b.edgeuses().iter().map(|(x, _)| EntityRef::Edgeuse(x)));
+    all.extend(b.edges().iter().map(|(x, _)| EntityRef::Edge(x)));
+    all.extend(b.vertexuses().iter().map(|(x, _)| EntityRef::Vertexuse(x)));
+    all.extend(b.vertices().iter().map(|(x, _)| EntityRef::Vertex(x)));
+    all
 }
 
 /// The identities a rebuilt cache keys its edge/face owners by.
@@ -1601,8 +1711,16 @@ pub fn replace_surface(
     };
     // calls SmFace::Notify(SM_NO_CHANGE_GEOMETRY, ..) which tells all Face SmEdgeuses
     // and SmVertexuses to delete all their cached data
-    let old_surface =
-        face1::set_surface_notified(b, env, top_face, face_ref, new_surface, false, surface_refs)?;
+    let old_surface = face1::set_surface_notified(
+        k,
+        b,
+        env,
+        top_face,
+        face_ref,
+        new_surface,
+        false,
+        surface_refs,
+    )?;
 
     // default faceDomain to NewSurface Domain
     face2::set_uv_domain(b, top_face, &new_domain)?;
@@ -1918,7 +2036,7 @@ fn region_post_insert_shell(b: &mut Brep, r: RegionId, s: ShellId) -> Result<()>
 fn region_remove_shell(b: &mut Brep, s: ShellId) -> Result<()> {
     let r = shell_region(b, s)?.ok_or(null_deref("shell without region"))?;
     match shell::region_remove_shell(b, r, s) {
-        Err(SolidError::InvalidInput { .. }) | Ok(()) => Ok(()),
+        Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) | Ok(()) => Ok(()),
         Err(e) => Err(e),
     }
 }
@@ -2016,7 +2134,8 @@ pub struct MergedCurves {
 }
 
 /// `MergeCurvesOnSurface`: merges the 3D `curves` (with optional UV curves
-/// `uv_curves`, used on the first face only) lying on the surface of `face` into the
+/// `uv_curves`, one entry per curve, `None` for upstream's null entry; used on the first
+/// face only) lying on the surface of `face` into the
 /// face, splitting it (and the faces split off it) into new faces. Curves shorter than
 /// `tolerance` are skipped. Each curve is classified against each face
 /// in place ([`curve_on_classify_mut`]), coincident-maybe intervals are squeezed, the
@@ -2040,7 +2159,7 @@ pub fn merge_curves_on_surface<O: ClassObject + Copy>(
     face: FaceId,
     tolerance: f64,
     curves: &[O],
-    uv_curves: Option<&[O]>,
+    uv_curves: Option<&[Option<O>]>,
     options: MergeCurvesOptions<O>,
 ) -> Result<MergedCurves> {
     // check state - m_bEditingEnabled must be on
@@ -2062,7 +2181,7 @@ fn merge_curves_body<O: ClassObject + Copy>(
     face: FaceId,
     tolerance: f64,
     curves: &[O],
-    uv_curves: Option<&[O]>,
+    uv_curves: Option<&[Option<O>]>,
     options: MergeCurvesOptions<O>,
 ) -> Result<MergedCurves> {
     let mut out = MergedCurves::default();
@@ -2090,7 +2209,7 @@ fn merge_curves_body<O: ClassObject + Copy>(
 
             // on first face iter - get UVCurve if given
             let uv_curve = match (uv_curves, jj) {
-                (Some(uv), 0) => Some(*uv.get(ii).ok_or(null_deref("missing UV curve"))?),
+                (Some(uv), 0) => *uv.get(ii).ok_or(null_deref("missing UV curve"))?,
                 _ => None,
             };
 

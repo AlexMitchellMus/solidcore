@@ -99,18 +99,19 @@ use crate::geom::extent2d::Extent2d;
 use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::tol::{approx_tol3d, zone_tol3d};
 use crate::geom::vector2d::Point2;
+use crate::intersect::surface_drop_lib::p3::DropSolveContext;
 use crate::intersect::surface_intersector::p1::{SrfIndex, TsectPnt};
 use crate::kernel::Kernel;
 use crate::math::{Point3, Vec3, BIG_DOUBLE, EFF_ZERO, PI};
 use crate::nurbs::b_spline_curve::BSplineCurve;
 use crate::nurbs::b_spline_curve_n_lib::TrimMode;
-use crate::nurbs::b_spline_surface::BSplineSurface;
 use crate::nurbs::b_spline_surface_n_lib::p2::{EvaluateFlags, OrientType};
 use crate::nurbs::knots::Side;
 use crate::surface::plane::Plane;
 use crate::surface::surface::p2::SurfaceIntersection;
 use crate::surface::surface::p4::NoObject;
 use crate::surface::surface::{Surface, SurfaceKind};
+use crate::topology::brep_cache::CacheObject;
 use crate::topology::edgeuse::p1::{self as eu1, primary_edgeuse};
 use crate::topology::edgeuse::p3::{
     evaluate_binormal, get_or_create_uv_trim_curve, BinormalOptions,
@@ -558,18 +559,6 @@ const fn is_b_spline_kind(c: &Curve) -> bool {
     )
 }
 
-/// `SM_CAST_PTR(SmBSplineSurface, ..)`: the B-spline net of a B-spline surface, a
-/// plane or a surface of revolution.
-const fn b_spline_net(s: &Surface) -> Option<&BSplineSurface> {
-    match s.kind() {
-        SurfaceKind::BSpline(b) => Some(b),
-        SurfaceKind::Plane(p) => Some(p.base()),
-        SurfaceKind::SurfOfRevolution(r) => Some(r.base()),
-        SurfaceKind::SurfOfExtrusion(r) => Some(r.base()),
-        _ => None,
-    }
-}
-
 /// `pSurface->DropCurve(crContext, crDomain, cr3dCurve, crInterval, dApproxTol,
 /// rdMaxDist, rdDeviation, rUVCurves)` with the defaults (`bKeepAllDropCurves =
 /// TRUE`, no fail record, `bCreatingUVTrimCurve = TRUE`): the UV curves
@@ -586,6 +575,32 @@ pub(super) fn surface_drop_curve(
     // no failure record (`pOptDropCurveFail = NULL`)
     Ok(surface
         .drop_curve::<NoObject>(k, domain, curve, interval, approx_tol, true, None, true)?
+        .uv_curves)
+}
+
+/// [`surface_drop_curve`] onto a face's surface under the caller's face context
+/// (`context.handle` names the surface in its cache), so the drop's surface cache is
+/// the face's trimmed one, as upstream's `smsurf_GetSurfaceCache` finds it through
+/// `GetFace()`.
+///
+/// # Errors
+///
+/// As [`surface_drop_curve`], and those of the context.
+pub(super) fn surface_drop_curve_with_context(
+    k: &Kernel,
+    surface: &Surface,
+    domain: &Extent2d,
+    curve: &Curve,
+    interval: &Extent1d,
+    approx_tol: f64,
+    context: DropSolveContext<'_, CacheObject>,
+) -> Result<Vec<Curve>> {
+    let approx_tol = approx_tol3d(k, approx_tol);
+    // no failure record (`pOptDropCurveFail = NULL`)
+    Ok(surface
+        .drop_curve_with_context::<CacheObject>(
+            k, domain, curve, interval, approx_tol, true, None, true, context,
+        )?
         .uv_curves)
 }
 
@@ -2402,14 +2417,18 @@ impl FilletBrep {
             .ok_or_else(|| SolidError::null_pointer(OP))?
             .clone();
         let face_srf = &face_srf;
-        let surf_net = b_spline_net(face_srf).ok_or_else(|| SolidError::null_pointer(OP))?;
+        // SM_CAST_PTR(SmBSplineSurface, ..) and NER: every kind derived from
+        // SmBSplineSurface (planes, cones and cylinders, spheres, tori, surfaces of
+        // revolution and extrusion), with the NURB its GetDegree reads
+        let surf_net = crate::topology::brep::p3::with_nurb(k, face_srf)?
+            .ok_or_else(|| SolidError::null_pointer(OP))?;
         let uv_domain = face_srf.natural_uv_domain_with_nurb(k)?;
         let tol = face2::tolerance(target, face)?;
 
         // Determine if we want to work on 2D or 3D
         let mut project_and_lift = false;
         let mut create_crv_on_3d = false;
-        let is_plane = match Plane::is_nurb_surface_plane(k, surf_net, 1.0) {
+        let is_plane = match Plane::is_nurb_surface_plane(k, &surf_net, 1.0) {
             Ok(p) => p.is_some(),
             Err(err) if err.is_unported() => return Err(err),
             // an SER status inside is a TRUE return upstream

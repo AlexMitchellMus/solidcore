@@ -88,7 +88,9 @@
 //!   `MakeFaceTopology` names the face by the notification environment's identity
 //!   and builds it on a copy of the surface (with no surface identity: its owner
 //!   changes are not notified), which `MakeFace` then replaces with its own
-//!   (upstream: one shared surface whose owner `MakeFace` restores). It claims its
+//!   (upstream: one shared surface whose owner `MakeFace` restores). The copy shares
+//!   the original's cache slot, so a surface cache built while making the face stays
+//!   with the installed surface as upstream's does. It claims its
 //!   marks through a fresh [`Marks`] record per call, as each call takes a new mark.
 //! - **Original-surface transfer ownership (#894).** Deliberately correcting pinned
 //!   C++ `SmBrep.cpp:18859-18889`, the original-transfer path never restores the old
@@ -330,17 +332,6 @@ fn make_topology_from_data(
     );
     env.all_attributes = saved;
     r
-}
-
-/// `SmFace::Notify(op, data1, data2, data3)` on face `f` (`None` for a null datum or for
-/// the B-rep, which has no identity here).
-fn face_notify(
-    b: &mut Brep,
-    f: FaceId,
-    op: NotifyOperation,
-    data: [Option<EntityRef>; 3],
-) -> Result<()> {
-    crate::topology::loopuse::face_notify_data(b, f, op, data)
 }
 
 /// `SmFace::SetTolerance(tol, bUpdateOnlyIfLarger, bCascadeToBndries)` (`SM_USE_OLDTOL`).
@@ -906,7 +897,10 @@ fn make_face_transfer_attempt_with_state(
         surface_key: None,
     };
     let attempt = if legacy {
-        let mut copy = p6::FaceSurfaceTransfer::new(transfer.owned_surface()?.clone());
+        // The copy shares the original's caches: upstream builds the face on the one
+        // surface `MakeFace` keeps, so a cache made while building it stays with it.
+        let mut copy =
+            p6::FaceSurfaceTransfer::new(transfer.owned_surface()?.clone_sharing_cache());
         p6::make_face_topology_transfer_attempt_with_state(
             k,
             b,
@@ -2162,12 +2156,25 @@ pub fn copy_faces(
                 if let Some(nf) = made.face {
                     new_faces.push(nf);
                 }
-                // SmFace::Notify(SM_NO_COPY, pNewFace, pDestinationBrep, this)
-                face_notify(
+                // SmFace::Notify(SM_NO_COPY, pNewFace, pDestinationBrep, this), through
+                // the caller's records and attributes (the B-reps have no identity
+                // here). Both faces are SmTopology objects upstream, the new one with
+                // the default record its constructor gives it, so a face the caller
+                // has no record for gets one (#1628: a fresh empty map failed as soon
+                // as the new face's identity differed from the source face's).
+                let this = (env.key_of)(EntityRef::Face(f));
+                let new_face = made.face.map(this_face);
+                env.records.or_default(this.key);
+                if let Some(nf) = new_face {
+                    env.records.or_default(nf.key);
+                }
+                crate::topology::face::p3::notify(
                     src,
                     f,
+                    env,
+                    None,
                     NotifyOperation::Copy,
-                    [made.face.map(EntityRef::Face), None, None],
+                    [new_face, None, None],
                 )?;
             }
             Err(e) if e.is_unported() => return Err(e),

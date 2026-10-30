@@ -1,8 +1,8 @@
 //! Differential checks of B-rep pointer reports and coincidence pairs against the
 //! unchanged c9c5979 C++ reference. The Rust side builds a [`BrepIn`] source itself
 //! ([`crate::own_builder`], and the shim's `SmBrepConstructor` sheet grids through
-//! [`sheet_grid`], in the shim's call order); `.smb` files export their actual
-//! topology, geometry ownership and global list order, which the Rust side imports. Post-call curve samples compare the
+//! [`sheet_grid`], in the shim's call order) and reads an `.smb` file with the Rust reader
+//! ([`crate::own_reader::brep_in_order`]), both under this runner's conventions. Post-call curve samples compare the
 //! reversal repairs and lazily created UV curves made by the checks themselves.
 use super::topology_edgeuse_p1::{brep_block_of, import_raw_with_types, path_of, BrepIn};
 use crate::{Case, HarnessError, Output, Rng, UnitDiff};
@@ -270,6 +270,9 @@ fn imported(export: &[f64]) -> Result<Brep, HarnessError> {
 fn own_face_owner(f: FaceId) -> ObjectRef {
     key(EntityRef::Face(f))
 }
+fn own_edgeuse_owner(eu: EdgeuseId) -> ObjectRef {
+    key(EntityRef::Edgeuse(eu))
+}
 fn own_edge_owner(e: EdgeId) -> (ObjectRef, ObjectRef) {
     (
         key(EntityRef::Edge(e)),
@@ -282,16 +285,20 @@ const CONVENTIONS: crate::own_builder::Conventions<'static> = crate::own_builder
     prefix_lists: false,
     vertex_edge_gaps: false,
     vertex_lists_last: false,
+    skip_edge_list: false,
     face_owner: &own_face_owner,
     edge_owner: &own_edge_owner,
+    edgeuse_owner: &own_edgeuse_owner,
 };
 /// The Rust B-rep of a [`BrepIn`] source built by the Rust kernel
-/// ([`crate::own_builder`]: native lists, face uses and geometry owners, `Notify`
-/// naming as [`imported`] sets it; the `SmBrepConstructor` sheet grids `grid_faces` and
-/// `shared_boundaries` through [`sheet_grid`]), or the output of a failed build. `None`
-/// for the source still imported from the shim's export: an `.smb` file.
+/// ([`crate::own_builder`], and the `SmBrepConstructor` sheet grids `grid_faces` and
+/// `shared_boundaries` through [`sheet_grid`], in the shim's call order) or, for an `.smb`
+/// file, read by the Rust reader and renumbered into the shim's traversal order
+/// ([`crate::own_reader::brep_in_order`]): native lists, face uses and geometry owners
+/// under [`CONVENTIONS`], `Notify` naming as [`imported`] sets it. A failed build is the
+/// shim's failed construction; a failed read is a Rust divergence, reported as an error.
 fn own_brep(i: &Inputs) -> Result<Option<Result<Brep, Output>>, HarnessError> {
-    use crate::own_builder::{build_with, finish, in_new_brep, Built};
+    use crate::own_builder::{finish, in_new_brep, Built};
     let mut k = Kernel::default();
     // the sheet grids (`shared_boundaries` first, as the shim's dispatch reads it)
     let grid = match (i.shared_boundaries, i.grid_faces) {
@@ -299,23 +306,28 @@ fn own_brep(i: &Inputs) -> Result<Option<Result<Brep, Output>>, HarnessError> {
         (None, Some(count)) => Some((count, 0)),
         (None, None) => None,
     };
+    let file = matches!(i.brep, BrepIn::File { .. });
     let built = match grid {
         Some((count, shared)) => {
             let raw = in_new_brep(&mut k, |k, b| sheet_grid(k, b, count, shared))?;
-            Some(finish(&mut k, raw, false, false, &CONVENTIONS)?)
+            finish(&mut k, raw, false, false, &CONVENTIONS)?
         }
-        None => build_with(&mut k, &i.brep, false, false, &CONVENTIONS)?,
+        None => crate::own_reader::brep_in_order(&mut k, &i.brep, false, false, &CONVENTIONS)?,
     };
-    Ok(match built {
-        None => None,
-        Some(Built::Brep(b)) => {
+    Ok(Some(match built {
+        Built::Brep(b) => {
             let mut b = *b;
             b.set_naming(NamingScheme::Notify);
-            Some(Ok(b))
+            Ok(b)
         }
-        Some(Built::Failed(e)) => Some(Err(Output::unported(&e)
-            .unwrap_or_else(|| Output::rejected("native fixture construction failed")))),
-    })
+        Built::Failed(e) => Err(Output::unported(&e).unwrap_or_else(|| {
+            if file {
+                Output::err(format!("rust read failed: {e}"))
+            } else {
+                Output::rejected("native fixture construction failed")
+            }
+        })),
+    }))
 }
 fn orient(v: f64) -> OrientType {
     match v as u8 {
