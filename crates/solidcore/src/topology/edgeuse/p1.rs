@@ -94,7 +94,6 @@
 
 use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
-use crate::geom::attribute::ObjectKey;
 use crate::geom::extent1d::Extent1d;
 use crate::geom::global_solver::SolverOperation;
 use crate::geom::local_solve_nd::EvalNFunctions;
@@ -830,28 +829,14 @@ pub fn set_uv_trim_curve(
     Ok(detached)
 }
 
-/// The identity edge use `eu` of `b` owns geometry under: for a
-/// [`NamingScheme::Caller`] B-rep the caller's key recorded for it where the B-rep was
-/// built (`Brep::geometry_owner_key`; `None` when none is recorded), else
-/// [`owner_ref`] of `b`'s naming.
+/// The identity edge use `eu` of `b` owns geometry under ([`Brep::owner_identity`]:
+/// for a [`NamingScheme::Caller`] B-rep the key recorded for it, else its scheme's,
+/// the identity `check_brep` checks the owner against); `None` when the B-rep records
+/// no scheme.
 pub(crate) fn owner_ref_in(b: &Brep, eu: EdgeuseId) -> Option<ObjectRef> {
     match b.naming() {
-        NamingScheme::Caller => b.geometry_owner_key(EntityRef::Edgeuse(eu)),
-        naming => owner_ref(naming, eu),
-    }
-}
-
-/// The identity edge use `eu` owns geometry under in a B-rep with naming `naming`
-/// ([`NamingScheme`]); `None` when the B-rep records no scheme, or names its owners by
-/// a caller's keys (see [`owner_ref_in`]).
-pub(crate) fn owner_ref(naming: NamingScheme, eu: EdgeuseId) -> Option<ObjectRef> {
-    match naming {
-        NamingScheme::Unknown | NamingScheme::Caller => None,
-        NamingScheme::Notify => Some(crate::topology::loopuse::notify_ref(EntityRef::Edgeuse(eu))),
-        NamingScheme::Arena => Some(ObjectRef {
-            type_code: TYPE,
-            key: ObjectKey(u64::from(eu.index())),
-        }),
+        NamingScheme::Unknown => None,
+        _ => Some(b.owner_identity(EntityRef::Edgeuse(eu))),
     }
 }
 

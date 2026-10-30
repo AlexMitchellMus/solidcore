@@ -339,8 +339,10 @@ mod tests {
         // A UV trim curve named by its B-rep's naming scheme (`SetUVTrimCurve`): the
         // intermediate box has an edge use of the same index and notify identity, so
         // the name resolves only in the walked curve's own body.
-        let named = crate::topology::edgeuse::p1::owner_ref(NamingScheme::Notify, eu);
-        assert!(named.is_some());
+        let named = Some(crate::topology::scheme_owner_identity(
+            NamingScheme::Notify,
+            EntityRef::Edgeuse(eu),
+        ));
         assert_ne!(named, Some(eu_ref));
         view.target.edgeuse_mut(eu).unwrap().uv_trim_curve = Some(line_owned_by(named));
         assert_eq!(
