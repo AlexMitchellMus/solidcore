@@ -941,10 +941,11 @@ mod tests {
         // Upstream accepts a pass when its last row (or column) of patches is within
         // `tol`: `bFailed` starts over with every row (SmSurface.cpp, the `outer`
         // loop), so a pass can succeed with an earlier row outside `tol`. Its
-        // achieved tolerance is the largest deviation over the whole pass: measured
-        // 1.6208e-3 here (CI run 41056645247), within twice `tol`.
+        // achieved tolerance is the largest deviation over the whole pass, above `tol`
+        // here. Pinned (the kernel is deterministic): any change in the fit shows.
+        let want = 0.001_620_828_043_730_338_3;
         assert!(
-            r.achieved_tol > 0.0 && r.achieved_tol <= 2.0 * tol,
+            (r.achieved_tol - want).abs() <= 1e-12 * want,
             "{}",
             r.achieved_tol
         );
