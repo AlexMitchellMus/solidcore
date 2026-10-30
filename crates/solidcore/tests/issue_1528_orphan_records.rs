@@ -57,7 +57,7 @@ fn box_less_cylinder(k: &mut Kernel, height: f64) -> Brep {
 
 /// The face and edge arenas of `b` hold exactly the B-rep's face and edge lists: the
 /// only list-only removals of faces and edges were `DeleteFace` and `SqueezeEdge`'s
-/// (GlueEdges destroys its deleted edge's record). The other arenas are printed, not
+/// (`GlueEdges` destroys its deleted edge's record). The other arenas are printed, not
 /// checked: vertices (`topology.brep_p5`'s list-only removal), regions, face uses,
 /// loops and the use records may still be left by paths outside this fix (finding
 /// `plan/findings/topology.brep--orphaned-arena-records-2026-10-26.md`); the follow-up
