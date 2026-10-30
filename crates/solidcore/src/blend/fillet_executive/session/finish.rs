@@ -19,6 +19,10 @@
 //! session store. With the opt-in `Kernel::fixes.fillet_refuse_non_manifold_result`
 //! `do_fillet` ends with the closed-manifold check of the generic
 //! `FilletExecutive::do_fillet` (not upstream, WR-212, tangency-labs/solidcore#422).
+//! After the in-place merge (also on error) the geometry bound to the target's
+//! edges, edge uses and faces under the session's kernel identities is rebound to the
+//! target's naming, as the piecewise merge does (owners are pointers upstream;
+//! tangency-labs/solidcore#423).
 //! No public API entry point reaches `DoPiecewiseMerge` or a live-session
 //! `IntersectInsertRelate` (global merge): `SetFilletParameters` resets both flags;
 //! [`FilletSession::set_do_piecewise_merge`] selects the piecewise merge after it.
