@@ -435,7 +435,7 @@ pub fn validate_pointers(
         r.check(b, 9, surface.owner().is_some(), Object::Surface(f))?;
         if !face
             .uv_domain
-            .is_contained_by(&surface.natural_uv_domain(), EFF_ZERO)
+            .is_contained_by(&surface.natural_uv_domain_with_nurb(k)?, EFF_ZERO)
         {
             r.check(b, 11, false, Object::Surface(f))?;
         }
@@ -491,7 +491,11 @@ pub fn validate_pointers(
         }
         let loops = face2::loops(b, f, false, None)?;
         for (j, &l) in loops.iter().enumerate() {
-            r.check(b, 29, b.loop_(l)?.face == f, EntityRef::Loop(l))?;
+            // SmBrep.cpp:31357 `pL->GetFace() == pF`; SmLoop::GetFace is
+            // m_pLU->GetFaceuse()->GetFace() (SmLoop.h:61), not the port's Loop::face cache
+            let loop_face =
+                crate::topology::integrity::derived_loop_face(b, l).unwrap_or(b.loop_(l)?.face);
+            r.check(b, 29, loop_face == f, EntityRef::Loop(l))?;
             let Some(lu) = b.loop_(l)?.loopuse else {
                 r.check(b, 30, false, EntityRef::Loop(l))?;
                 return Ok(0);
@@ -1024,6 +1028,7 @@ fn fix_reversed_on(
 ) -> Result<()> {
     use crate::curve::curve::CurveKind;
     let owner = c.owner();
+    let edge_zone_tol_3d = c.owner_zone_tol_3d();
     let base = match c.kind_mut() {
         CurveKind::BSpline(base) => base,
         CurveKind::Line(line) => {
@@ -1034,7 +1039,7 @@ fn fix_reversed_on(
         }
         CurveKind::Ellipse(ellipse) => {
             if ellipse.base().gw_nurb().is_none() {
-                ellipse.make_nurb_owned(k, owner)?;
+                ellipse.make_nurb_owned_with_edge_tol(k, owner, edge_zone_tol_3d)?;
             }
             ellipse.base_mut()
         }
@@ -1325,7 +1330,7 @@ mod issue_891_tests {
                 ..Region::default()
             })
             .unwrap();
-        let mut records = BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let mut env = ed::NotifyEnv {
             records: &mut records,

@@ -140,6 +140,10 @@
 //!   the earlier [`SolidError::Unported`] deferral, and an `IsConnectedTo` target in another
 //!   B-rep is connected to nothing. `SmFace::IsConnectedTo` (`topology.face_p4`) and the
 //!   B-rep of `GetBrep` (a [`BrepId`] the handle hooks cannot name) are still unported.
+//! - **Opt-in (WR-537).** With `Kernel::fixes.seam_point_solutions_are_one`,
+//!   `ComputePointParameters` keeps the nearest of a face or surface solve's solutions
+//!   when they all evaluate to one point within the source zone tolerance (a point on a
+//!   closed face's seam; the fork's tangency-labs/smlib@577f7be).
 //! - **Not in this unit.** `GetLoop`, `GetSurfaceObject`, `GetVolumeObject`,
 //!   `operator==`, `AssertValid`, `Dump`, `Draw` and the RTTI of
 //!   `SmPointClassification` are unreachable from the in-scope entry points
@@ -633,6 +637,9 @@ impl<O: ClassObject> PointClassification<O> {
                         Some(_) => return Err(wrong_entity(OP_GEOMETRY)),
                         // UNPORTED(topology.edge): SmEdge::GetBrep (of SmCurve::GetEdge; an
                         // adapter that cannot resolve the owning edge)
+                        // Proof (unreachable): fires only for an adapter whose owner_entity
+                        // fails on this owner; the library adapters resolve it; 0 hits in
+                        // the green difftest sweep.
                         None => {
                             return Err(SolidError::unported("SmEdge::GetBrep", "topology.edge"))
                         }
@@ -651,6 +658,9 @@ impl<O: ClassObject> PointClassification<O> {
                         Some(_) => return Err(wrong_entity(OP_GEOMETRY)),
                         // UNPORTED(topology.face_p4): SmFace::GetBrep (of SmSurface::GetFace;
                         // an adapter that cannot resolve the owning face)
+                        // Proof (unreachable): fires only for an adapter whose owner_entity
+                        // fails on this owner; the library adapters resolve it; 0 hits in
+                        // the green difftest sweep.
                         None => {
                             return Err(SolidError::unported("SmFace::GetBrep", "topology.face_p4"))
                         }
@@ -778,7 +788,7 @@ impl<O: ClassObject> PointClassification<O> {
 
         // else - in surface gaps
         // Get Object Point
-        let uv_domain = surface.natural_uv_domain();
+        let uv_domain = surface.natural_uv_domain_with_nurb(k)?;
         let obj_pt_3d = ignored(self.find_obj_point_3d(k, geometry))?.unwrap_or(Vec3::UNDEF);
         let obj_zone_tol_3d = self.obj_zone_tol_3d(k, geometry)?;
 
@@ -1180,7 +1190,9 @@ impl<O: ClassObject> PointClassification<O> {
             // set vertex position when appropriate
             if self.point_class == Pc::Vertex {
                 let Some(set_vertex_point) = set_vertex_point else {
-                    // UNPORTED(topology.vertex): SmVertex::SetPoint
+                    // DISPATCH GAP: SmVertex::SetPoint (topology.vertex, green)
+                    // Proof (unreachable): needs a None vertex setter with an SSS point on
+                    // a vertex class; 0 hits in the green difftest sweep.
                     return Err(SolidError::unported(
                         "SmVertex::SetPoint",
                         "topology.vertex",
@@ -1276,7 +1288,7 @@ impl<O: ClassObject> PointClassification<O> {
             PointClassType::Surface => {
                 let s = self.surface_of(geometry, OP_COMPUTE)?;
                 let o = self.object.ok_or_else(|| null_object(OP_COMPUTE))?;
-                obj_surface = Some((DropTarget::Surface(o), s.natural_uv_domain()));
+                obj_surface = Some((DropTarget::Surface(o), s.natural_uv_domain_with_nurb(k)?));
             }
             PointClassType::Volume => {
                 obj_volume = Some(
@@ -1334,6 +1346,16 @@ impl<O: ClassObject> PointClassification<O> {
             // find point/face->surface intersection point to face->Tolerance
             let mut solutions =
                 access.global_point_solve(k, target, &uv_domain, point, self.src_zone_tol_3d)?;
+            // not upstream (WR-537, opt-in): solutions that are one point are one
+            if k.fixes.seam_point_solutions_are_one {
+                one_point(
+                    k,
+                    access.geometry(),
+                    target,
+                    &mut solutions,
+                    self.src_zone_tol_3d,
+                )?;
+            }
 
             // when a distinct solution was not found
             if solutions.len() != 1 {
@@ -1345,6 +1367,15 @@ impl<O: ClassObject> PointClassification<O> {
                     point,
                     zone_tol3d(k, self.src_zone_tol_3d * 100.0),
                 )?;
+                if k.fixes.seam_point_solutions_are_one {
+                    one_point(
+                        k,
+                        access.geometry(),
+                        target,
+                        &mut solutions,
+                        self.src_zone_tol_3d,
+                    )?;
+                }
 
                 // still no solutions - return an error
                 if solutions.len() != 1 {
@@ -1849,6 +1880,9 @@ pub fn object_zone_tol_3d<O: ClassObject>(
                         Some(_) => Err(wrong_entity(OP_GEOMETRY)),
                         // UNPORTED(topology.face_p2): SmFace::GetTolerance (a bare face
                         // owner the adapter cannot resolve)
+                        // Proof (unreachable): a B-rep face's surface carries the face
+                        // tolerance (Brep::sync_face_surface_tolerance invariant, see
+                        // Surface::face_zone_tol_3d); 0 hits in the green difftest sweep.
                         None => Err(SolidError::unported(
                             "SmFace::GetTolerance",
                             "topology.face_p2",
@@ -1867,6 +1901,9 @@ pub fn object_zone_tol_3d<O: ClassObject>(
                     Some(_) => Err(wrong_entity(OP_GEOMETRY)),
                     // UNPORTED(topology.edge): SmEdge::GetTolerance (an adapter that
                     // cannot resolve the curve's owning edge)
+                    // Proof (unreachable): fires only when the adapter cannot resolve the
+                    // curve's owning edge; the library adapters resolve it; 0 hits in the
+                    // green difftest sweep.
                     None => Err(SolidError::unported(
                         "SmEdge::GetTolerance",
                         "topology.edge",
@@ -2069,6 +2106,44 @@ fn live_surface_global_point_solve(
     face_tested_point_solve(k, &surface, uv_domain, point, zone_tol_3d, &mut classify)
 }
 
+/// `GlobalPointSolve(domain, op, point, tol, NULL, requested, sols)` of `surface`, the
+/// surface of face `f` of `b` (or a copy standing for it), with the fast drop's trim
+/// test on the B-rep ([`live_face_fast_drop_test`]: the face's trimmed surface cache
+/// is made when it has none): the solutions' start ends.
+///
+/// # Errors
+///
+/// Those of the point solve, the cache lookup and the classification.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn live_owned_surface_global_point_solve(
+    k: &Kernel,
+    surface: &Surface,
+    b: &mut Brep,
+    f: FaceId,
+    uv_domain: &Extent2d,
+    op: SolverOperation,
+    point: Point3,
+    zone_tol_3d: f64,
+    requested: SolutionRequested,
+) -> Result<Vec<SolutionEnd>> {
+    let mut test_on: Option<bool> = None;
+    let mut classify = |k: &Kernel, uv: Point2, src_tol: f64| -> Result<bool> {
+        live_face_fast_drop_test(k, b, f, &mut test_on, uv, src_tol)
+    };
+    let solutions = surface.global_point_solve_face_tested::<NoObject>(
+        k,
+        Some(NoObject),
+        uv_domain,
+        op,
+        point,
+        zone_tol_3d,
+        None,
+        requested,
+        Some(&mut classify),
+    )?;
+    Ok(solutions.as_slice().iter().map(|s| s.start).collect())
+}
+
 /// `GlobalPointSolve(domain, SM_SO_INTERSECT, point, tol, NULL, SM_SR_SINGLE, sols)`
 /// of a face's surface whose fast-drop trim test is `classify`: the solutions' start
 /// ends.
@@ -2126,6 +2201,64 @@ fn fast_drop_good_point(status: Result<()>, pc: &PointClassification<EntityRef>)
 enum DropTarget<O> {
     Surface(O),
     Face(O),
+}
+
+/// Not upstream (WR-537, opt-in `Kernel::fixes.seam_point_solutions_are_one`; the fork's
+/// tangency-labs/smlib@577f7be): a point on the seam of a face that closes on itself (a
+/// whole cylinder's wall) has its parameters at both ends of the period, several
+/// solutions that are one point. When every solution evaluates within `tol` of the
+/// first's point, only the nearest (the first of the smallest solution values) is
+/// kept; a failed evaluation keeps them all.
+///
+/// # Errors
+///
+/// [`SolidError::Unported`] from the evaluations; [`SolidError::InvalidInput`] for an
+/// object that does not resolve to a surface or face with a surface.
+fn one_point<O: ClassObject>(
+    k: &Kernel,
+    geometry: &impl ClassGeometry<O>,
+    target: DropTarget<O>,
+    solutions: &mut Vec<SolutionEnd>,
+    tol: f64,
+) -> Result<()> {
+    if solutions.len() < 2 {
+        return Ok(());
+    }
+    let surface = match target {
+        DropTarget::Surface(o) => geometry.surface(o).ok_or_else(|| unresolved(OP_COMPUTE))?,
+        DropTarget::Face(o) => {
+            let (b, f) = topology_face(geometry, o, OP_COMPUTE)?;
+            face::p2::surface(b, f)?.ok_or_else(|| null_object(OP_COMPUTE))?
+        }
+    };
+    let evaluate = |sol: &SolutionEnd| -> Result<Option<Point3>> {
+        let uv = Point2::new(sol.param(0)?, sol.param(1)?);
+        match surface.evaluate_point(k, uv) {
+            Ok(p) => Ok(Some(p)),
+            Err(e) if e.is_unported() => Err(e),
+            Err(_) => Ok(None),
+        }
+    };
+    let Some(first) = solutions.first() else {
+        return Ok(());
+    };
+    let Some(first_point) = evaluate(first)? else {
+        return Ok(());
+    };
+    let mut best = *first;
+    for sol in solutions.iter().skip(1) {
+        match evaluate(sol)? {
+            Some(p) if p.distance(first_point) > tol => return Ok(()),
+            Some(_) => {}
+            None => return Ok(()),
+        }
+        if sol.solution_value < best.solution_value {
+            best = *sol;
+        }
+    }
+    solutions.clear();
+    solutions.push(best);
+    Ok(())
 }
 
 /// How `ComputePointParameters` reaches its objects: the geometry, and the point solve
@@ -2298,7 +2431,11 @@ fn volume_evaluate_point(volume: &Volume, uvw: Point3) -> Result<Point3> {
 
 /// `SmVertex::GetPoint`.
 fn vertex_point<O>(_vertex: O) -> Result<Point3> {
-    // UNPORTED(topology.vertex): SmVertex::GetPoint
+    // DISPATCH GAP: SmVertex::GetPoint (topology.vertex, green)
+    // Proof (unreachable): adapter-less free fn used only by
+    // PointClassification::merge_into_object (Vertex arm); library callers use the
+    // B-rep-carrying variants (merge_into_brep, Mutable); 0 hits in the green difftest
+    // sweep.
     Err(SolidError::unported(
         "SmVertex::GetPoint",
         "topology.vertex",
@@ -2307,7 +2444,11 @@ fn vertex_point<O>(_vertex: O) -> Result<Point3> {
 
 /// `SmVertex::SetPoint`.
 fn set_vertex_point<O>(_vertex: O, _point: Point3) -> Result<()> {
-    // UNPORTED(topology.vertex): SmVertex::SetPoint
+    // DISPATCH GAP: SmVertex::SetPoint (topology.vertex, green)
+    // Proof (unreachable): adapter-less free fn used only by
+    // PointClassification::merge_into_object (Vertex arm); library callers use the
+    // B-rep-carrying variants (merge_into_brep, Mutable); 0 hits in the green difftest
+    // sweep.
     Err(SolidError::unported(
         "SmVertex::SetPoint",
         "topology.vertex",
@@ -2316,7 +2457,11 @@ fn set_vertex_point<O>(_vertex: O, _point: Point3) -> Result<()> {
 
 /// `SmVertex::SetTolerance(zone_tol_3d)` (defaults `bUpdateOnlyIfLarger = TRUE`, ...).
 fn set_vertex_tolerance<O>(_vertex: O, _zone_tol_3d: f64) -> Result<()> {
-    // UNPORTED(topology.vertex): SmVertex::SetTolerance
+    // DISPATCH GAP: SmVertex::SetTolerance (topology.vertex, green)
+    // Proof (unreachable): adapter-less free fn used only by
+    // PointClassification::merge_into_object (Vertex arm); library callers use the
+    // B-rep-carrying variants (merge_into_brep, Mutable); 0 hits in the green difftest
+    // sweep.
     Err(SolidError::unported(
         "SmVertex::SetTolerance",
         "topology.vertex",
@@ -2325,7 +2470,11 @@ fn set_vertex_tolerance<O>(_vertex: O, _zone_tol_3d: f64) -> Result<()> {
 
 /// `SmVertex::SetExact`.
 fn set_vertex_exact<O>(_vertex: O, _exact: bool) -> Result<()> {
-    // UNPORTED(topology.vertex): SmVertex::SetExact
+    // DISPATCH GAP: SmVertex::SetExact (topology.vertex, green)
+    // Proof (unreachable): adapter-less free fn used only by
+    // PointClassification::merge_into_object (Vertex arm); library callers use the
+    // B-rep-carrying variants (merge_into_brep, Mutable); 0 hits in the green difftest
+    // sweep.
     Err(SolidError::unported(
         "SmVertex::SetExact",
         "topology.vertex",
@@ -2334,7 +2483,12 @@ fn set_vertex_exact<O>(_vertex: O, _exact: bool) -> Result<()> {
 
 /// `SmTol::GetScaledZero(const SmVertex&)`.
 fn vertex_scaled_zero<O>(_vertex: O) -> Result<f64> {
-    // UNPORTED(topology.vertex): SmTol::GetScaledZero(const SmVertex&) (SmVertex::GetPoint)
+    // DISPATCH GAP: SmTol::GetScaledZero(const SmVertex&) (SmVertex::GetPoint;
+    // topology.vertex, green)
+    // Proof (unreachable): adapter-less free fn used only by
+    // PointClassification::merge_into_object (Vertex arm); library callers use the
+    // B-rep-carrying variants (merge_into_brep, Mutable); 0 hits in the green difftest
+    // sweep.
     Err(SolidError::unported(
         "SmVertex::GetPoint",
         "topology.vertex",
@@ -2343,7 +2497,11 @@ fn vertex_scaled_zero<O>(_vertex: O) -> Result<f64> {
 
 /// `SmTol::GetZoneTol3d(const SmVertex*)`.
 fn vertex_tolerance<O>(_vertex: O) -> Result<f64> {
-    // UNPORTED(topology.vertex): SmVertex::GetTolerance
+    // DISPATCH GAP: SmVertex::GetTolerance (topology.vertex, green)
+    // Proof (unreachable): adapter-less free fn used only by
+    // PointClassification::merge_into_object (Vertex arm); library callers use the
+    // B-rep-carrying variants (merge_into_brep, Mutable); 0 hits in the green difftest
+    // sweep.
     Err(SolidError::unported(
         "SmVertex::GetTolerance",
         "topology.vertex",

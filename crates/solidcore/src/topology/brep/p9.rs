@@ -17,6 +17,10 @@
 //! their external context, including null. Editing state is part 1's `Brep::editing_enabled`.
 //! Ordinary split failures retain the nearby vertex alongside their status. All six
 //! owned bodies are present; individual dependency calls defer to their owners.
+//! `FindInfiniteRegion` retries a failed `SmShell::RayFire` as upstream, but propagates
+//! errors that have no upstream status (unported, stale id, pending preparation, any
+//! port invariant such as B-rep cache owner/handle resolution) instead of treating them
+//! as a missed ray; so does its `SmBrep::RayFire` fallback.
 //! Part 1's `add_*_record` appends a face, edge or vertex to its owning list at
 //! allocation; native `PostInsert`s later, with no same-kind allocation in between,
 //! so the list order matches, but a record allocated before a dependency error stays
@@ -32,6 +36,17 @@
 //! status (1), distinct from its early `SM_SUCCESS` (0). Mutation success paths
 //! remain uncertified while part 2 and face notification dependencies defer;
 //! passing refusal/projection comparisons do not certify those paths.
+//! Opt-in ([`UpstreamFixes::new_edge_vertex_tolerance_covers_gap`](crate::kernel::UpstreamFixes::new_edge_vertex_tolerance_covers_gap),
+//! WR-469): `MakeEdgeInFaceWithVU` follows the SolidCraft fork's fix: after
+//! `RefreshTolerance`, which keeps a vertex's tolerance as it was, each end vertex's
+//! tolerance grows to twice its gap to the new edge's end (only if larger), as
+//! `UpdateVertexEdgeIntervals` sets it. By default it leaves gaps up to the full
+//! tolerance, as the pinned C++ does, which `AssertValid` refuses above half of it.
+//! See `plan/upstream-issues/WR-469--make-edge-in-face-vertex-tolerance-gap.md`.
+//! Opt-in ([`UpstreamFixes::boolean_skips_faces_apart`](crate::kernel::UpstreamFixes::boolean_skips_faces_apart),
+//! WR-527, #1527): on two planes, `MakeEdgeInFaceWithVU` leaves an inner loop whose
+//! test point lies outside the new face's outer loop box (at the retry tolerance)
+//! in place without classifying it, as the fork's tangency-labs/smlib@60b1c6a.
 
 use crate::curve::curve::Curve;
 use crate::error::{ignore_status, Result, SolidError, SM_ERR};
@@ -390,7 +405,8 @@ fn brep_edges(b: &Brep) -> Result<Vec<EdgeId>> {
 
 /// `this->RayFire(start, direction, tolerance, pRegion, sPC)` (unit `topology.brep_p2`)
 /// on `query`'s cache: `Ok(true)` with the region in `state` on success, `Ok(false)` on
-/// an ordinary failure (the caller tries its next ray). The intersection is not read
+/// an ordinary failure (the caller tries its next ray). Errors with no upstream status
+/// propagate, as for the shell ray fires. The intersection is not read
 /// after the ray fires, so `state.classification` stays as it was.
 fn brep_ray_fire<O>(
     k: &Kernel,
@@ -402,7 +418,7 @@ fn brep_ray_fire<O>(
     state: &mut crate::topology::shell::ShellRayState<O>,
 ) -> Result<bool> {
     let fired = query.ray_fire_live(k, b, start, direction, tolerance);
-    match crate::error::ignored(fired)? {
+    match crate::error::native_failure(fired)? {
         Some(hit) => {
             state.region = hit.region;
             Ok(true)
@@ -419,12 +435,13 @@ fn ray_direction(direction: Vec3) -> Result<Vec3> {
     })
 }
 
+/// Whether a `SmShell::RayFire` call succeeded. Upstream retries on any failed status;
+/// an error with no upstream status (an unported callee, a stale id, a pending
+/// geometry preparation, or any port invariant such as the B-rep cache failing to
+/// resolve an owner under the query's identities) is propagated instead, so a naming
+/// mismatch cannot pass for a missed ray and silently select another region.
 fn ray_success(status: &Result<()>) -> Result<bool> {
-    match status {
-        Ok(()) => Ok(true),
-        Err(e @ SolidError::Unported { .. }) => Err(e.clone()),
-        Err(_) => Ok(false),
-    }
+    Ok(crate::error::native_failure(status.clone())?.is_some())
 }
 
 fn is_intersector_approx(curve: &Curve) -> Result<bool> {
@@ -738,7 +755,7 @@ fn register_entities(env: &mut edge::NotifyEnv<'_>, entities: &[EntityRef]) {
 
 fn register_state_entities(state: &mut edge::NotifyState<'_>, entities: &[EntityRef]) {
     for &entity in entities {
-        state.records.entry((state.key_of)(entity).key).or_default();
+        state.records.or_default((state.key_of)(entity).key);
     }
 }
 
@@ -1466,8 +1483,8 @@ pub fn make_edge_in_face_with_vu_with_curve_identity(
     };
     let start_vertex = required(b.vertexuse(start)?.vertex, "start VU without vertex")?;
     let end_vertex = required(b.vertexuse(end)?.vertex, "end VU without vertex")?;
-    let domain =
-        required(b.face(face)?.surface.as_ref(), "face without surface")?.natural_uv_domain();
+    let domain = required(b.face(face)?.surface.as_ref(), "face without surface")?
+        .natural_uv_domain_with_nurb(k)?;
     let (end_orientation, t_start, t_end) = if input.orientation == OrientType::Same {
         (
             OrientType::Opposite,
@@ -1477,6 +1494,28 @@ pub fn make_edge_in_face_with_vu_with_curve_identity(
     } else {
         (OrientType::Same, input.interval.max(), input.interval.min())
     };
+    // Decide before editing: a full periodic cut can split the boundary without
+    // separating the face. A same-vertex/same-loop connection alone is insufficient.
+    // Implementation restriction: only SmCrvOnSurf seams, as supplied by
+    // SplitAtSeam, are recognized using their defining UV curves. Equivalent
+    // SmCircle or SmBSplineCurve seams are not yet recognized and follow the
+    // existing same-loop face-splitting path. This curve-type restriction is
+    // an implementation limitation, not a requirement of the BRep topology.
+    let new_loop_without_new_face = match curve.kind() {
+        crate::curve::curve::CurveKind::CrvOnSurf(on_surf) => {
+            super::p1::is_first_nonseparating_seam(
+                k,
+                b,
+                face,
+                start,
+                end,
+                on_surf,
+                &input.interval,
+            )?
+        }
+        _ => false,
+    };
+
     let edge_id = b.add_edge_record(crate::topology::Edge::new([start_vertex, end_vertex]))?;
     let mut uses = Vec::new();
     let mut vertexuses = Vec::new();
@@ -1586,7 +1625,11 @@ pub fn make_edge_in_face_with_vu_with_curve_identity(
         } else {
             eu2
         };
-        trim.set_owner(Some((env.key_of)(EntityRef::Edgeuse(top))), None);
+        // SetOwner(pEu): named by the caller's key, recorded as for the edge's curve
+        // (`set_curve_owner`) so the B-rep's checks name the edge use alike
+        let top_owner = (env.key_of)(EntityRef::Edgeuse(top));
+        trim.set_owner(Some(top_owner), None);
+        b.set_geometry_owner_key(EntityRef::Edgeuse(top), Some(top_owner));
         b.edgeuse_mut(top)?.uv_trim_curve = Some(trim);
         b.edgeuse_mut(top)?.drop_curve_fail = drop_fail;
         let mut copy =
@@ -1615,7 +1658,9 @@ pub fn make_edge_in_face_with_vu_with_curve_identity(
         } else {
             eu3
         };
-        copy.set_owner(Some((env.key_of)(EntityRef::Edgeuse(bottom))), None);
+        let bottom_owner = (env.key_of)(EntityRef::Edgeuse(bottom));
+        copy.set_owner(Some(bottom_owner), None);
+        b.set_geometry_owner_key(EntityRef::Edgeuse(bottom), Some(bottom_owner));
         b.edgeuse_mut(bottom)?.uv_trim_curve = Some(copy);
         b.edgeuse_mut(bottom)?.drop_curve_fail = fail_copy;
         original_trim_owner = Some(top);
@@ -1672,44 +1717,60 @@ pub fn make_edge_in_face_with_vu_with_curve_identity(
             .unwrap_or(end);
         }
         edge::insert_manifold_edge_end(b, edge_id, Some(end), false)?;
-        let new_face = b.add_face_record(crate::topology::Face::new(b.face(face)?.shell))?;
-        let mut surface = required(b.face(face)?.surface.as_ref(), "split face without surface")?
-            .copy_and_add_analytics(k)?;
-        let new_face_owner = (env.key_of)(EntityRef::Face(new_face));
-        surface.set_owner(Some(new_face_owner));
-        b.face_mut(new_face)?.surface = Some(surface);
-        b.set_geometry_owner_key(EntityRef::Face(new_face), Some(new_face_owner));
-        set_face_tolerance(b, new_face, b.tolerance(), true, true)?;
-        b.face_mut(new_face)?.uv_domain = b.face(face)?.uv_domain;
-        let new_fu1 = b.add_faceuse_record(crate::topology::Faceuse::default())?;
-        let new_fu2 = b.add_faceuse_record(crate::topology::Faceuse::default())?;
-        register_entities(
-            env,
-            &[
-                EntityRef::Face(new_face),
-                EntityRef::Faceuse(new_fu1),
-                EntityRef::Faceuse(new_fu2),
-            ],
-        );
-        b.face_mut(new_face)?.faceuse = Some(new_fu1);
-        for (fu, mate, orientation) in [
-            (new_fu1, new_fu2, OrientType::Same),
-            (new_fu2, new_fu1, OrientType::Opposite),
-        ] {
-            let record = b.faceuse_mut(fu)?;
-            record.face = Some(new_face);
-            record.mate = Some(mate);
-            record.orientation = orientation;
-        }
-        let up = required(fp2::upward_faceuse(b, face)?, "face without upward use")?;
-        let down = required(b.faceuse(up)?.mate, "faceuse without mate")?;
-        let up_shell = required(b.faceuse(up)?.shell, "upward use without shell")?;
-        let down_shell = required(b.faceuse(down)?.shell, "downward use without shell")?;
-        shell_post_insert(b, up_shell, new_fu1)?;
-        shell_post_insert(b, down_shell, new_fu2)?;
-        insert_brep_entity(b, EntityRef::Face(new_face))?;
+        let (new_face, new_fu1, new_fu2) = if new_loop_without_new_face {
+            let fu1 = required(fp2::upward_faceuse(b, face)?, "face without upward use")?;
+            let fu2 = required(b.faceuse(fu1)?.mate, "faceuse without mate")?;
+            (None, fu1, fu2)
+        } else {
+            // separating cut: create one new face, in the split face's shell as `GetShell`
+            // reads it, through its primary face use (the port's `Face::shell` is a cache
+            // the native shell moves do not maintain)
+            let cached_shell = b.face(face)?.shell;
+            let shell = match b.face(face)?.faceuse {
+                Some(fu) => b.faceuse(fu)?.shell.unwrap_or(cached_shell),
+                None => cached_shell,
+            };
+            let new_face = b.add_face_record(crate::topology::Face::new(shell))?;
+            let mut surface =
+                required(b.face(face)?.surface.as_ref(), "split face without surface")?
+                    .copy_and_add_analytics(k)?;
+            let new_face_owner = (env.key_of)(EntityRef::Face(new_face));
+            surface.set_owner(Some(new_face_owner));
+            b.face_mut(new_face)?.surface = Some(surface);
+            b.set_geometry_owner_key(EntityRef::Face(new_face), Some(new_face_owner));
+            set_face_tolerance(b, new_face, b.tolerance(), true, true)?;
+            b.face_mut(new_face)?.uv_domain = b.face(face)?.uv_domain;
+            let new_fu1 = b.add_faceuse_record(crate::topology::Faceuse::default())?;
+            let new_fu2 = b.add_faceuse_record(crate::topology::Faceuse::default())?;
+            register_entities(
+                env,
+                &[
+                    EntityRef::Face(new_face),
+                    EntityRef::Faceuse(new_fu1),
+                    EntityRef::Faceuse(new_fu2),
+                ],
+            );
+            b.face_mut(new_face)?.faceuse = Some(new_fu1);
+            for (fu, mate, orientation) in [
+                (new_fu1, new_fu2, OrientType::Same),
+                (new_fu2, new_fu1, OrientType::Opposite),
+            ] {
+                let record = b.faceuse_mut(fu)?;
+                record.face = Some(new_face);
+                record.mate = Some(mate);
+                record.orientation = orientation;
+            }
+            let up = required(fp2::upward_faceuse(b, face)?, "face without upward use")?;
+            let down = required(b.faceuse(up)?.mate, "faceuse without mate")?;
+            let up_shell = required(b.faceuse(up)?.shell, "upward use without shell")?;
+            let down_shell = required(b.faceuse(down)?.shell, "downward use without shell")?;
+            shell_post_insert(b, up_shell, new_fu1)?;
+            shell_post_insert(b, down_shell, new_fu2)?;
+            insert_brep_entity(b, EntityRef::Face(new_face))?;
+            (Some(new_face), new_fu1, new_fu2)
+        };
         let new_loop = b.add_loop_record(Loop {
-            face: new_face,
+            face: new_face.unwrap_or(face),
             edges: Vec::new(),
             loopuse: None,
         })?;
@@ -1751,36 +1812,57 @@ pub fn make_edge_in_face_with_vu_with_curve_identity(
             true,
             true,
         ))?;
-        if !lu::is_outer_loop(b, start_loop)? {
-            if let Some(orientation) = crate::error::ignored(compute_loop_orientation(
-                k, b, new_face, new_loop, None, true,
-            ))? {
-                if orientation != OrientType::Same
-                    && crate::error::ignored(compute_loop_orientation(
-                        k, b, face, start_loop, None, true,
-                    ))?
-                    .is_some()
-                {
-                    // The old-loop orientation is diagnostic only, even if opposite.
-                    fp1::remove_loop(b, new_face, new_loop)?;
-                    fp1::remove_loop(b, face, start_loop)?;
-                    for (loop_, orientation) in [
-                        (start_loop, OrientType::Same),
-                        (new_loop, OrientType::Opposite),
-                    ] {
-                        let (a, z) = lu::loop_loopuses(b, loop_)?;
-                        let z = required(z, "loop without mate")?;
-                        b.loopuse_mut(a)?.orientation = orientation;
-                        b.loopuse_mut(z)?.orientation = orientation;
+        if let Some(new_face) = new_face {
+            // separating cut
+            if !lu::is_outer_loop(b, start_loop)? {
+                if let Some(orientation) = crate::error::ignored(compute_loop_orientation(
+                    k, b, new_face, new_loop, None, true,
+                ))? {
+                    if orientation != OrientType::Same
+                        && crate::error::ignored(compute_loop_orientation(
+                            k, b, face, start_loop, None, true,
+                        ))?
+                        .is_some()
+                    {
+                        // The old-loop orientation is diagnostic only, even if opposite.
+                        fp1::remove_loop(b, new_face, new_loop)?;
+                        fp1::remove_loop(b, face, start_loop)?;
+                        for (loop_, orientation) in [
+                            (start_loop, OrientType::Same),
+                            (new_loop, OrientType::Opposite),
+                        ] {
+                            let (a, z) = lu::loop_loopuses(b, loop_)?;
+                            let z = required(z, "loop without mate")?;
+                            b.loopuse_mut(a)?.orientation = orientation;
+                            b.loopuse_mut(z)?.orientation = orientation;
+                        }
+                        fp1::insert_loop(b, new_face, start_loop)?;
+                        fp1::insert_loop(b, face, new_loop)?;
                     }
-                    fp1::insert_loop(b, new_face, start_loop)?;
-                    fp1::insert_loop(b, face, new_loop)?;
                 }
             }
+            redistribute_inner_loops(k, b, face, new_face, start_loop, new_loop, env)?;
+        } else {
+            // Both boundary cycles belong to this face. Put one seam side first;
+            // the orthogonal seam will join the two cycles into its outer loop.
+            faceuse_remove_loopuse(b, new_fu1, old_top)?;
+            faceuse_remove_loopuse(b, new_fu2, old_bottom)?;
+            faceuse_pre_insert_loopuse(b, new_fu1, old_top)?;
+            faceuse_pre_insert_loopuse(b, new_fu2, old_bottom)?;
+            for (i, loop_) in fp2::loops(b, face, false, None)?.into_iter().enumerate() {
+                let orientation = if i == 0 {
+                    OrientType::Same
+                } else {
+                    OrientType::Opposite
+                };
+                let (a, z) = lu::loop_loopuses(b, loop_)?;
+                let z = required(z, "loop without mate")?;
+                b.loopuse_mut(a)?.orientation = orientation;
+                b.loopuse_mut(z)?.orientation = orientation;
+            }
         }
-        redistribute_inner_loops(k, b, face, new_face, start_loop, new_loop, env)?;
         output.loop_ = Some(new_loop);
-        output.face = Some(new_face);
+        output.face = new_face;
     } else {
         let (mut keep, mut delete) = if lu::is_outer_loop(b, start_loop)? {
             (start_loop, end_loop)
@@ -1841,6 +1923,19 @@ pub fn make_edge_in_face_with_vu_with_curve_identity(
     }
     vertex::refresh_tolerance(b, start_vertex, false)?;
     vertex::refresh_tolerance(b, end_vertex, false)?;
+    // Opt-in (WR-469): each vertex's tolerance grows to twice its gap to the new edge's end.
+    if k.fixes.new_edge_vertex_tolerance_covers_gap {
+        let record = b.edge(edge_id)?;
+        let curve = required(record.curve.as_ref(), "new edge without curve")?;
+        let (curve_start, curve_end) = (
+            curve.evaluate_point(k, t_start)?,
+            curve.evaluate_point(k, t_end)?,
+        );
+        let start_gap = curve_start.distance(vertex::point(b, start_vertex)?);
+        let end_gap = curve_end.distance(vertex::point(b, end_vertex)?);
+        vertex::set_tolerance(b, start_vertex, 2.0 * start_gap, true, true)?;
+        vertex::set_tolerance(b, end_vertex, 2.0 * end_gap, true, true)?;
+    }
     // These skeleton caches are derived from the authoritative use lists.
     sync_face_cache(b, face)?;
     if let Some(face) = output.face {
@@ -1966,6 +2061,36 @@ fn compute_loop_orientation(
         uv_bounds,
         do_3d_loop_computation,
     )
+}
+
+/// `pFU->Remove(pLU)`: takes the loop use off the face use's list (`SM_ERR` when it is
+/// not there).
+fn faceuse_remove_loopuse(
+    b: &mut Brep,
+    fu: crate::topology::FaceuseId,
+    lu: crate::topology::LoopuseId,
+) -> Result<()> {
+    if b.loopuse(lu)?.faceuse != Some(fu) {
+        return Err(SolidError::sm_err(OP));
+    }
+    let list = &mut b.faceuse_mut(fu)?.loopuses;
+    let Some(at) = list.iter().position(|&x| x == lu) else {
+        return Err(SolidError::sm_err(OP));
+    };
+    list.remove(at);
+    b.loopuse_mut(lu)?.faceuse = None;
+    Ok(())
+}
+
+/// `pFU->PreInsert(pLU)`: puts the loop use first on the face use's list.
+fn faceuse_pre_insert_loopuse(
+    b: &mut Brep,
+    fu: crate::topology::FaceuseId,
+    lu: crate::topology::LoopuseId,
+) -> Result<()> {
+    b.faceuse_mut(fu)?.loopuses.insert(0, lu);
+    b.loopuse_mut(lu)?.faceuse = Some(fu);
+    Ok(())
 }
 
 fn shell_post_insert(
@@ -2104,6 +2229,16 @@ fn redistribute_inner_loops(
     let missing_new = lu::is_missing_seam_at_vertices(k, b, new_outer)?;
     let classify_to_original = !missing_original;
     let mut loops = fp2::loops(b, face, false, None)?;
+
+    // Opt-in (WR-527, #1526/#1527): on a plane the region a loop bounds lies within the
+    // loop's box, so an inner loop sampled outside the box of the new face's outer loop
+    // is not in the new face and stays: only when every edge has a box.
+    let new_outer_box = if k.fixes.boolean_skips_faces_apart {
+        new_face_outer_box(k, b, face, new_face)?
+    } else {
+        None
+    };
+
     let mut i = 1;
     while let Some(&loop_) = loops.get(i) {
         if loop_ == new_loop || loop_ == start_loop {
@@ -2121,6 +2256,12 @@ fn redistribute_inner_loops(
             )?;
             (b.vertex(v)?.point, b.vertex(v)?.tolerance)
         };
+        // Opt-in (WR-527): no move - the test point is outside the new face's outer loop
+        // box, even at the retry tolerance below
+        if new_outer_box.is_some_and(|bbox| !bbox.contains_point(point, tolerance * 100.0)) {
+            i += 1;
+            continue;
+        }
         let target = if classify_to_original { face } else { new_face };
         let other = if classify_to_original { new_face } else { face };
         let mut pc = PointClassification::<EntityRef>::new(tolerance);
@@ -2132,7 +2273,7 @@ fn redistribute_inner_loops(
             let uv = crate::error::ignored(surface.drop_point::<crate::topology::ObjectHandle>(
                 k,
                 point,
-                &surface.natural_uv_domain(),
+                &surface.natural_uv_domain_with_nurb(k)?,
                 &crate::surface::surface::p5::DropPointOptions::default(),
             ))?
             .map_or(crate::geom::vector2d::Vec2::UNDEF, |drop| drop.result_uv);
@@ -2226,6 +2367,54 @@ fn redistribute_inner_loops(
         }
     }
     Ok(())
+}
+
+/// The box of `new_face`'s outer loop edges, each grown by its tolerance, when both
+/// faces lie on planes and every one of those edges has a curve whose box can be
+/// computed (the fork's `sNewFOuterBox`, WR-527).
+fn new_face_outer_box(
+    k: &Kernel,
+    b: &Brep,
+    face: FaceId,
+    new_face: FaceId,
+) -> Result<Option<crate::geom::extent3d::Extent3d>> {
+    use crate::nurbs::b_spline_curve::BoundingBoxRequest;
+    use crate::surface::surface::SurfaceKind;
+    let on_plane = |f: FaceId| -> Result<bool> {
+        Ok(b.face(f)?
+            .surface
+            .as_ref()
+            .is_some_and(|s| matches!(s.kind(), SurfaceKind::Plane(_))))
+    };
+    if !on_plane(face)? || !on_plane(new_face)? {
+        return Ok(None);
+    }
+    let edges = face_outer_edges(b, new_face)?;
+    if edges.is_empty() {
+        return Ok(None);
+    }
+    let req = BoundingBoxRequest {
+        normal: true,
+        pseudo: false,
+        polar: false,
+    };
+    let mut outer_box = crate::geom::extent3d::Extent3d::new();
+    for edge in edges {
+        let record = b.edge(edge)?;
+        let Some(curve) = record.curve.as_ref() else {
+            return Ok(None);
+        };
+        let Some(mut edge_box) = curve
+            .calculate_bounding_box(k, &record.interval, req, true)
+            .ok()
+            .and_then(|boxes| boxes.normal)
+        else {
+            return Ok(None);
+        };
+        edge_box.expand_absolute(record.tolerance);
+        outer_box = outer_box.union(&edge_box);
+    }
+    Ok(Some(outer_box))
 }
 
 fn edge_sample(k: &Kernel, b: &Brep, edge: EdgeId) -> Result<(Point3, f64)> {
@@ -2406,9 +2595,9 @@ pub fn drop_edge_curve_on_face(
 }
 
 /// [`drop_edge_curve`] onto face `face` of `b`, whose surface `surface` is (a copy for
-/// evaluation): upstream's surface is owned by the face, so the start point drop's
-/// fast-drop trim test classifies on the face
-/// ([`crate::intersect::point_class::live_face_fast_drop_test`]).
+/// evaluation): upstream's surface is owned by the face, so `DropCurve` fetches the
+/// face's cache (made here when its start point drop first asks) but, with that cache's
+/// point testing off for the whole call, never classifies a drop on the face.
 #[allow(clippy::too_many_arguments)]
 fn drop_edge_curve_in_face(
     k: &Kernel,
@@ -2420,17 +2609,21 @@ fn drop_edge_curve_in_face(
     interval: &Extent1d,
     face_tolerance: f64,
 ) -> Result<EdgeCurveDrop> {
-    let mut test_on: Option<bool> = None;
+    let mut cache_made = false;
     for factor in [1.0, 10.0, 300.0] {
-        let mut classify = |k: &Kernel, uv: crate::math::Point2, src_tol: f64| -> Result<bool> {
-            crate::intersect::point_class::live_face_fast_drop_test(
-                k,
-                b,
-                face,
-                &mut test_on,
-                uv,
-                src_tol,
-            )
+        // SmSurface::DropCurve turns the face cache's point testing off for its whole call
+        // (`sChange1`, SmSurfaceDropLib.cpp:4315), so its start point drop keeps every
+        // fast-drop solution without classifying it on the face; the face's cache is
+        // still made there (`smsurf_GetSurfaceCache`, which may create its UV trims)
+        let mut classify = |k: &Kernel, _: crate::math::Point2, _: f64| -> Result<bool> {
+            if !cache_made {
+                cache_made = true;
+                // (`GetOwner()` is NULL while `CreateUVTrimCurve(s)` clears it: no face)
+                if !b.is_surface_owner_cleared(face) {
+                    crate::query::face::p2::face_surface_cache(k, b, face)?.release();
+                }
+            }
+            Ok(true)
         };
         // the virtual SmSurface::DropCurve with the defaults bKeepAllDropCurves = TRUE,
         // no failure record, bCreatingUVTrimCurve = TRUE
@@ -2611,7 +2804,7 @@ mod tests {
                     type_code: original.type_code(),
                 };
                 let before = (b.edge_list().len(), b.vertex_list().len());
-                let mut records = BTreeMap::new();
+                let mut records = crate::topology::topology::NotifyRecords::new();
                 crate::topology::brep::p3::seed_records(&mut records, &b, &key_of);
                 let mut attributes = AttributeStore::default();
                 let label = attributes
@@ -2740,7 +2933,9 @@ mod tests {
                     let mut record = Topology::default();
                     record.set_user_index1(912);
                     record.mark(Some(&k.context), mark);
-                    let mut records = BTreeMap::from([(edge_ref.key, record)]);
+                    let mut records = crate::topology::topology::NotifyRecords::from(
+                        BTreeMap::from([(edge_ref.key, record)]),
+                    );
                     for (id, _) in b.vertices().iter() {
                         records.insert(split_key(EntityRef::Vertex(id)).key, Topology::default());
                     }
@@ -2918,7 +3113,7 @@ mod tests {
             let region = b
                 .add_region_record(crate::topology::Region::default())
                 .unwrap();
-            let mut records = BTreeMap::new();
+            let mut records = crate::topology::topology::NotifyRecords::new();
             let mut attributes = AttributeStore::default();
             let result = make_shell_vertex_with_kernel_context(
                 &mut k,
@@ -2983,7 +3178,10 @@ mod tests {
                 let events = callbacks::install(&mut k.context);
                 let (mut b, edge) = split_wire();
                 let mut records =
-                    BTreeMap::from([(split_key(EntityRef::Edge(edge)).key, Topology::default())]);
+                    crate::topology::topology::NotifyRecords::from(BTreeMap::from([(
+                        split_key(EntityRef::Edge(edge)).key,
+                        Topology::default(),
+                    )]));
                 let mut attributes = AttributeStore::default();
                 let mut stores = edge::NotificationStores {
                     records: &mut records,
@@ -3024,12 +3222,154 @@ mod tests {
     }
 
     #[test]
+    fn ray_errors_without_an_upstream_status_propagate() {
+        assert!(ray_success(&Ok(())).unwrap());
+        assert!(!ray_success(&Err(SolidError::sm_err(OP))).unwrap());
+        assert!(!ray_success(&Err(SolidError::invalid_input(OP, "native"))).unwrap());
+        let internal = [
+            SolidError::Unported {
+                upstream: "SmShell::RayFire",
+                unit: "topology.shell",
+            },
+            SolidError::NotFound {
+                operation: OP,
+                entity: EntityRef::Edge(EdgeId::from_index(7)),
+            },
+            SolidError::PreparationRequired { operation: OP },
+            SolidError::port_invariant("topology::brep_cache", "edge owner is not in source B-rep"),
+            // A port invariant from any operation, not only the B-rep cache's own
+            // identity errors (these used to pass for a missed ray).
+            SolidError::port_invariant("topology::shell", "faceuse without face"),
+            SolidError::port_invariant("query::brep", "solver owner is not a cache owner"),
+        ];
+        for e in internal {
+            assert_eq!(ray_success(&Err(e.clone())), Err(e));
+        }
+    }
+
+    #[test]
     fn zero_ray_direction_retains_the_defined_native_status() {
         assert!(matches!(
             ray_direction(Vec3::ZERO),
             Err(SolidError::Upstream { code: 1007, .. })
         ));
         assert_eq!(ray_direction(Vec3::Z).unwrap(), Vec3::Z);
+    }
+
+    /// WR-469: a box face's diagonal, given with its UV trim, overshooting its far corner
+    /// by 0.7 of that corner's tolerance along the face, made with
+    /// `new_edge_vertex_tolerance_covers_gap` set to `fix`. Returns the far corner's
+    /// tolerance before and after and the end gap, or `None` when a dependency the
+    /// success path needs is still unported.
+    fn diagonal_overshooting_its_corner(fix: bool) -> Option<(f64, f64, f64)> {
+        use crate::topology::edgeuse::p1 as eu1;
+        let k = &mut Kernel::default();
+        k.fixes.new_edge_vertex_tolerance_covers_gap = fix;
+        let mut b = crate::primitive::api_primitives::create_box(k, Point3::ZERO, 10.0, 10.0, 10.0)
+            .unwrap();
+        b.set_editing_enabled(true);
+        let eu = b
+            .edgeuses()
+            .ids()
+            .find(|&e| eu1::face(&b, e).is_ok_and(|f| f.is_some()))
+            .unwrap();
+        let face = eu1::face(&b, eu).unwrap().unwrap();
+        let opposite = eu1::cw_edgeuse(&b, eu1::cw_edgeuse(&b, eu).unwrap().unwrap())
+            .unwrap()
+            .unwrap();
+        let (near, far) = (
+            eu1::vertexuse(&b, eu).unwrap().unwrap(),
+            eu1::vertexuse(&b, opposite).unwrap().unwrap(),
+        );
+        let vertex_of = |b: &Brep, vu: VertexuseId| b.vertexuse(vu).unwrap().vertex.unwrap();
+        let (p, q) = (
+            vertex::point(&b, vertex_of(&b, near)).unwrap(),
+            vertex::point(&b, vertex_of(&b, far)).unwrap(),
+        );
+        let tolerance = vertex::tolerance(&b, vertex_of(&b, far)).unwrap();
+        let gap = 0.7 * tolerance;
+        let end = q + (q - p) * (gap / q.distance(p));
+        // The UV trim given, as an intersection gives it: no curve drop, whose edge
+        // tolerance would cover the gap.
+        let crate::surface::surface::SurfaceKind::Plane(plane) =
+            b.face(face).unwrap().surface.as_ref().unwrap().kind()
+        else {
+            panic!("box face is not a plane");
+        };
+        let (uv_p, uv_end) = (
+            plane.project_point_to_uv_domain(p),
+            plane.project_point_to_uv_domain(end),
+        );
+        let uv_trim = Curve::from(crate::curve::line::Line::from_points(
+            Point3::new(uv_p.x, uv_p.y, 0.0),
+            Point3::new(uv_end.x, uv_end.y, 0.0),
+            3,
+        ));
+        let mut records = crate::topology::topology::NotifyRecords::new();
+        let mut attributes = crate::geom::attribute::AttributeStore::default();
+        let key_of = |e: EntityRef| crate::topology::loopuse::notify_ref(e);
+        let mut env = edge::NotifyEnv {
+            records: &mut records,
+            attributes: &mut attributes,
+            context: None,
+            key_of: &key_of,
+        };
+        let curve_ref = |e: EdgeId, type_code: i64| crate::geom::object::ObjectRef {
+            key: crate::geom::attribute::ObjectKey(1000 + u64::from(e.index())),
+            type_code,
+        };
+        let made = make_edge_in_face_with_vu(
+            k,
+            &mut b,
+            EdgeInFaceInput {
+                face: Some(face),
+                vertices: [Some(near), Some(far)],
+                curve: Some(Curve::from(crate::curve::line::Line::from_points(
+                    p, end, 3,
+                ))),
+                uv_trim: Some(uv_trim),
+                drop_fail: None,
+                interval: Extent1d::from_min_max(0.0, 1.0),
+                orientation: OrientType::Same,
+                curve_zone_tol_3d: crate::geom::tol::zone_tol3d(k, 1e-7),
+            },
+            &mut env,
+            &curve_ref,
+        );
+        if let Err(e) = made {
+            // A dependency the success path needs may still be unported.
+            assert!(matches!(e, SolidError::Unported { .. }), "{e:?}");
+            return None;
+        }
+        Some((
+            tolerance,
+            vertex::tolerance(&b, vertex_of(&b, far)).unwrap(),
+            gap,
+        ))
+    }
+
+    /// WR-469, opt-in: a new edge that ends `gap` from its vertex, above half the
+    /// vertex's tolerance (steel-026: 5.44e-6 against 5.42e-6), leaves the vertex a
+    /// tolerance of at least twice the gap.
+    #[test]
+    fn new_edge_grows_its_vertices_tolerance_to_twice_the_end_gap() {
+        let Some((_, grown, gap)) = diagonal_overshooting_its_corner(true) else {
+            return;
+        };
+        assert!(
+            grown >= 2.0 * gap * (1.0 - 1e-12),
+            "tolerance {grown} for an end gap {gap}"
+        );
+    }
+
+    /// WR-469, default: the vertex keeps its tolerance, as the pinned C++ does.
+    #[test]
+    fn new_edge_keeps_its_vertices_tolerance_by_default() {
+        let Some((before, after, gap)) = diagonal_overshooting_its_corner(false) else {
+            return;
+        };
+        assert_eq!(after, before, "end gap {gap}");
+        assert!(after < 2.0 * gap);
     }
 
     #[test]
@@ -3061,7 +3401,7 @@ mod tests {
             b.vertex_mut(vertex).unwrap().vertexuses.push(vu);
             b.edge_mut(e).unwrap().edgeuses.push(eu);
         }
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = crate::geom::attribute::AttributeStore::default();
         let mut env = edge::NotifyEnv {
             records: &mut records,

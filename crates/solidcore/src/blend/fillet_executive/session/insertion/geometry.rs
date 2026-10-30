@@ -8,7 +8,7 @@ mod topology_objects;
 
 use super::super::{FilletBody, FilletObject};
 use super::curves::InsertionCurves;
-use crate::blend::fillet_geom::p1::{FilletBrep, FilletGeomId, FilletSurfaceStorage};
+use crate::blend::fillet_geom::p1::FilletBrep;
 use crate::curve::curve::Curve;
 use crate::geom::attribute::AttributeStore;
 use crate::geom::attribute::ObjectKey;
@@ -21,10 +21,8 @@ use crate::surface::surface::Surface;
 use crate::surface::volume::Volume;
 use crate::topology::brep::p3::topology_ref;
 use crate::topology::proto_topology::p1::{ProtoGeometry, ProtoTopology};
-use crate::topology::topology::Topology;
 use crate::topology::{Brep, BrepId, FaceId};
 use crate::{EntityRef, Result, SolidError};
-use std::collections::BTreeMap;
 
 const OP: &str = "blend::fillet_executive::insertion_geometry";
 fn invalid(reason: &'static str) -> SolidError {
@@ -52,6 +50,11 @@ pub struct SurfaceBinding {
     geometry: ObjectRef,
 }
 impl SurfaceBinding {
+    /// The face-surface handle the intersector's face loops name this surface by
+    /// ([`InsertionGeometry::face_surface`] of its face).
+    pub(super) const fn face_surface(&self) -> FilletObject {
+        FilletObject::FaceSurface(self.role, self.face)
+    }
     pub(super) fn capture_in_body(
         context: &mut Context,
         body: &mut Brep,
@@ -141,7 +144,7 @@ impl BodyKeys<'_> {
 /// Actual retained edit stores and the already lent notification context.
 pub struct InsertionNotifications<'a> {
     /// Actual topology notification records.
-    pub records: &'a mut BTreeMap<ObjectKey, Topology>,
+    pub records: &'a mut crate::topology::topology::NotifyRecords,
     /// Actual attributes, including executive E and active face markers.
     pub attributes: &'a mut AttributeStore,
     /// Actual context lease, supplied by `with_lent_context`.
@@ -234,6 +237,25 @@ impl<'a> InsertionGeometry<'a> {
         Ok(FilletObject::InsertionCurve(
             curves.insert(notifications.context, curve)?,
         ))
+    }
+    /// Free a temporary curve copy an intersector call reported for deletion
+    /// ([`InsertionCurves::destroy`] in the operation's notification domain).
+    /// # Errors
+    /// Not an operation-owned curve handle, missing edit stores, or those of
+    /// [`InsertionCurves::destroy`].
+    pub fn destroy_curve_copy(&mut self, curve: FilletObject) -> Result<()> {
+        let FilletObject::InsertionCurve(binding) = curve else {
+            return Err(invalid("deleted curve is not an operation-owned copy"));
+        };
+        let notifications = self
+            .notifications
+            .as_mut()
+            .ok_or_else(|| invalid("missing insertion notification context"))?;
+        let curves = self
+            .curves
+            .as_mut()
+            .ok_or_else(|| invalid("missing insertion curve ownership"))?;
+        curves.destroy(notifications.context, notifications.attributes, binding)
     }
     /// Run one edit against the actual body and retained notification stores.
     /// # Errors
@@ -402,6 +424,54 @@ impl<'a> InsertionGeometry<'a> {
                 .into_iter()
                 .map(|edge| Self::handle(role, EntityRef::Edge(edge)))
                 .collect(),
+        )
+    }
+    /// `SmTools::FindCoincidentEdge` over an actual face's edges (`SmFace::GetEdges`):
+    /// its first edge between the same-body vertices `start` and `end` along `curve`
+    /// within `tolerance`, with the sampled maximum deviation (WR-580, opt-in).
+    /// # Errors
+    /// Invalid/cross-body operands, topology walks and the search's evaluations.
+    #[allow(clippy::too_many_arguments)] // FindCoincidentEdge's in-params
+    pub fn face_coincident_edge(
+        &self,
+        k: &crate::Kernel,
+        face: FilletObject,
+        start: FilletObject,
+        end: FilletObject,
+        curve: &Curve,
+        interval: crate::geom::extent1d::Extent1d,
+        tolerance: f64,
+    ) -> Result<Option<(FilletObject, f64)>> {
+        let (role, EntityRef::Face(face)) =
+            Self::topology(face).ok_or_else(|| invalid("unknown Face role"))?
+        else {
+            return Err(invalid("handle is not a Face"));
+        };
+        let vertex = |object| match Self::topology(object) {
+            Some((r, EntityRef::Vertex(v))) if r == role => Ok(v),
+            _ => Err(invalid("handle is not a Vertex of the face's body")),
+        };
+        let (start, end) = (vertex(start)?, vertex(end)?);
+        let body = self.body(role);
+        let edges = crate::topology::face::p4::edges(body, face, None, false, None)?;
+        let query = crate::geom::tools::CoincidentEdgeQuery {
+            start_vertex: start,
+            end_vertex: end,
+            curve,
+            curve_owner: None,
+            interval,
+            tolerance,
+        };
+        Ok(
+            crate::geom::tools::find_coincident_edge(k, body, &query, &edges, 0)?.and_then(
+                |found| {
+                    let edge = *edges.get(found.index)?;
+                    Some((
+                        Self::handle(role, EntityRef::Edge(edge)),
+                        found.max_deviation,
+                    ))
+                },
+            ),
         )
     }
     /// Classify against the actual B-rep with its existing proven-owner query provider.
@@ -617,54 +687,40 @@ impl<'a> InsertionGeometry<'a> {
     ) -> Result<SurfaceBinding> {
         SurfaceBinding::capture_in_body(context, self.body_mut(role), role, face)
     }
-    /// Capture the actual managed fillet Surface without a numerical copy.
-    /// # Errors
-    /// Foreign managed body or unavailable owned-Surface binding.
-    pub fn capture_fillet_surface(
-        &mut self,
-        context: &mut Context,
-        geometry: FilletGeomId,
-    ) -> Result<Option<SurfaceBinding>> {
-        let Some(storage) = self.pseudo.geom(geometry)?.fillet_surface.as_ref() else {
-            return Ok(None);
-        };
-        let (body, face) = match storage {
-            FilletSurfaceStorage::ManagedFace { body, face } => (*body, *face),
-            FilletSurfaceStorage::Owned(_) => {
-                // UNPORTED(blend.fillet_executive_p1): actual owned fillet Surface binding.
-                return Err(SolidError::unported(
-                    "SmFilletGeom::GetFilletSurface (owned insertion binding)",
-                    "blend.fillet_executive_p1",
-                ));
-            }
-        };
-        if body != self.body_identity(InsertionBody::Intermediate)? {
-            return Err(invalid("managed fillet Surface belongs to a foreign body"));
-        }
-        self.capture_surface(context, InsertionBody::Intermediate, face)
-            .map(Some)
-    }
     /// Resolve that same Surface instance; a replacement in the Face slot fails.
     /// # Errors
     /// Foreign body, deleted Face/Surface or replaced geometry identity.
     pub fn bound_surface(&self, binding: SurfaceBinding) -> Result<&Surface> {
         binding.resolve_in_body(self.body(binding.role))
     }
-    /// Actual owner Face, including the real Surface owner check.
+    /// `SmSurface::GetFace()` of a bound face-slot surface: its owner when that is a
+    /// Face, `None` for no owner or an owner of another kind.
     /// # Errors
-    /// Missing original Surface or unresolved foreign owner.
+    /// Missing original Surface, or an owner no insertion body resolves to one
+    /// entity.
     pub fn surface_face(&self, binding: SurfaceBinding) -> Result<Option<FilletObject>> {
-        let Some(owner) = self.bound_surface(binding)?.owner() else {
+        self.face_slot_surface_face(self.bound_surface(binding)?)
+    }
+    /// `SmSurface::GetFace()` of a surface held in an insertion body's face slot (a
+    /// bound original or a face's current surface).
+    /// # Errors
+    /// An owner no insertion body resolves to one entity.
+    fn face_slot_surface_face(&self, surface: &Surface) -> Result<Option<FilletObject>> {
+        let Some(owner) = surface.owner() else {
             return Ok(None);
         };
-        if let Some((role, entity @ EntityRef::Face(_))) = self.owner_binding(owner) {
-            return Ok(Some(Self::handle(role, entity)));
+        match self.owner_binding(owner) {
+            Some((role, entity @ EntityRef::Face(_))) => Ok(Some(Self::handle(role, entity))),
+            // Not `IsKindOf(SmFace_TYPE)` and not a surface: the owner walk stops.
+            Some(_) => Ok(None),
+            // A face-slot surface is owned by its own face (`SetSurface` sets the
+            // owner, and the face's B-rep is one of the insertion bodies): an owner no
+            // insertion body resolves (another B-rep's, a geometry's or an ambiguous
+            // key) has no upstream counterpart.
+            None => Err(invalid(
+                "face-slot Surface owner outside the insertion bodies",
+            )),
         }
-        // UNPORTED(blend.fillet_executive_p1): actual foreign Surface owner lookup.
-        Err(SolidError::unported(
-            "SmSurface::GetFace (foreign insertion owner)",
-            "blend.fillet_executive_p1",
-        ))
     }
     fn owner_binding(&self, owner: ObjectRef) -> Option<(InsertionBody, EntityRef)> {
         let mut found = None;
@@ -708,15 +764,22 @@ impl<'a> InsertionGeometry<'a> {
     }
 }
 
+/// The insertion role of a body-qualified geometry handle. A second base B-rep is
+/// never one of an insertion view's bodies (its rails merge with it as the target).
+fn insertion_role(body: FilletBody) -> Option<InsertionBody> {
+    match body {
+        FilletBody::Target => Some(InsertionBody::Target),
+        FilletBody::Pseudo => Some(InsertionBody::Pseudo),
+        FilletBody::SecondBase => None,
+    }
+}
+
 impl ClassGeometry<FilletObject> for InsertionGeometry<'_> {
     fn curve(&self, object: FilletObject) -> Option<&Curve> {
         match object {
             FilletObject::InsertionCurve(binding) => self.curves.as_ref()?.get(binding),
             FilletObject::Curve(body, edge) => self
-                .body(match body {
-                    FilletBody::Target => InsertionBody::Target,
-                    FilletBody::Pseudo => InsertionBody::Pseudo,
-                })
+                .body(insertion_role(body)?)
                 .edge(edge)
                 .ok()?
                 .curve
@@ -725,10 +788,7 @@ impl ClassGeometry<FilletObject> for InsertionGeometry<'_> {
                 self.intermediate.edge(edge).ok()?.curve.as_ref()
             }
             FilletObject::UvCurve(body, eu) => self
-                .body(match body {
-                    FilletBody::Target => InsertionBody::Target,
-                    FilletBody::Pseudo => InsertionBody::Pseudo,
-                })
+                .body(insertion_role(body)?)
                 .edgeuse(eu)
                 .ok()?
                 .uv_trim_curve
@@ -797,10 +857,7 @@ impl ClassGeometryMut<FilletObject> for InsertionGeometry<'_> {
         match object {
             FilletObject::InsertionCurve(binding) => self.curves.as_mut()?.get_mut(binding),
             FilletObject::Curve(body, edge) => self
-                .body_mut(match body {
-                    FilletBody::Target => InsertionBody::Target,
-                    FilletBody::Pseudo => InsertionBody::Pseudo,
-                })
+                .body_mut(insertion_role(body)?)
                 .edge_mut(edge)
                 .ok()?
                 .curve
@@ -809,10 +866,7 @@ impl ClassGeometryMut<FilletObject> for InsertionGeometry<'_> {
                 self.intermediate.edge_mut(edge).ok()?.curve.as_mut()
             }
             FilletObject::UvCurve(body, eu) => self
-                .body_mut(match body {
-                    FilletBody::Target => InsertionBody::Target,
-                    FilletBody::Pseudo => InsertionBody::Pseudo,
-                })
+                .body_mut(insertion_role(body)?)
                 .edgeuse_mut(eu)
                 .ok()?
                 .uv_trim_curve
@@ -902,6 +956,7 @@ impl ProtoTopology<FilletObject> for InsertionGeometry<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::blend::fillet_geom::p1::FilletGeomId;
     use crate::primitive::api_primitives::create_box;
     use crate::Kernel;
 
@@ -1070,9 +1125,8 @@ mod tests {
             .as_mut()
             .unwrap()
             .set_owner(Some(foreign), None);
-        assert!(TopologyObjects::curve_edge(&view, curve)
-            .unwrap_err()
-            .is_unported());
+        // Not an edge, curve or edge use: SmCurve::GetEdge's walk stops (NULL).
+        assert_eq!(TopologyObjects::curve_edge(&view, curve).unwrap(), None);
         assert_eq!(
             ClassGeometry::curve(&view, curve).unwrap().owner(),
             Some(foreign)
@@ -1080,6 +1134,58 @@ mod tests {
         assert!(
             TopologyObjects::brep_cache(&view, FilletObject::Body(FilletBody::Target)).is_err()
         );
+    }
+
+    #[test]
+    fn bound_surface_face_follows_upstream_get_face() {
+        let mut k = Kernel::default();
+        let mut target = box_at(&mut k, 0.0);
+        let mut intermediate = box_at(&mut k, 100.0);
+        let mut pseudo = FilletBrep::new();
+        *pseudo.brep_mut() = box_at(&mut k, 200.0);
+        let mut view = InsertionGeometry::new(&mut target, &mut pseudo, &mut intermediate).unwrap();
+        let face = FaceId::from_index(0);
+        let binding = view
+            .capture_surface(&mut k.context, InsertionBody::Target, face)
+            .unwrap();
+        let serial = view.target.notify_serial().unwrap();
+        let set_owner = |view: &mut InsertionGeometry<'_>, owner| {
+            view.target
+                .face_mut(face)
+                .unwrap()
+                .surface
+                .as_mut()
+                .unwrap()
+                .set_owner(owner);
+        };
+        // Its own face.
+        set_owner(&mut view, Some(topology_ref(serial, EntityRef::Face(face))));
+        assert_eq!(
+            view.surface_face(binding).unwrap(),
+            Some(FilletObject::Topology(
+                FilletBody::Target,
+                EntityRef::Face(face)
+            ))
+        );
+        // No owner, or an owner that is not a face: `GetFace()` is NULL.
+        set_owner(&mut view, None);
+        assert_eq!(view.surface_face(binding).unwrap(), None);
+        let vertex = view.target.vertices().ids().next().unwrap();
+        set_owner(
+            &mut view,
+            Some(topology_ref(serial, EntityRef::Vertex(vertex))),
+        );
+        assert_eq!(view.surface_face(binding).unwrap(), None);
+        // An owner no insertion body holds is a broken binding, not a missing port.
+        set_owner(
+            &mut view,
+            Some(ObjectRef {
+                type_code: -123,
+                key: ObjectKey(u64::MAX),
+            }),
+        );
+        let error = view.surface_face(binding).unwrap_err();
+        assert!(!error.is_unported());
     }
 
     #[test]
@@ -1150,7 +1256,7 @@ mod tests {
         let caller = topology_ref(serial, EntityRef::Vertex(vertex));
         let changed = Point3::new(17.0, 18.0, 19.0);
         let mut curves = InsertionCurves::default();
-        let mut records = BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let events = Arc::new(Mutex::new(Vec::new()));
         k.context
@@ -1228,7 +1334,7 @@ mod tests {
             intermediate.notify_serial(),
         ];
         let mut curves = InsertionCurves::default();
-        let mut records = BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let result = InsertionGeometry::new(&mut target, &mut pseudo, &mut intermediate)
             .unwrap()
@@ -1373,7 +1479,7 @@ mod tests {
             .surface
             .as_ref()
             .unwrap()
-            .natural_uv_domain()
+            .natural_uv_domain_if_built()
             .min();
         let face_handle = FilletObject::Topology(FilletBody::Target, EntityRef::Face(face));
         let mut geometry =
@@ -1421,7 +1527,7 @@ mod tests {
         let mut pseudo = FilletBrep::new();
         *pseudo.brep_mut() = box_at(&mut k, 200.0);
         let mut curves = InsertionCurves::default();
-        let mut records = BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         crate::topology::brep::p3::with_lent_context(&mut k, |k, context| -> Result<()> {
             let mut view = InsertionGeometry::new(&mut target, &mut pseudo, &mut intermediate)?

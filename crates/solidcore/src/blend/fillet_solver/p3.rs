@@ -9,7 +9,7 @@
 //! |------------------------------------------------------|------------------------------------------------|
 //! | [`FilletSolver::other_fillet_corner`]                | `SmFilletSolver::GetOtherFilletCorner`         |
 //! | [`find_fillet_tsect_pnt`]                            | `sm_FindFilletTsectPnt` (static)               |
-//! | [`FilletSolver::split_and_trim_fillet_surface`]      | `SmFilletSolver::SplitAndTrimFilletSurface`    |
+//! | [`FilletSolver::split_and_trim_fillet_surface`], [`FilletSolver::split_and_trim_fillet_surface_with`] | `SmFilletSolver::SplitAndTrimFilletSurface`    |
 //! | [`FilletSolver::step_solve`], [`StepSolveOutcome`]   | `SmFilletSolver::StepSolve`                    |
 //! | [`refine_rail_curve_classification`]                 | `sm_RefineRailCurveClassification`             |
 //! | [`calc_rail_x_edge`], [`calc_rail_x_edge_with_ops`] | `sm_CalcRailXEdge` (static)                    |
@@ -123,9 +123,10 @@ impl FilletSolver {
         &self,
         b: &Brep,
         this_corner: Option<FilletCornerId>,
+        corners: &dyn crate::blend::fillet_geom::p3::SplitCorners,
     ) -> Result<Option<FilletCornerId>> {
-        let corner0 = self.fillet_corner(b, 0)?;
-        let corner1 = self.fillet_corner(b, 1)?;
+        let corner0 = self.fillet_corner(b, 0, corners)?;
+        let corner1 = self.fillet_corner(b, 1, corners)?;
         if this_corner == corner0 {
             return Ok(corner1);
         }
@@ -143,8 +144,9 @@ impl FilletSolver {
 /// `sm_FindFilletTsectPnt(pFilSolver, cpSurf1, cpSurf2, rPntToDrop, rTraceDir,
 /// rNewTsectPnt)`: drops the guess point onto both base surfaces (minimum distance,
 /// every solution kept), then solves for the rail points whose offset point lies on
-/// the plane through `pnt_to_drop` normal to `trace_dir` (`PointOnPlaneSolve`) and
-/// stores `trace_dir` as the curve derivative of `new_tsect`.
+/// the plane through `pnt_to_drop` normal to `trace_dir` (`PointOnPlaneSolve`, given
+/// the target `brep` holding the solver's edge uses) and stores `trace_dir` as the
+/// curve derivative of `new_tsect`.
 ///
 /// # Errors
 ///
@@ -154,6 +156,7 @@ impl FilletSolver {
 pub fn find_fillet_tsect_pnt(
     ops: &mut dyn FilletSolverOps,
     k: &Kernel,
+    brep: Option<&mut Brep>,
     surf1: &Surface,
     surf2: &Surface,
     pnt_to_drop: Point3,
@@ -165,8 +168,8 @@ pub fn find_fillet_tsect_pnt(
 
     // locals
     let this_approx_tol_3d = ops.solver().this_approx_tol_3d();
-    let domain1 = surf1.natural_uv_domain();
-    let domain2 = surf2.natural_uv_domain();
+    let domain1 = surf1.natural_uv_domain_with_nurb(k)?;
+    let domain2 = surf2.natural_uv_domain_with_nurb(k)?;
     for s in [surf1, surf2] {
         // smsurf_GetSurfaceCache + NER
         if let Err(e) = get_surface_cache(k, s, None::<NoObject>) {
@@ -216,6 +219,7 @@ pub fn find_fillet_tsect_pnt(
     // (virtual: the solver's override, the base's in unit blend.fillet_solver_p2)
     let found_solution = ops.point_on_plane_solve(
         k,
+        brep,
         pnt_to_drop,
         trace_dir,
         &domain1,
@@ -303,7 +307,7 @@ impl FilletSolver {
     pub fn step_solve(
         ops: &mut dyn FilletSolverOps,
         k: &Kernel,
-        brep: Option<&Brep>,
+        mut brep: Option<&mut Brep>,
         current: &TsectPnt,
         step: &mut f64,
         uv_domain1: &Extent2d,
@@ -478,7 +482,7 @@ impl FilletSolver {
 
                 // Create iso-curve (the iso parameter is not clamped to the natural
                 // domain of the surface)
-                let iso_curve = iso_curve_of(ops.solver(), si, surf_param, iso_param)?;
+                let iso_curve = iso_curve_of(k, ops.solver(), si, surf_param, iso_param)?;
 
                 // get OtherOffsetSurface/IsoParameterCurve intersection
                 let other = Surface::from(
@@ -529,7 +533,7 @@ impl FilletSolver {
                         ops.solver_mut().set_surfaces_to_zero_offset()?;
 
                         // the iso curve points at the (now zero-offset) surface
-                        let iso_curve = iso_curve_of(ops.solver(), si, surf_param, iso_param)?;
+                        let iso_curve = iso_curve_of(k, ops.solver(), si, surf_param, iso_param)?;
                         let plane_orig = iso_curve.evaluate_point(k, t_found);
                         ops.solver_mut()
                             .keep_extension_of_iso_copy(si, &iso_curve)?;
@@ -546,6 +550,7 @@ impl FilletSolver {
                         // blend.fillet_solver_p2)
                         let found_solution = ops.point_on_plane_solve(
                             k,
+                            brep.as_deref_mut(),
                             plane_orig,
                             plane_normal,
                             &uv_domains[0],
@@ -701,6 +706,7 @@ impl FilletSolver {
 /// `SmIsoCurve(*GetSurface(lSurfIndex), eSurfParam, dIsoParam, TRUE, FALSE)` on a copy
 /// of the solver's offset surface.
 fn iso_curve_of(
+    k: &Kernel,
     solver: &FilletSolver,
     surf_index: usize,
     surf_param: SurfParamType,
@@ -713,6 +719,7 @@ fn iso_curve_of(
         .surface
         .clone();
     Ok(Curve::from(IsoCurve::from_surface(
+        k,
         Surface::from(s),
         surf_param,
         iso_param,
@@ -807,7 +814,9 @@ impl FilletSolver {
     /// `SM_ERR_NULL_POINTER` for a rail or rail classification that is missing;
     /// [`SolidError::InvalidInput`] for a geometry index past the solver's geometries
     /// or a classification without a resolvable curve (upstream dereferences it);
-    /// those of the lengths and of [`FilletSolver::split_fillet_geom`].
+    /// those of the lengths and of [`FilletSolver::split_fillet_geom`]. `bases` are the
+    /// base B-reps the end curves read for rails 0 and 1 (`SplitFilletGeom`'s
+    /// `CreateEndCurve`).
     #[allow(clippy::too_many_lines)]
     pub fn split_and_trim_fillet_surface(
         &mut self,
@@ -816,9 +825,55 @@ impl FilletSolver {
         geometry: &impl ClassGeometry<EntityRef>,
         fillet_geom_index: usize,
         trim_type: BoundaryTrimmingType,
+        bases: [&Brep; 2],
+    ) -> Result<()> {
+        self.split_and_trim_fillet_surface_in(
+            k,
+            fillets,
+            &LegacyClassificationObjects(geometry),
+            fillet_geom_index,
+            trim_type,
+            bases,
+        )
+    }
+
+    /// [`Self::split_and_trim_fillet_surface`] with the classifications' actual
+    /// geometry provider (a live session's rails and target faces) and the base
+    /// B-reps the end curves read for rails 0 and 1 (`SplitFilletGeom`'s
+    /// `CreateEndCurve`; both the target, or a surface/surface fillet's second base
+    /// for rail 1).
+    ///
+    /// # Errors
+    /// As [`Self::split_and_trim_fillet_surface`], with those of the end curves.
+    pub fn split_and_trim_fillet_surface_with(
+        &mut self,
+        k: &Kernel,
+        fillets: &mut FilletBrep,
+        geometry: &impl ClassGeometry<FilletClassObject>,
+        fillet_geom_index: usize,
+        trim_type: BoundaryTrimmingType,
+        bases: [&Brep; 2],
+    ) -> Result<()> {
+        self.split_and_trim_fillet_surface_in(
+            k,
+            fillets,
+            geometry,
+            fillet_geom_index,
+            trim_type,
+            bases,
+        )
+    }
+
+    fn split_and_trim_fillet_surface_in(
+        &mut self,
+        k: &Kernel,
+        fillets: &mut FilletBrep,
+        geometry: &impl ClassGeometry<FilletClassObject>,
+        fillet_geom_index: usize,
+        trim_type: BoundaryTrimmingType,
+        bases: [&Brep; 2],
     ) -> Result<()> {
         const OP_T: &str = "blend::fillet_solver::p3::split_and_trim_fillet_surface";
-        let geometry = &LegacyClassificationObjects(geometry);
         let fillet_geom = *self
             .fillet_geoms
             .get(fillet_geom_index)
@@ -922,7 +977,7 @@ impl FilletSolver {
         }
 
         if found_intersection {
-            self.split_fillet_geom_scoped(
+            self.split_fillet_geom_with_target(
                 k,
                 fillets,
                 geometry,
@@ -932,6 +987,7 @@ impl FilletSolver {
                 &ivls2,
                 &cc1,
                 &cc2,
+                bases,
             )?;
         } else {
             // No Good classifications.  Delete the fillet surface.
@@ -1467,7 +1523,7 @@ impl FilletSolver {
 
         let fillet_surface = fillets
             .geom(geom)?
-            .fillet_surface()?
+            .fillet_surface(None)?
             .cloned()
             .ok_or_else(nul)?;
         let mut rail = fillets
@@ -1785,7 +1841,7 @@ mod tests {
         fn load_initial_values(
             &mut self,
             _k: &Kernel,
-            _brep: Option<&Brep>,
+            _brep: Option<&mut Brep>,
             _do2: bool,
             _rail: usize,
             _s1: &mut OffsetSurface,
@@ -2017,6 +2073,7 @@ mod tests {
         let r = find_fillet_tsect_pnt(
             &mut fs,
             &k,
+            None,
             &s0,
             &s1,
             Vec3::new(R, 1.0, R),
@@ -2033,13 +2090,21 @@ mod tests {
     fn other_fillet_corner_needs_the_executive() {
         // no executive: GetFilletExecutive() is dereferenced upstream
         let fs = FilletSolver::new(1e-6, 0.1, 0.01);
-        let r = fs.other_fillet_corner(&Brep::new(), None);
+        let r = fs.other_fillet_corner(
+            &Brep::new(),
+            None,
+            &crate::blend::fillet_geom::p3::NoCorners,
+        );
         assert!(matches!(r, Err(SolidError::InvalidInput { .. })), "{r:?}");
-        // with one, the corner lookup is blend.fillet_executive_p1's
+        // with one, the executive's corner of a missing vertex is NULL
         let mut fs = fs;
         fs.executive = Some(crate::blend::fillet_solver::p1::FilletExecutiveRef);
-        let r = fs.other_fillet_corner(&Brep::new(), None);
-        assert!(r.is_err_and(|e| e.is_unported()));
+        let r = fs.other_fillet_corner(
+            &Brep::new(),
+            None,
+            &crate::blend::fillet_geom::p3::NoCorners,
+        );
+        assert_eq!(r, Ok(None));
     }
 
     /// Resolves every handle to the one rail curve.
@@ -2123,6 +2188,7 @@ mod tests {
             &OneCurve(curve),
             0,
             BoundaryTrimmingType::Minimal,
+            [&Brep::new(), &Brep::new()],
         )
         .unwrap();
         assert!(fb.geom(g).unwrap().fillet_surface.is_none());
@@ -2144,6 +2210,7 @@ mod tests {
             &OneCurve(curve),
             0,
             BoundaryTrimmingType::Maximal,
+            [&Brep::new(), &Brep::new()],
         );
         // SplitFilletGeom (wired to blend.fillet_geom_p1 on main) reaches the geometry's
         // rail vertex uses, which this fixture's rails do not have: an upstream error
@@ -2174,6 +2241,7 @@ mod tests {
             &OneCurve(curve),
             0,
             BoundaryTrimmingType::None,
+            [&Brep::new(), &Brep::new()],
         );
         assert!(matches!(r, Err(SolidError::Upstream { .. })), "{r:?}");
     }
@@ -2237,7 +2305,11 @@ mod tests {
             )> {
                 Err(invalid("unexpected owner lookup"))
             }
-            fn owner_changed(&mut self, _: crate::curve::curve::p2::OwnerChange) -> Result<()> {
+            fn owner_changed(
+                &mut self,
+                _: &mut Curve,
+                _: crate::curve::curve::p2::OwnerChange,
+            ) -> Result<()> {
                 Err(invalid("unexpected owner notification"))
             }
         }

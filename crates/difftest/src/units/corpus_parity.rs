@@ -1,6 +1,7 @@
 //! Runner for unit `corpus.parity`: the Rust port is at least as good as upstream on
 //! every real model file under `upstream/TestFiles/pt_TestFiles` (188 `.smb` B-rep
-//! files and 74 `.smp` part files). C++: `solidcore_ffi::units::corpus_parity`. Rust:
+//! files and 74 `.smp` part files), and on the generated case inputs of
+//! `REPO_MODEL_DIRS`. C++: `solidcore_ffi::units::corpus_parity`. Rust:
 //! the readers (`SmBrep::ReadFromFile`, `SmBrepData::ReadPartFromFile`) and the
 //! measures of `crates/solidcore/examples/corpus`.
 //!
@@ -56,7 +57,6 @@ use solidcore::topology::brep_data_write::FromBrepEnv;
 use solidcore::topology::database_io::FileType;
 use solidcore::topology::face::p2::{self as fl, PPF_AREA};
 use solidcore::topology::part_file::{read_part_from_file, PartEnv};
-use solidcore::topology::topology::Topology;
 use solidcore::topology::{Brep, EdgeId, EdgeuseId, FaceId};
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::corpus_parity as ffi;
@@ -72,6 +72,11 @@ pub const TIMEOUT: Duration = Duration::from_secs(300);
 pub const CHILD_FLAG: &str = "--corpus-parity-child";
 /// Deepest directory level searched below the test files.
 const MAX_DEPTH: usize = 32;
+/// Repository directories of generated `.smb` case inputs other runners read on both
+/// sides, measured here too so a difference in those runners cannot be a reader
+/// difference (#1528: `offset.offset_executive_p2`'s `issue1528_plate_api_shell_2`
+/// shells `issue1528_plate.smb`). Their case names keep the repository-relative path.
+const REPO_MODEL_DIRS: [&str; 1] = ["fixtures/offset.offset_executive_p2/data"];
 /// Values per B-rep in a measurement (as [`ffi::PER_BREP`]).
 const PER_BREP: usize = ffi::PER_BREP;
 /// First identity of the geometry the readers make (topology identities stay below).
@@ -82,7 +87,8 @@ pub struct Runner;
 
 #[derive(Serialize, Deserialize)]
 struct Inputs {
-    /// The model file, relative to `upstream/TestFiles/pt_TestFiles`.
+    /// The model file, relative to `upstream/TestFiles/pt_TestFiles` (a
+    /// `REPO_MODEL_DIRS` file: relative to the repository root).
     file: String,
     /// Its absolute path.
     path: String,
@@ -176,15 +182,7 @@ fn disagreement_except(cpp: &[&[f64]], rust: &[&[f64]], skip: &[&str]) -> Option
 
 /// Files where upstream's result is a known C++ defect and the port's is right: the file,
 /// the quantities the defect affects (empty: the whole result) and the evidence.
-const KNOWN_CPP_DEFECTS: [(&str, &[&str], &str); 2] = [
-    (
-        "Fillet/sphere_diff_3cylinders.smb",
-        &["area", "volume"],
-        "plan/upstream-issues/WR-449--sphere-diff-3cylinders-one-fillet-face-integrates-0-6-too-large.md: \
-         upstream's fillet face 7 integrates 0.60 more area and 2.14 more volume than its five \
-         symmetric siblings, which the port matches; the trims differ on edge 30, made on demand \
-         (CreateUVTrimCurve / DropCurve / sm_FixUVTrimCurves), the diverging step not yet pinned",
-    ),
+const KNOWN_CPP_DEFECTS: [(&str, &[&str], &str); 1] = [
     (
         "Solids/fillet_ts.smb",
         &[],
@@ -234,12 +232,12 @@ fn key_of(brep: usize, e: EntityRef) -> ObjectRef {
 struct Read {
     breps: Vec<Brep>,
     attributes: AttributeStore,
-    records: std::collections::BTreeMap<ObjectKey, Topology>,
+    records: solidcore::topology::topology::NotifyRecords,
 }
 
 /// The B-reps of a model file: one from a B-rep file, any number from a part file.
 fn read_breps(k: &mut Kernel, bytes: Vec<u8>) -> solidcore::Result<Read> {
-    let mut records = std::collections::BTreeMap::new();
+    let mut records = solidcore::topology::topology::NotifyRecords::new();
     let mut attributes = AttributeStore::default();
     if bytes.starts_with(b"//[Output Summary]") {
         let mut env = PartEnv {
@@ -483,10 +481,10 @@ pub fn run_child(args: &[String]) -> ExitCode {
 /// system temp directory for the C++ round trip's file and removed with everything in it
 /// when dropped (on every return path). `create_dir` fails on any existing entry,
 /// a planted symlink included, and the next name is tried.
-struct PrivateDir(PathBuf);
+pub(super) struct PrivateDir(pub(super) PathBuf);
 
 impl PrivateDir {
-    fn new() -> std::io::Result<Self> {
+    pub(super) fn new() -> std::io::Result<Self> {
         let base = std::env::temp_dir();
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -532,7 +530,7 @@ fn measure_isolated(side: &str, path: &str) -> Measured {
         .arg(ACCURACY.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn();
     let mut child = match child {
         Ok(c) => c,
@@ -545,6 +543,12 @@ fn measure_isolated(side: &str, path: &str) -> Measured {
             s
         })
     });
+    // stderr is drained concurrently (a full pipe would stall the child) and only its tail
+    // is kept, for the reason of a side that crashed, timed out or printed no result
+    let err_reader = child
+        .stderr
+        .take()
+        .map(|err| std::thread::spawn(move || stderr_tail(err)));
     let start = Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -559,13 +563,65 @@ fn measure_isolated(side: &str, path: &str) -> Measured {
         }
     };
     let stdout = reader.and_then(|h| h.join().ok()).unwrap_or_default();
+    let stderr = err_reader.and_then(|h| h.join().ok()).unwrap_or_default();
     let Some(status) = status else {
-        return Measured::Failed(format!("timeout after {}s", TIMEOUT.as_secs()));
+        return Measured::Failed(with_stderr(
+            format!("timeout after {}s", TIMEOUT.as_secs()),
+            &stderr,
+        ));
     };
     if !status.success() {
-        return Measured::Failed(format!("crash ({status})"));
+        return Measured::Failed(with_stderr(format!("crash ({status})"), &stderr));
     }
-    parse_child(&stdout)
+    match parse_child(&stdout) {
+        Measured::Failed(why) if why == NO_RESULT => Measured::Failed(with_stderr(why, &stderr)),
+        m => m,
+    }
+}
+
+/// Most trailing lines of a failed child's stderr kept in its reason.
+const STDERR_TAIL_LINES: usize = 40;
+/// Most trailing bytes of a child's stderr held while it runs.
+const STDERR_TAIL_BYTES: usize = 64 * 1024;
+/// The reason of a child that exited without printing a result.
+const NO_RESULT: &str = "no result from the child";
+
+/// Reads `err` to its end, keeping its last [`STDERR_TAIL_BYTES`] bytes.
+fn stderr_tail(mut err: impl std::io::Read) -> String {
+    let mut tail: Vec<u8> = Vec::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        match err.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => {
+                tail.extend_from_slice(buf.get(..n).unwrap_or_default());
+                if tail.len() > 2 * STDERR_TAIL_BYTES {
+                    tail.drain(..tail.len() - STDERR_TAIL_BYTES);
+                }
+            }
+        }
+    }
+    if tail.len() > STDERR_TAIL_BYTES {
+        tail.drain(..tail.len() - STDERR_TAIL_BYTES);
+    }
+    String::from_utf8_lossy(&tail).into_owned()
+}
+
+/// `why` followed by the last [`STDERR_TAIL_LINES`] non-empty lines of the child's
+/// `stderr` (a panic message, an allocation failure, a thread or stack limit), if any.
+fn with_stderr(why: String, stderr: &str) -> String {
+    let lines: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
+    if lines.is_empty() {
+        return why;
+    }
+    let tail = lines
+        .get(lines.len().saturating_sub(STDERR_TAIL_LINES)..)
+        .unwrap_or_default();
+    format!(
+        "{why}; child stderr (last {} lines):\n{}",
+        tail.len(),
+        tail.join("\n")
+    )
 }
 
 /// The measurement a child printed.
@@ -592,7 +648,7 @@ fn parse_child(stdout: &str) -> Measured {
             _ => {}
         }
     }
-    Measured::Failed("no result from the child".to_string())
+    Measured::Failed(NO_RESULT.to_string())
 }
 
 // ---- the cases ------------------------------------------------------------------------
@@ -668,12 +724,19 @@ impl UnitDiff for Runner {
 
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
         let dir = ctx.root.join(crate::fixtures::UPSTREAM_TEST_FILES);
-        let files = model_files(&dir);
+        let mut files = model_files(&dir);
         if files.is_empty() {
             return Err(HarnessError::new(format!(
                 "no .smb/.smp files under {}",
                 dir.display()
             )));
+        }
+        for repo_dir in REPO_MODEL_DIRS {
+            files.extend(
+                model_files(&ctx.root.join(repo_dir))
+                    .into_iter()
+                    .map(|(path, file)| (path, format!("{repo_dir}/{file}"))),
+            );
         }
         files
             .into_iter()
@@ -741,5 +804,36 @@ impl UnitDiff for Runner {
 
     fn generate(&self, _rng: &mut crate::Rng) -> Option<Value> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_reason_keeps_the_stderr_tail() {
+        assert_eq!(
+            with_stderr("crash (exit status: 3)".into(), "\n \n"),
+            "crash (exit status: 3)"
+        );
+        let err: String = (0..50).fold(String::new(), |mut s, i| {
+            s.push_str("line ");
+            s.push_str(&i.to_string());
+            s.push('\n');
+            s
+        });
+        let why = with_stderr("crash (exit status: 3)".into(), &err);
+        assert!(why.starts_with("crash (exit status: 3); child stderr (last 40 lines):\nline 10\n"));
+        assert!(why.ends_with("line 49"));
+    }
+
+    #[test]
+    fn stderr_tail_keeps_the_last_bytes() {
+        let mut input = vec![b'x'; 3 * STDERR_TAIL_BYTES];
+        input.extend_from_slice(b"\npanicked at end");
+        let tail = stderr_tail(&input[..]);
+        assert_eq!(tail.len(), STDERR_TAIL_BYTES);
+        assert!(tail.ends_with("panicked at end"));
     }
 }
