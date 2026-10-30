@@ -209,6 +209,10 @@ pub struct UpstreamFixes {
     pub refine_cc_range_ends: bool,
     /// `SmSurface::GetFlatCorners` tests each corner bit instead of clearing the others (WR-384, #525).
     pub flat_corners_test_bits: bool,
+    /// `SmTorus::AssertValid` tests its V (minor) interval, not the U interval twice, and reports its U and V overlap tests as 3 and 4 (and `SmSurfOfRevolution`'s U test as 13), the ids their labels give them, where upstream reports them as 2 and 3 (and 2) (WR-538, #482; the fork's tangency-labs/smlib@0cd9d08).
+    pub torus_check_reads_v_interval: bool,
+    /// `SmTorus::AssertValid` reports a spindle torus whose V interval runs through an apex (`V = ±(90 + asin(R/r))`) as test 5, "Self Intersection", where upstream clears its result with no report and tests the U interval against `90 + acos(R/r)`, failing every spindle torus with a whole turn of U (WR-539; the fork's tangency-labs/smlib@daba678).
+    pub torus_check_spindle_apex: bool,
     /// `SmCone::RebuildSTEPFromNURBParameters` gives a cylinder the mean of near-equal radii (semi-angle 0) (WR-385, #713).
     pub cylinder_rebuild_mean_radius: bool,
     /// `SmCylinder::IsNurbSurfaceCylinder` gives an inside-out NURB (its iso circles turning against the line through their centres) the frame `IsNurbSurfaceCone` gives one: Z against the NURB's linear direction, origin at its top-knot circle; upstream keeps the bottom-knot circle and the NURB's direction, so the cylinder's Z is reversed and its STEP evaluation is mirrored in height (WR-496, #1463).
@@ -219,6 +223,8 @@ pub struct UpstreamFixes {
     pub revolve_analytic_profile_faces: bool,
     /// With `revolve_analytic_profile_faces`, a revolved arc whose centre is within the B-rep tolerance of the axis is the sphere centred on the axis through the arc's ends, and an end within it of the axis is its pole, not a sphere (or torus) built on the arc's own off-axis circle with a pole row of radius about sqrt(2 tol R) (WR-471, #1123; tangency-labs/smlib, "a revolved arc centred within tolerance of the axis is a sphere through its ends").
     pub revolve_arc_centre_near_axis_is_sphere: bool,
+    /// With `revolve_analytic_profile_faces`, a revolved arc whose circle reaches the axis to within the sweep's tolerance (its centre's distance from the axis within that tolerance of its radius) sweeps the horn torus, its major radius snapped to its minor one, as the sweep takes the arc's end there to be on the axis; swept as it lay, a hair inside or outside, the spindle or ring torus's minor circles cross or miss the axis where the topology collapses and the face's loop there comes out turned over. The snapped torus is kept only when it passes the analytic sweep's exact layout test (else the B-spline surface of revolution stays) (WR-552; the fork's tangency-labs/smlib@c4e378d).
+    pub revolve_arc_touching_axis_is_horn_torus: bool,
     /// A taper extrude's corner whose links meet at both ends pivots on the joint nearest its offset curve (WR-402, #479).
     pub taper_pivot_nearest_corner: bool,
     /// A taper extrude with linear-extension (tangent) corners of a profile of lines and circular arcs with a sharp corner continues each wall as its tangent plane to meet its neighbour along their exact seam (a line's wall is its own plane, so two lines meet at a corner edge), and refuses a corner it cannot close (`create_taper_extrude_with_corner` reports why and where), instead of ruling separate corner faces from offset extension lines; with fillet corners, or a profile with another curve kind, nothing changes (WR-521, #1449; SolidCraft change, tangency-labs/smlib e8f23e0).
