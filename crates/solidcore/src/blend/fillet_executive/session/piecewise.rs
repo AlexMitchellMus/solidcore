@@ -174,11 +174,11 @@ fn issue_actual_curve_identities(
     Ok(())
 }
 
-/// After the merge, the geometry the store's Boolean bound to `b`'s edges and
-/// faces under their session identity (`session`) is rebound to the same entity's
+/// After the merge, the geometry the store's Boolean bound to `b`'s edges, edge uses
+/// (their UV trim curves) and faces under their session identity (`session`) is rebound to the same entity's
 /// identity in `b`'s naming (`to`): the owner is the same edge or face, only its
 /// key's namespace changes. Geometry owned under any other identity is untouched.
-fn normalize_session_owners(
+pub(super) fn normalize_session_owners(
     b: &mut Brep,
     session: impl Fn(EntityRef) -> ObjectRef,
     to: impl Fn(EntityRef) -> ObjectRef,
@@ -195,6 +195,26 @@ fn normalize_session_owners(
             }
             matched
         });
+        if rebound {
+            b.set_geometry_owner_key(e, Some(new_owner));
+        }
+    }
+    let edgeuses: Vec<crate::topology::EdgeuseId> = b.edgeuses().ids().collect();
+    for eu in edgeuses {
+        let e = EntityRef::Edgeuse(eu);
+        let from = session(e);
+        let new_owner = to(e);
+        let rebound = b
+            .edgeuse_mut(eu)?
+            .uv_trim_curve
+            .as_mut()
+            .is_some_and(|curve| {
+                let matched = curve.owner() == Some(from);
+                if matched {
+                    curve.set_owner(Some(new_owner), None);
+                }
+                matched
+            });
         if rebound {
             b.set_geometry_owner_key(e, Some(new_owner));
         }
@@ -221,7 +241,7 @@ fn normalize_session_owners(
 
 /// The identity a B-rep of naming `naming` that records `recorded` for `e` owns `e`'s
 /// geometry under ([`Brep::owner_identity`]), `None` for an unknown scheme.
-fn naming_owner(
+pub(super) fn naming_owner(
     naming: NamingScheme,
     recorded: Option<ObjectRef>,
     e: EntityRef,
