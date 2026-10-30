@@ -261,12 +261,12 @@ fn join_replaces_a_foreign_attribute_of_the_tag_id() {
 
 #[test]
 fn application_values_clone_and_compare_through_the_box() {
+    fn send_sync<T: Send + Sync>() {}
+    fn send<T: Send>() {}
     let a = tag(&[(0, 1)], &[Point3::new(1.0, 0.0, 0.0)]).attribute();
     let copy = a.make_copy();
     assert_eq!(copy, a);
     assert_ne!(tag(&[(0, 2)], &[]).attribute(), a);
-    fn send_sync<T: Send + Sync>() {}
-    fn send<T: Send>() {}
     send_sync::<AttributeStore>();
     send::<Brep>();
     send::<Kernel>();
