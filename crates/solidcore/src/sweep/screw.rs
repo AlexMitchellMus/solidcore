@@ -13,6 +13,7 @@
 //! |------------------------------|-------------------------------------|
 //! | [`screw_sweep`]              | `smlib_screw_sweep`                 |
 //! | [`screw_sweep_radial`]       | `smlib_screw_sweep_radial`          |
+//! | [`screw_sweep_body`], [`screw_sweep_radial_body`] | the same, up to `finish` (not included) |
 //! | `Screw` (private)            | `Screw`                             |
 //! | `Stations` (private)         | `Stations`                          |
 //! | `lift_error` (private)       | `lift_error`                        |
@@ -30,7 +31,9 @@
 //!   list); each must be an `SmBSplineCurve` (a B-spline, line or conic) of dimension 3.
 //!   The radial law is `(turn, offset)` pairs. The result is the new [`Brep`]; a
 //!   rejected input is [`SolidError::InvalidInput`] (`SMLIB_ERR_ARG`), and a result that
-//!   is not a closed manifold solid is `SM_ERR` (`SMLIB_ERR_NOT_SOLID`).
+//!   is not a closed manifold solid is `SM_ERR` (`SMLIB_ERR_NOT_SOLID`). The `_body`
+//!   variants stop where the fork hands the body to its `finish`, without that check,
+//!   so a C API port can give `SMLIB_ERR_EMPTY` / `SMLIB_ERR_NOT_SOLID` itself.
 //! - **Bounds.** As the fork: at most [`MAX_TURNS`] turns, [`MAX_STATIONS`] spans in all
 //!   and [`MAX_LAW`] law pairs. Added: the span width's shrinking loop stops after
 //!   [`MAX_SHRINK`] steps, and a wall's control net holds at most [`MAX_NET_POINTS`]
@@ -591,6 +594,27 @@ pub fn screw_sweep(
     turns: f64,
     tolerance: f64,
 ) -> Result<Brep> {
+    solid(screw_sweep_body(
+        k, profile, origin, axis, pitch, turns, tolerance,
+    )?)
+}
+
+/// [`screw_sweep`] up to the fork's `finish`: the stitched and oriented body, its cached
+/// topology refreshed, without the check that it has faces and is a closed manifold
+/// solid.
+///
+/// # Errors
+///
+/// Those of [`screw_sweep`] but the closed-solid check.
+pub fn screw_sweep_body(
+    k: &mut Kernel,
+    profile: &[Curve],
+    origin: Point3,
+    axis: Vec3,
+    pitch: f64,
+    turns: f64,
+    tolerance: f64,
+) -> Result<Brep> {
     let mut m = screw_of(origin, axis, pitch, turns, tolerance)?;
     sweep(k, profile, &mut m, turns, tolerance)
 }
@@ -609,6 +633,26 @@ pub fn screw_sweep(
 /// profile not within one half-plane of the axis, or an offset that moves it onto the
 /// axis.
 pub fn screw_sweep_radial(
+    k: &mut Kernel,
+    profile: &[Curve],
+    origin: Point3,
+    axis: Vec3,
+    pitch: f64,
+    turns: f64,
+    law: &[(f64, f64)],
+    tolerance: f64,
+) -> Result<Brep> {
+    solid(screw_sweep_radial_body(
+        k, profile, origin, axis, pitch, turns, law, tolerance,
+    )?)
+}
+
+/// [`screw_sweep_radial`] up to the fork's `finish`, as [`screw_sweep_body`].
+///
+/// # Errors
+///
+/// Those of [`screw_sweep_radial`] but the closed-solid check.
+pub fn screw_sweep_radial_body(
     k: &mut Kernel,
     profile: &[Curve],
     origin: Point3,
@@ -801,6 +845,12 @@ fn sweep(
     }
     stitch(k, &mut brep)?;
     brep.refresh_cached_topology();
+    Ok(brep)
+}
+
+/// The fork's `finish` for a solid: the body must have faces and be a closed manifold
+/// solid (`SM_ERR` otherwise).
+fn solid(brep: Brep) -> Result<Brep> {
     if crate::topology::brep::p1::faces(&brep, None)?.is_empty()
         || !crate::topology::brep::p2::is_manifold_solid(&brep)?
     {

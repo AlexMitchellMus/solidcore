@@ -22,9 +22,12 @@ use solidcore::math::{Point2, Point3, Vec3};
 use solidcore::nurbs::b_spline_curve::{BSplineCurve, NurbCircleParam};
 use solidcore::primitive::api_curves::create_line_segment;
 use solidcore::surface::surface::SurfaceKind;
-use solidcore::sweep::screw::{screw_sweep, screw_sweep_radial};
+use solidcore::sweep::screw::{
+    screw_sweep, screw_sweep_body, screw_sweep_radial, screw_sweep_radial_body,
+};
 use solidcore::topology::brep::{p1, p2};
 use solidcore::topology::face;
+use solidcore::SolidError;
 use solidcore::{Brep, Kernel};
 
 use std::f64::consts::PI;
@@ -301,4 +304,31 @@ fn out_of_range_inputs_are_refused() {
     assert!(screw_sweep_radial(&mut k, &c, O, Z, 1.0, 3.0, &bad, 1e-4).is_err());
     let late = [(0.0, 0.1), (4.0, 0.0)];
     assert!(screw_sweep_radial(&mut k, &c, O, Z, 1.0, 3.0, &late, 1e-4).is_err());
+}
+
+#[test]
+fn body_variants_stop_before_the_solid_check() {
+    // The `_body` variants give the same body as the checked entry points where it is a
+    // solid, and refuse out-of-range input as `InvalidInput` (the C API's
+    // `SMLIB_ERR_ARG`).
+    let mut k = Kernel::default();
+    let c = coil().curves();
+    let checked = screw_sweep(&mut k, &c, O, Z, 1.5, 2.0, 1.5e-4).unwrap();
+    let body = screw_sweep_body(&mut k, &c, O, Z, 1.5, 2.0, 1.5e-4).unwrap();
+    assert!(p2::is_manifold_solid(&body).unwrap());
+    assert_eq!(
+        p1::faces(&body, None).unwrap().len(),
+        p1::faces(&checked, None).unwrap().len()
+    );
+    let law = [(0.0, -0.2), (2.0, 0.0)];
+    let body = screw_sweep_radial_body(&mut k, &c, O, Z, 1.5, 2.0, &law, 1.5e-4).unwrap();
+    assert!(p2::is_manifold_solid(&body).unwrap());
+    assert!(matches!(
+        screw_sweep_body(&mut k, &c, O, Z, 0.0, 2.0, 1.5e-4),
+        Err(SolidError::InvalidInput { .. })
+    ));
+    assert!(matches!(
+        screw_sweep_radial_body(&mut k, &c, O, Z, 1.5, 2.0, &[(3.0, 0.0)], 1.5e-4),
+        Err(SolidError::InvalidInput { .. })
+    ));
 }
