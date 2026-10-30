@@ -6,7 +6,7 @@
 //! `SmApiMergeBreps`, `SmApiBooleanWithOptions`, `SmApiBooleanLists`,
 //! `SmApiBooleanTrees`, `SmApiBooleanWithCurves`, `SmApiBoolean2d`,
 //! `SmApiNonManifoldBoolean`, `SmApiPiecewiseMerge`, `SmApiNonManifoldSweep`,
-//! `SmApiNonManifoldRotationalSweep`).
+//! `SmApiNonManifoldRotationalSweep`, `SmApiTessellateBoundaries`).
 //!
 //! A [`Call`] is encoded as `op args...`. An operand block ([`BrepSpec`]) is `kind`
 //! then its data: `1 O[3] length width height` (`SmApiCreateBox`), `2 C[3] radius`
@@ -41,8 +41,9 @@
 //! | `Sweep`         | 15 | brep `D[3] dist stitch merge region` sel | brep (also on `SM_ERR_INVALID_INPUT`)         |
 //! | `RotationalSweep` | 16 | brep `P[3] A[3] angle stitch merge region` sel | brep (also on `SM_ERR_INVALID_INPUT`)  |
 //! | `Attributed`    | 17 | brep brep `operation` `behavior`       | two-B-rep record, then the attribute rows       |
-//! | `Sweep` (attributed) | 18 | `behavior`, then op 15's args     | op 15's record, then the attribute rows         |
-//! | `RotationalSweep` (attributed) | 19 | `behavior`, then op 16's args | op 16's record, then the attribute rows |
+//! | `TessellateBoundaries` | 18 | brep `angle_tol_deg` `nd`, `nd` edge indices | (also after `SM_ERR`) `ne` edge indices, `nc` counts, `np` points `x y z` |
+//! | `Sweep` (attributed) | 19 | `behavior`, then op 15's args     | op 15's record, then the attribute rows         |
+//! | `RotationalSweep` (attributed) | 20 | `behavior`, then op 16's args | op 16's record, then the attribute rows |
 //!
 //! The two-B-rep record is `has [is_first kept brep [brep]]` (the second B-rep when
 //! upstream keeps it); a B-rep is `faces edges vertices regions manifold_solid`, then per
@@ -71,6 +72,11 @@
 //! selection `sel` is three arrays (faces, edges, vertices), each `count` (`-1` for a NULL
 //! array, at most [`MAX_SELECTION`]) then entries, each an index into the operand's
 //! `GetFaces`/`GetEdges`/`GetVertices` list or `-1` for a NULL entry.
+//! `TessellateBoundaries` first takes the curve away from the operand's edges at the given
+//! `GetEdges` indices (`SetCurve(NULL, TRUE, FALSE, FALSE)`, as upstream's test; at most
+//! [`MAX_DROPPED_CURVES`], each below 4096, the shim checks them against the edge list);
+//! its edges are written as `GetEdges` indices. Every angle tolerance is accepted
+//! (upstream rejects a non-finite or non-positive one).
 //!
 //! `Attributed` gives every face (`GetFaces` order) and edge (`GetEdges` order) of the first
 //! (operand 0) and second (operand 1) B-rep its own `SmLongAttribute`: id
@@ -83,7 +89,7 @@
 //! measure is the face's `SmApiFaceComputeArea` at [`AREA_ACCURACY`] or the edge's
 //! `SmApiEdgeComputeLength` at [`LENGTH_ACCURACY`] (minus the status on failure); rows are
 //! sorted by their attribute part, then by measure ([`sort_rows`]).
-//! An attributed sweep (op `18` / `19`: [`Call::Sweep`] / [`Call::RotationalSweep`] with
+//! An attributed sweep (op `19` / `20`: [`Call::Sweep`] / [`Call::RotationalSweep`] with
 //! `attributed`) tags the swept B-rep's faces and edges the same way (operand 0) before
 //! the sweep; a successful record ends, after the areas tail, with that B-rep's
 //! `faces rows... edges rows...` and the number of those values.
@@ -120,6 +126,8 @@ pub const MAX_SKIN_POINTS: usize = 512;
 pub const MAX_SELECTION: usize = 16;
 /// `dRelativeAccuracy` of the [`Call::Measured`] volume (`SmApiBrepComputeVolume`).
 pub const VOLUME_ACCURACY: f64 = 1e-6;
+/// Most edges whose curve [`Call::TessellateBoundaries`] takes away.
+pub const MAX_DROPPED_CURVES: usize = 64;
 /// `dRelativeAccuracy` of the [`Call::Measured`] face areas (`SmApiFaceComputeArea`).
 pub const AREA_ACCURACY: f64 = 1e-4;
 /// `dDesiredAccuracy` of the [`Call::Attributed`] edge lengths (`SmApiEdgeComputeLength`).
@@ -484,7 +492,7 @@ pub enum Call {
         /// The optional selections.
         selection: Selection,
         /// `Some(behavior)`: every face and edge of the B-rep is tagged first, as
-        /// [`Call::Attributed`] tags operand 0 (op `18`/`19`), and the record ends with
+        /// [`Call::Attributed`] tags operand 0 (op `19`/`20`), and the record ends with
         /// the swept B-rep's attribute rows.
         attributed: Option<u8>,
     },
@@ -507,7 +515,7 @@ pub enum Call {
         /// The optional selections.
         selection: Selection,
         /// `Some(behavior)`: every face and edge of the B-rep is tagged first, as
-        /// [`Call::Attributed`] tags operand 0 (op `18`/`19`), and the record ends with
+        /// [`Call::Attributed`] tags operand 0 (op `19`/`20`), and the record ends with
         /// the swept B-rep's attribute rows.
         attributed: Option<u8>,
     },
@@ -522,6 +530,16 @@ pub enum Call {
         operation: i32,
         /// `SmAttributeBehaviorType` value of the tags (0 to 4).
         behavior: u8,
+    },
+    /// `SmApiTessellateBoundaries` of `brep`, the edges at `drop_curves` (`GetEdges`
+    /// indices) first left without curve.
+    TessellateBoundaries {
+        /// The B-rep.
+        brep: BrepSpec,
+        /// `dAngleTolDeg`.
+        angle_tol_deg: f64,
+        /// `GetEdges` indices of the edges whose curve is taken away.
+        drop_curves: Vec<u64>,
     },
 }
 
@@ -773,7 +791,7 @@ fn push_list(o: &mut Vec<f64>, l: &[BrepSpec], max: usize) -> Result<(), FfiErro
 fn push_attributed(o: &mut Vec<f64>, op: f64, attributed: Option<u8>) -> Result<(), FfiError> {
     match attributed {
         None => o.push(op),
-        Some(behavior) if behavior <= 4 => o.extend([op + 3.0, f64::from(behavior)]),
+        Some(behavior) if behavior <= 4 => o.extend([op + 4.0, f64::from(behavior)]),
         Some(_) => return Err(bad("behavior is not an SmAttributeBehaviorType value")),
     }
     Ok(())
@@ -952,6 +970,20 @@ fn encode(call: &Call) -> Result<Vec<f64>, FfiError> {
             push_spec(&mut o, b)?;
             o.push(f64::from(*operation));
             o.push(f64::from(*behavior));
+        }
+        Call::TessellateBoundaries {
+            brep,
+            angle_tol_deg,
+            drop_curves,
+        } => {
+            if drop_curves.len() > MAX_DROPPED_CURVES || drop_curves.iter().any(|&d| d > 4095) {
+                return Err(bad("too many dropped curves or an index above 4095"));
+            }
+            o.push(18.0);
+            push_spec(&mut o, brep)?;
+            o.push(*angle_tol_deg);
+            o.push(drop_curves.len() as f64);
+            o.extend(drop_curves.iter().map(|&d| d as f64));
         }
     }
     Ok(o)
