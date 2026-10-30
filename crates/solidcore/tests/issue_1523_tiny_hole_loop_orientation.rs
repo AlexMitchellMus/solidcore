@@ -7,6 +7,11 @@
 //! hole is about 4e-12 of the face's domain. By default its loop's orientation is
 //! unknown; with `loop_orientation_floor_from_loop_box` the floor is 1e-8 of the loop's
 //! own box and the loop is oriented. The outer loop is oriented either way.
+//!
+//! The part is built with the flag on and only the orientation call is toggled: the
+//! boolean orients loops itself, and without the flag it does not leave this top face
+//! as one planar face with the hole (CI: no planar face at z = 10), so the default
+//! case would fail before it reaches the call under test.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -31,12 +36,13 @@ use solidcore::Kernel;
 /// sorted by width, largest first.
 fn top_loops(fix: bool) -> Vec<(OrientType, f64)> {
     let mut k = Kernel::default();
-    k.fixes.loop_orientation_floor_from_loop_box = fix;
+    k.fixes.loop_orientation_floor_from_loop_box = true;
     let plate = create_box(&mut k, Point3::new(0.0, 0.0, 0.0), 3000.0, 1000.0, 10.0).unwrap();
     let pin = create_cylinder(&mut k, Point3::new(1500.0, 500.0, -1.0), 0.002, 12.0).unwrap();
     let part = boolean_difference(&mut k, plate, pin).unwrap();
     let top = planar_faces_at(&k, &part, 2, 10.0);
     assert_eq!(top.len(), 1);
+    k.fixes.loop_orientation_floor_from_loop_box = fix;
     let mut out: Vec<(OrientType, f64)> = loops(&part, top[0], false, None)
         .unwrap()
         .into_iter()
