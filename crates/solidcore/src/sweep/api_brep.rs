@@ -14,9 +14,11 @@
 //! | [`create_pipe_sweep`]                        | `SmApiCreatePipeSweep`                         |
 //! | [`create_sweep_along_planar_path`]           | `SmApiCreateSweepAlongPlanarPath`              |
 //! | [`create_curve_sweep`], [`CurveSweep`]       | `SmApiCreateCurveSweep`                        |
+//! | [`create_curve_sweep_with_placements`], [`PlacedCurveSweep`] | `SmApiCreateCurveSweep` with the SolidCraft fork's `pOptPlacements` |
 //! | [`create_curve_sweep_from_faces`]            | `SmApiCreateCurveSweepFromFaces`               |
 //! | [`create_curve_sweep_from_edges`]            | `SmApiCreateCurveSweepFromEdges`               |
 //! | [`create_taper_extrude`]                     | `SmApiCreateTaperExtrude`                      |
+//! | [`create_taper_extrude_with_corner`], [`TaperExtrude`] | `SmApiCreateTaperExtrude` (fork: `eCorner`, `pOptRefusal`, `pOptRefusedCorner`) |
 //! | [`create_linear_sweep_with_repetitions`]     | `SmApiCreateLinearSweepWithRepetitions`        |
 //! | [`create_rotational_sweep_with_repetitions`] | `SmApiCreateRotationalSweepWithRepetitions`    |
 //! | `selection_is_owned_by` (private)            | `smApiSweepSelectionIsOwnedBy` (static template) |
@@ -63,10 +65,16 @@
 //!   [`PrimitiveModel`]. Path and scale curves become their `SmBSplineCurve` part.
 //!   The faces and edges of the curve sweeps are `(&Brep, id)` pairs: upstream
 //!   objects reach their own B-rep.
+//! - **SolidCraft fork (tangency-labs/smlib 5d3939e, WR-523, #1450).** The fork's
+//!   optional `pOptPlacements` output of `SmApiCreateCurveSweep` is the sibling
+//!   [`create_curve_sweep_with_placements`], so [`create_curve_sweep`] keeps its
+//!   signature and does no extra work; the fork's `bProfileAtPathStart` is
+//!   [`SweepOptions::profile_at_path_start`] (WR-522), off by default.
 
 use crate::curve::curve::p2::CurveKind;
 use crate::curve::curve::Curve;
 use crate::error::{EntityRef, Result, SolidError};
+use crate::geom::axis2_placement::Axis2Placement;
 use crate::geom::tol::ZONE_TOL_3D;
 use crate::geom::vector3d::{Point3, Vec3};
 use crate::kernel::Kernel;
@@ -99,6 +107,22 @@ const OP_NON_MANIFOLD: &str = "sweep::api_brep::non_manifold_sweep";
 /// extrusion (`SmOffsetCornerType`).
 pub use crate::curve::composite_curve::OffsetCornerType;
 
+/// Why a draft corner was refused, and where (`SmTaperCornerRefusal`,
+/// `pOptRefusedCorner`; SolidCraft change).
+pub use crate::primitive::primitive_creation::p2::{CornerRefusal, TaperCornerRefusal};
+
+/// The result of [`create_taper_extrude_with_corner`]: the solid, or the corner the
+/// draft could not close (the fork's `SM_ERR_INVALID_INPUT` with `pOptRefusal` set;
+/// no B-rep is returned then).
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // returned once, by value, like the `Brep` of `create_taper_extrude`
+pub enum TaperExtrude {
+    /// `rpResult`: the drafted solid.
+    Solid(Brep),
+    /// `pOptRefusal` and `pOptRefusedCorner`: the refused corner.
+    Refused(CornerRefusal),
+}
+
 /// A swept solid and its faces (the outputs of the curve sweeps).
 #[derive(Debug, Clone, Default)]
 pub struct CurveSweep {
@@ -110,6 +134,17 @@ pub struct CurveSweep {
     pub side_faces: Vec<FaceId>,
     /// `pOptEndFaces`: the end cap faces.
     pub end_faces: Vec<FaceId>,
+}
+
+/// A curve sweep and where it placed the profile (the outputs of
+/// [`create_curve_sweep_with_placements`]; the SolidCraft fork's `pOptPlacements`).
+#[derive(Debug, Clone)]
+pub struct PlacedCurveSweep {
+    /// The swept solid and its faces, as [`create_curve_sweep`] returns them.
+    pub sweep: CurveSweep,
+    /// `pOptPlacements`: the rigid motions carrying the profile curves as given onto
+    /// the sweep's first, middle and last sections.
+    pub placements: [Axis2Placement; 3],
 }
 
 /// Deep-copies the caller's profile curves for the consuming `SmPrimitiveCreation`
@@ -393,6 +428,60 @@ pub fn create_curve_sweep(
     })
 }
 
+/// [`create_curve_sweep`] that also says where it placed the profile
+/// (`SmApiCreateCurveSweep` with the SolidCraft fork's `pOptPlacements`,
+/// tangency-labs/smlib 5d3939e, WR-523, #1450): the rigid motions carrying the profile
+/// curves as given onto the first, middle and last sections the sweep placed. Each
+/// placement maps the global system onto the motion's image (`transform_point` of a
+/// profile point is that point on the section). The solid and faces are the same as
+/// [`create_curve_sweep`]'s.
+///
+/// # Errors
+///
+/// Those of [`create_curve_sweep`]; `InvalidInput` with a scale curve (a scaled
+/// sweep's sections are no rigid images of the profile).
+pub fn create_curve_sweep_with_placements(
+    k: &mut Kernel,
+    profile_curves: &[Option<&Curve>],
+    path_curve: Option<&Curve>,
+    scale_reference: Option<&Curve>,
+    scale_curve: Option<&Curve>,
+    options: Option<&SweepOptions>,
+) -> Result<PlacedCurveSweep> {
+    let Some(path_curve) = path_curve.filter(|_| !profile_curves.is_empty()) else {
+        return Err(SolidError::invalid_input(
+            OP_CURVE_SWEEP,
+            "no profile curves or no path curve",
+        ));
+    };
+
+    let options = options.copied().unwrap_or_default();
+
+    let approx_tol = ZONE_TOL_3D;
+    let path = bspline_of(path_curve, OP_CURVE_SWEEP)?;
+    let scale = scale_curve
+        .map(|c| bspline_of(c, OP_CURVE_SWEEP))
+        .transpose()?;
+    let profiles: Vec<Option<Curve>> = profile_curves.iter().map(|c| c.cloned()).collect();
+    let (sweep, placements) = curve_sweep_with(k, |pc, model, faces| {
+        pc.create_curve_sweep_with_placements(
+            model,
+            PrimitiveModel::MAIN,
+            &profiles,
+            &path,
+            scale_reference,
+            scale.as_ref(),
+            approx_tol,
+            options,
+            true,
+            &mut faces.0,
+            &mut faces.1,
+            &mut faces.2,
+        )
+    })?;
+    Ok(PlacedCurveSweep { sweep, placements })
+}
+
 /// The solid swept by the boundaries of `faces` (each with its B-rep) along
 /// `path_curve` (`SmApiCreateCurveSweepFromFaces`), scaled and optioned as
 /// [`create_curve_sweep`]. The faces and their curves are not changed.
@@ -498,9 +587,10 @@ pub fn create_curve_sweep_from_edges(
 ///
 /// # Errors
 ///
-/// `InvalidInput` for no curves or a `None` curve; the error of a failing curve
-/// copy; [`SolidError::Unported`] otherwise
-/// (`SmBrep::SmBrep`, until the B-rep constructor is ported).
+/// `InvalidInput` for no curves or a `None` curve, or for a corner refused under
+/// `fixes.taper_tangent_corner_planes` (WR-521; [`create_taper_extrude_with_corner`]
+/// reports why and where); the error of a failing curve copy; [`SolidError::Unported`]
+/// otherwise (`SmBrep::SmBrep`, until the B-rep constructor is ported).
 pub fn create_taper_extrude(
     k: &mut Kernel,
     curves: &[Option<&Curve>],
@@ -509,6 +599,48 @@ pub fn create_taper_extrude(
     end_caps: i32,
     fillet_corner: bool,
 ) -> Result<Brep> {
+    let corner = if fillet_corner {
+        OffsetCornerType::FilletCorner
+    } else {
+        OffsetCornerType::LinearExtension
+    };
+    match create_taper_extrude_with_corner(k, curves, height, draft_angle_deg, end_caps, corner)? {
+        TaperExtrude::Solid(brep) => Ok(brep),
+        TaperExtrude::Refused(_) => {
+            Err(SolidError::invalid_input(OP_TAPER, "draft corner refused"))
+        }
+    }
+}
+
+/// [`create_taper_extrude`] with the corner rule as an argument and a refused corner
+/// as part of the result (SolidCraft change, tangency-labs/smlib 54148db: the fork's
+/// `SmApiCreateTaperExtrude(..., eCorner, rpResult, pOptRefusal, pOptRefusedCorner)`).
+///
+/// - [`OffsetCornerType::LinearExtension`]: tangent lines across a corner's gap; with
+///   `fixes.taper_tangent_corner_planes` (WR-521, off by default) a profile of lines
+///   and circular arcs with a sharp corner continues its walls as their tangent planes
+///   instead (two lines meet at a corner edge) and may be refused.
+/// - [`OffsetCornerType::FilletCorner`]: an arc about the corner.
+/// - [`OffsetCornerType::CurveExtension`]: each wall continues as itself (a line's
+///   plane, an arc's cone) to meet its neighbour along their exact seam; a profile with
+///   a curve that is neither a line nor an arc is refused at a sharp corner
+///   ([`TaperCornerRefusal::NotExact`]), and so is a corner whose walls do not meet or
+///   a wall that closes before the far end. Without a sharp corner it is
+///   `LinearExtension`.
+/// - [`OffsetCornerType::LinearChamfer`]: as the C++ passes it on to the offsetter.
+///
+/// # Errors
+///
+/// As [`create_taper_extrude`], except a refusal, which is
+/// [`TaperExtrude::Refused`].
+pub fn create_taper_extrude_with_corner(
+    k: &mut Kernel,
+    curves: &[Option<&Curve>],
+    height: f64,
+    draft_angle_deg: f64,
+    end_caps: i32,
+    corner: OffsetCornerType,
+) -> Result<TaperExtrude> {
     if curves.is_empty() {
         return Err(SolidError::invalid_input(OP_TAPER, "no curves"));
     }
@@ -516,16 +648,9 @@ pub fn create_taper_extrude(
     // Sweep copies of the inputs: CreateTaperExtrude consumes the curves.
     let curve_copies = copy_curves_for_consuming_sweep(k, curves)?;
 
-    let normal = Vec3::new(0.0, 0.0, 0.0);
-    let corner = if fillet_corner {
-        OffsetCornerType::FilletCorner
-    } else {
-        OffsetCornerType::LinearExtension
-    };
-
-    let mut normal = normal;
-    build(k, |pc, model| {
-        pc.create_taper_extrude(
+    let mut normal = Vec3::new(0.0, 0.0, 0.0);
+    let (mut brep, refusal) = PrimitiveModel::build_new(k, |pc, model| {
+        pc.create_taper_extrude_with_refusal(
             model,
             PrimitiveModel::MAIN,
             curve_copies,
@@ -535,7 +660,13 @@ pub fn create_taper_extrude(
             &mut normal,
             corner,
         )
-    })
+    })?;
+    if let Some(refusal) = refusal {
+        return Ok(TaperExtrude::Refused(refusal));
+    }
+    // (not upstream: the port's cached topology fields, true for the caller)
+    brep.refresh_cached_topology();
+    Ok(TaperExtrude::Solid(brep))
 }
 
 /// The solid swept by `curves_to_sweep` along `sweep_dir` over `sweep_dist`,
@@ -808,20 +939,31 @@ fn curve_sweep(
     k: &mut Kernel,
     body: impl FnOnce(&mut PrimitiveCreation, &mut PrimitiveModel<'_>, &mut SweepFaces) -> Result<()>,
 ) -> Result<CurveSweep> {
-    let (mut brep, (start_faces, side_faces, end_faces)) =
+    curve_sweep_with(k, body).map(|(sweep, ())| sweep)
+}
+
+/// [`curve_sweep`] whose `body` also returns a value.
+fn curve_sweep_with<R>(
+    k: &mut Kernel,
+    body: impl FnOnce(&mut PrimitiveCreation, &mut PrimitiveModel<'_>, &mut SweepFaces) -> Result<R>,
+) -> Result<(CurveSweep, R)> {
+    let (mut brep, ((start_faces, side_faces, end_faces), extra)) =
         PrimitiveModel::build_new(k, |pc, model| {
             let mut faces = SweepFaces::default();
-            body(pc, model, &mut faces)?;
-            Ok(faces)
+            let extra = body(pc, model, &mut faces)?;
+            Ok((faces, extra))
         })?;
     // (not upstream: the port's cached topology fields, true for the caller)
     brep.refresh_cached_topology();
-    Ok(CurveSweep {
-        brep,
-        start_faces,
-        side_faces,
-        end_faces,
-    })
+    Ok((
+        CurveSweep {
+            brep,
+            start_faces,
+            side_faces,
+            end_faces,
+        },
+        extra,
+    ))
 }
 
 /// The `SmBSplineCurve` a path or scale curve is (upstream's parameter type): a

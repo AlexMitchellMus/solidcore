@@ -952,9 +952,18 @@ fn rust_write(s: &WriteSrc, ascii: bool) -> Result<Output, HarnessError> {
     };
     // the primitive's records are the kernel's, under its identities
     let serial = b.notify_serial();
-    let key_of = move |e: EntityRef| match serial {
-        Some(s) => topology_ref(s, e),
-        None => write_file_key(e),
+    // `FromBrep` keeps the surfaces and curves their faces and edges own: a face's (an
+    // edge's) identity is the owner its geometry records
+    let key_of = |e: EntityRef| -> ObjectRef {
+        let owner = match e {
+            EntityRef::Face(f) => b.face(f).ok().and_then(|x| x.surface.as_ref()?.owner()),
+            EntityRef::Edge(x) => b.edge(x).ok().and_then(|y| y.curve.as_ref()?.owner()),
+            _ => None,
+        };
+        owner.unwrap_or_else(|| match serial {
+            Some(s) => topology_ref(s, e),
+            None => write_file_key(e),
+        })
     };
     let attributes = AttributeStore::default();
     Ok(write_rec(

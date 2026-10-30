@@ -35,9 +35,9 @@
 //! Every argument finite; the flags 0 or 1; the prefill bits in `0..=15`; the body a
 //! whole number in `0..=7`. A file the shim reads (ops 1 and 2 with a path, op 3's file
 //! body) must be an upstream test file (a path under `upstream/TestFiles/pt_TestFiles`,
-//! without `..`): op 2's a part file (starting with `//[Output Summary]`) read ASCII
-//! (upstream's part reader trusts the counts it reads), the others not part files (op 1
-//! may read one as binary: its error path is compared, in a fresh child). Op 4's path is
+//! without `..`), read ASCII only (upstream's binary readers trust the counts they read:
+//! a text file read as binary crashes them), op 2's a part file (starting with
+//! `//[Output Summary]`), the others not. Op 4's path is
 //! a new file in the temporary directory (the shim writes and removes it). A box has
 //! sizes in `1e-6..=1e6` and a fillet radius `0` or positive below a quarter of the
 //! smallest size. A primitive body (op 3) has its sizes in `1e-6..=1e6`, a torus its
@@ -146,8 +146,10 @@ pub fn eval(op: u8, path: &str, args: &[f64; NARGS]) -> Result<Vec<f64>, FfiErro
         _ => false,
     };
     if reads_file {
-        if op == 2 && ascii != 1.0 {
-            return Err(bad("binary read of a part test file"));
+        // (upstream's binary readers trust the counts they read: a text file read as
+        // binary crashes the B-rep reader, a held memory-safety record)
+        if ascii != 1.0 {
+            return Err(bad("binary read of a text test file"));
         }
         upstream_file(path, op == 2)?;
     }
