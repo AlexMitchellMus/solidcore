@@ -2502,13 +2502,11 @@ impl FilletBrep {
 
 /// The surface upstream's pointer (`GetFilletSurface()`, `pFace->GetSurface()`, an
 /// extended surface) stands for, as a copy: the knots exactly as they are (the copy
-/// constructor's `sm_FixupKnotVector` can move near-coincident knots), without owner as
-/// the port's copies have always run here (an owned copy classifies points on the face,
-/// `SmFace::PointClassify`, which `query.face_p2` does not port for these callers yet).
+/// constructor's `sm_FixupKnotVector` can move near-coincident knots) and the owner
+/// kept, as the pointer has it (a face-owned copy's solves classify on its face where
+/// upstream's do).
 fn exact_surface(s: &Surface) -> Result<Surface> {
-    let mut c = s.clone_for_evaluation()?;
-    c.set_owner(None);
-    Ok(c)
+    s.clone_for_evaluation()
 }
 
 /// `DropVectors(uv, TRUE, TRUE, 1, &direction, &uv_dir)`.
@@ -2562,6 +2560,29 @@ mod tests {
             ids.push(v);
         }
         (fb, ids)
+    }
+
+    /// The copies stand for upstream's pointers (`pFace->GetSurface()`,
+    /// `GetFilletSurface()`), so they keep the surface's owner.
+    #[test]
+    fn exact_surface_keeps_the_owner() {
+        use crate::geom::assert_array::labels::FACE_TYPE;
+        use crate::geom::attribute::ObjectKey;
+        use crate::geom::object::ObjectRef;
+        let mut plane = Surface::from(Plane::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec2::new(1.0, 1.0),
+            &Extent2d::from_bounds(0.0, 0.0, 1.0, 1.0),
+        ));
+        let owner = ObjectRef {
+            type_code: FACE_TYPE,
+            key: ObjectKey(7),
+        };
+        plane.set_owner(Some(owner));
+        let copy = exact_surface(&plane).unwrap();
+        assert_eq!(copy.owner(), Some(owner));
     }
 
     #[test]
