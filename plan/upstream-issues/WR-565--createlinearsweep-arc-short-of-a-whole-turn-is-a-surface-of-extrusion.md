@@ -1,4 +1,4 @@
-#### WR-501. `CreateLinearSweep` makes an arc short of a whole turn a surface of extrusion, not a cylinder
+#### WR-565. `CreateLinearSweep` makes an arc short of a whole turn a surface of extrusion, not a cylinder
 - **Severity:** Wrong result
 - **Area:** Sweeps
 - **Location:** `source/SMLib/src/SmPrimitiveCreation.cpp:1345` (v1.0.1, `3fd5b95`), `SmPrimitiveCreation::CreateLinearSweep` (curve overload, def. `:1197`); the same test at `:1676` in `SmPrimitiveCreation::CreateLinearSweepSimple` (def. `:1554`).

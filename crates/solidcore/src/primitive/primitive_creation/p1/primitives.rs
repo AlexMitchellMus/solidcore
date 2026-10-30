@@ -26,7 +26,7 @@
 //! them. `SmBrep` is caller-owned; edits retain upstream edit-mode side effects.
 //! Face construction uses caller notification records, attributes and identity keys.
 //! No recursion.
-//! Not upstream (WR-501, tangency-labs/solidcore#1477, opt-in
+//! Not upstream (WR-565, tangency-labs/solidcore#1477, opt-in
 //! `Kernel::fixes.linear_sweep_arc_is_cylinder`; SolidCraft change, tangency-labs/smlib
 //! 12918e9): [`PrimitiveCreation::create_linear_sweep`] makes a circular arc short of a
 //! whole turn that is swept square to its plane a cylinder (`arc_sweep_cylinder`), where
@@ -910,7 +910,7 @@ fn cover_face_surface(
     Ok(r.success)
 }
 
-/// Not upstream (WR-501, #1477, `fixes.linear_sweep_arc_is_cylinder`): the cylinder of
+/// Not upstream (WR-565, #1477, `fixes.linear_sweep_arc_is_cylinder`): the cylinder of
 /// the circular arc of `frame` and `radius` from `start` to `end` degrees, swept square
 /// to its plane over `distance` along the unit `sweep_dir`. The frame is turned about
 /// its Z axis to the arc's start or, for a sweep against the arc's normal, to its end
@@ -952,7 +952,7 @@ impl PrimitiveCreation {
     /// The curve overload of `CreateLinearSweep`. It consumes the curves, chooses
     /// a rectangular plane for an orthogonal line, a cylinder for a full circle
     /// swept along its axis, and an extrusion otherwise. Topology edits defer.
-    /// With `k.fixes.linear_sweep_arc_is_cylinder` (not upstream, WR-501) an arc
+    /// With `k.fixes.linear_sweep_arc_is_cylinder` (not upstream, WR-565) an arc
     /// short of a full circle swept along its axis is a cylinder too.
     pub fn create_linear_sweep(
         &mut self,
@@ -1029,7 +1029,7 @@ impl PrimitiveCreation {
                             continue;
                         }
                     }
-                    // Not upstream (WR-501, #1477): with the fix, an arc short of a
+                    // Not upstream (WR-565, #1477): with the fix, an arc short of a
                     // whole turn swept square to its plane is a cylinder too.
                     if k.fixes.linear_sweep_arc_is_cylinder
                         && angle > 0.0
