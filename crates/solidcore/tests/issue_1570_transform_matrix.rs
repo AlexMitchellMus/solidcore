@@ -113,8 +113,8 @@ fn issue_1570_sv_decompose_reconstructs_the_matrix() {
     for r in 0..3 {
         for c in 0..3 {
             let mut x = 0.0;
-            for i in 0..3 {
-                x += u.at(r, i).unwrap() * w[i] * v.at(c, i).unwrap();
+            for (i, wi) in w.iter().enumerate() {
+                x += u.at(r, i).unwrap() * wi * v.at(c, i).unwrap();
             }
             assert!((x - a[r * 3 + c]).abs() < 1e-12, "A[{r}][{c}] = {x}");
         }
