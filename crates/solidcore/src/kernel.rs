@@ -153,7 +153,7 @@ pub struct UpstreamFixes {
     pub fillet_refuse_rails_leaving_faces: bool,
     /// `create_fillet_brep` refuses blends that take the whole of a face they roll on (`FacesOutlastTheirBlends`, no room) (WR-320, #879).
     pub fillet_refuse_face_consuming_blends: bool,
-    /// `DoFillet` refuses a filleted target that is not a closed manifold solid (an edge that is not `SmEdge::IsManifold`) with `SM_FILERR_BAD_MERGE`, where upstream returns success (WR-212, #422).
+    /// `DoFillet` refuses a filleted target that is not a closed manifold solid (an edge that is not `SmEdge::IsManifold`) with `SM_FILERR_BAD_MERGE`, where upstream returns success (WR-212, #422); the public wrappers (`fillet_edges`, `fillet_edges_per_edge`, `variable_radius_fillet`) then put the caller's body back as it was before the call.
     pub fillet_refuse_non_manifold_result: bool,
     /// The fillet executive refuses two rounds on edges of one face whose rails cross on it (no room between them), before the target is edited, where upstream builds an open body (WR-460, #1073).
     pub fillet_refuse_crossing_rails: bool,
@@ -189,6 +189,10 @@ pub struct UpstreamFixes {
     pub trim_boundary_seam_wrap: bool,
     /// `SmBSplineCurve::AssertValid` reads the minimum radius of curvature before tests 13/14 compare it (WR-382, #475).
     pub bspline_check_min_radius: bool,
+    /// `SmBSplineCurve::AssertValid` measures a UV trim on its face's surface: the radius of curvature test (13, live with `bspline_check_min_radius`) and the coincident interior control point test (15) run on the trim mapped by the surface's first fundamental form at its middle (the Cholesky factor: exact on a plane), with the mapped trim's tolerance and spacing for test 13 (WR-560, #1524; tangency-labs/smlib b4f8c57, 54ca3e0).
+    pub uv_trim_checks_on_surface: bool,
+    /// `SmFace::ComputeLoopOrientation`'s 3D path holds a loop's dimensionless area to a floor relative to the loop's own bounding box instead of the face's whole domain, so a loop far smaller than its face (a 0.002 hole in a 3 m plate) is oriented (WR-561, #1523; tangency-labs/smlib 54ca3e0).
+    pub loop_orientation_floor_from_loop_box: bool,
     /// The curve property solves ignore a failed guess in `SolveOscillating`'s sign-change search (WR-253, #481).
     pub oscillating_skips_failed_guesses: bool,
     /// `sm_RefineCCSolutions` judges a range end's shift by its distance from 1 (WR-383, #527).
@@ -211,6 +215,8 @@ pub struct UpstreamFixes {
     pub taper_tangent_corner_planes: bool,
     /// A full-turn rotational sweep makes a closed shell inside another solid its cavity (WR-403, #478).
     pub revolve_nested_shells_as_cavities: bool,
+    /// With `revolve_nested_shells_as_cavities`, a full-turn rotational sweep whose stitch left one shell in the infinite region but nested the others itself (a profile with a hole: the hole's ring lies inside the ring around it, in that ring's region) sets every region's void flag from the nesting (`SetRegionIsVoidFlagsForNestedSolids`) when every shell is a closed face-use shell, so the hole's ring is a void, not material (WR-529; the fork's tangency-labs/smlib@38b4212).
+    pub revolve_holed_profile_void: bool,
     /// A curve sweep caps from the side faces at the sweep's start and end (WR-404, #411).
     pub curve_sweep_caps_at_sweep_ends: bool,
     /// Planar faces from curves join a loop touching another loop at a vertex into that loop (WR-405, #892).
@@ -223,6 +229,8 @@ pub struct UpstreamFixes {
     pub offset_walls_touch_refused: bool,
     /// `SmBrep::LocalOperation` returns the failed extended offset's own status (e.g. `SM_ERR_OFFSET_WALLS_TOUCH`, 1042, or `SM_ERR_BAD_INTERSECTIONS`, 1027) instead of a generic `SM_ERR` (WR-345 addendum, #1442; tangency-labs/smlib a759622).
     pub local_operation_offset_status: bool,
+    /// In a local operation (`SmBrep::LocalOperation`), `SmOffsetGeometryCreation::ExtendTrimEdges` fails a tangent or lamina edge whose lift onto one face's new surface drops onto the other's farther than ten times `max(the offset edge's tolerance, the approximation tolerance)`, and `EdgeuseOffset` passes that failure on, so the operation is refused; upstream ignores it ("will be fixed later", which no later step of a local operation does) and returns a body with an edge as loose as the gap between a moved face and its unmoved tangent neighbour (WR-530, #402; the fork's tangency-labs/smlib@23c5b0a). Offsets and shells are unchanged.
+    pub local_operation_refuses_loose_tangent_edges: bool,
     /// An inward shell mates the walls across rounds thinner than it (collapsed faces) (#397).
     pub offset_collapsed_rounds_mated: bool,
     /// `FaceuseOffset` fails on a face whose offset surface is missing without collapsing (`SmSurface::OffsetCollapses`: a cone, cylinder, sphere or torus offset onto its spine), where upstream reads any missing surface as a collapsed round (WR-464, #1072).
@@ -285,6 +293,8 @@ pub struct UpstreamFixes {
     pub found_torus_sphere_keep_tested_nurb: bool,
     /// `SmBSplineSurface::HasInternalPole` tests the row through each interior knot (`knots - 1 - degree`), not one row further for each repeated copy of the knot, so a horn torus's corner rows on its axis are not taken for an internal pole (WR-505, #1515; tangency-labs/smlib#41).
     pub internal_pole_row_through_knot: bool,
+    /// `SmSurfOfExtrusion::AssertValid` test 8 point-solves the origin on the generating curve with an unscaled `SM_EFF_ZERO`, so an origin evaluated on the curve at coordinates of about 10 (a text outline's quadratic Bezier) resolves to a few 1e-12 and is reported missing; with this fix that solve uses the issue's coordinate-aware zero `SM_EFF_ZERO * (1.0 + origin.max_dimension())`, its own factor rather than the factor 100 of the neighbouring point tests (WR-511, #1508; tangency-labs/smlib#31).
+    pub extrusion_origin_scaled_zero: bool,
     /// A sheet sweep's open-profile wires are glued where the curves meet (WR-409, #1113).
     pub sheet_sweep_joins_profile_wires: bool,
     /// `FindPolygonGuess` keeps a suspicious control-net triangle guess as a candidate against the nearest control point's, and returns the nearer one on the surface, so a rational surface whose control points are farther apart than its neighbouring parts does not lose a good guess (WR-444, #1164).
