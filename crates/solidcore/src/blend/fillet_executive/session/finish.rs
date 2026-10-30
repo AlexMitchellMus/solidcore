@@ -566,6 +566,9 @@ impl FilletSession<'_> {
             // DoPiecewiseMerge deletes m_pFilletBrep inside its mark scope
             return self.do_piecewise_merge(k);
         }
+        // the keys a caller-named target recorded before the merge name its entities
+        // afterwards (`Brep::owner_identity`)
+        let recorded = self.objects.target.geometry_owner_keys().clone();
         let result = self.merge_fillet_in_place(k);
         // (not upstream: owners are pointers there) the insertion names the geometry
         // it binds to the target's edges and faces by the session's kernel identity
@@ -578,7 +581,8 @@ impl FilletSession<'_> {
         let session_owner = |e| p3::topology_ref(serial, e);
         let restored =
             super::piecewise::normalize_session_owners(self.objects.target, session_owner, |e| {
-                super::piecewise::naming_owner(naming, e).unwrap_or_else(|| session_owner(e))
+                super::piecewise::naming_owner(naming, recorded.get(&e).copied(), e)
+                    .unwrap_or_else(|| session_owner(e))
             });
         result.and(restored)
     }
@@ -591,8 +595,11 @@ impl FilletSession<'_> {
         if self.executive.options.global_merge {
             // SmTol::GetApproxTol3d(m_pTargetBrep), then m_vTI.IntersectInsertRelate()
             // between the target and the intermediate body.
-            let tolerance =
-                crate::geom::tol::approx_tol3d(k, 0.5 * self.objects.target.tolerance());
+            let tolerance = crate::geom::tol::brep_approx_tol_3d(
+                k,
+                &*self.objects.target,
+                crate::geom::tol::SmallTopoType::NormalSize,
+            );
             self.executive.intersector.set_this_approx_tol_3d(tolerance);
             self.with_insertion_geometry(k, |k, ti, geometry| {
                 ti.intersect_insert_relate(k, geometry, FilletObject::Intersector)
