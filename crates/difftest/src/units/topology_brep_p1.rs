@@ -1043,10 +1043,10 @@ const SM_ERR_INVALID_INPUT: f64 = 1007.0;
 fn status_of(e: &SolidError) -> f64 {
     match e {
         SolidError::Upstream { code, .. } => f64::from(*code),
-        SolidError::InvalidInput { operation, .. } if *operation == "topology::brep::p1" => {
+        SolidError::InvalidInput { operation, .. } | SolidError::PortInvariant { operation, .. } if *operation == "topology::brep::p1" => {
             NULL_DEREF
         }
-        SolidError::InvalidInput { .. } => SM_ERR_INVALID_INPUT,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => SM_ERR_INVALID_INPUT,
         _ => -9.0,
     }
 }
@@ -2110,7 +2110,7 @@ fn run_rust_op(
             if let Some(d) = inexact(types, None, Some(&[])) {
                 return Ok(Err(d));
             }
-            let c = bspline_of(curve)?;
+            let c = Curve::from(bspline_of(curve)?);
             let opts = bp1::ParallelProjectionOptions {
                 projection_distance: *dist,
                 approx_tol_3d: *tol,

@@ -2,7 +2,8 @@
 //!
 //! Upstream: `source/SM_API/src/SmApiBrep.cpp` (`SmApiFilletEdges` 2049-2087,
 //! `SmApiFilletEdgesPerEdge` 2094-2135, `SmApiVariableRadiusFillet` 2142-2178,
-//! `SmApiSurfaceSurfaceFillet` 2189-2267, `SmApiSetBevelCorners` 2305-2338),
+//! `SmApiSurfaceSurfaceFillet` 2189-2267, `SmApiSetBevelCorners` 2305-2338,
+//! `SmApiFilletPreview` 2285-2309),
 //! `source/SM_API/src/SmApiFillets.cpp` (`SmApiChamferFillet` 40-113,
 //! `SmApiCircularFillet` 119-185).
 //!
@@ -14,6 +15,7 @@
 //! | [`circular_fillet`] | `SmApiCircularFillet` |
 //! | [`chamfer_fillet`] | `SmApiChamferFillet` |
 //! | [`set_bevel_corners`] | `SmApiSetBevelCorners` |
+//! | [`fillet_preview`] | `SmApiFilletPreview` |
 //! | [`surface_surface_fillet`] | `SmApiSurfaceSurfaceFillet` |
 //!
 //! Deviations: the kernel argument replaces `SmApiGetOrCreateContext()`. Edges are
@@ -21,7 +23,12 @@
 //! fillet-edge attribute) after `StitchAndOrient`; here the session, which holds the
 //! only borrow of `brep`, is dropped first. Attributes carry no geometry, so the
 //! stitch and orientation see the same topology and geometry. A body whose corners
-//! need an unported corner kind returns `Unported` from the session.
+//! need an unported corner kind returns `Unported` from the session. The
+//! whole-operation wrappers here drop their session and return only the later fillet
+//! failure, so the executive's own error info is not in their `Result`: a caller that
+//! needs the retained missing-corner note (`fixes.fillet_vertex_error_diagnostics`)
+//! drives [`FilletSession`] directly and reads
+//! [`FilletSession::error_info`].
 //! [`circular_fillet`] and [`chamfer_fillet`] ignore `LoadFilletSolver`'s status
 //! as upstream does, and skip an edge whose solver constructor fails (upstream's
 //! constructor only signals the error and leaves a solver without surfaces, which
@@ -45,9 +52,13 @@
 //! has no equivalent step; nothing else changes). Callers can run
 //! [`crate::topology::integrity::check`] immediately, without a manual refresh.
 //! Validation-only returns leave untouched bodies alone. The `create_face_from_surface`
-//! construction helper adds one face; its callers finalize the body. No recursion.
+//! construction helper adds one face; its callers finalize the body. [`fillet_preview`]
+//! returns copies of the preview surfaces (upstream hands out the executive's own, which
+//! it never frees); like upstream it does not check the radius
+//! ([`is_radius_supported`]). No recursion.
 
 use super::p1::is_radius_supported;
+use super::session::finish::{is_non_manifold_refusal, without_entity};
 use super::session::FilletSession;
 use crate::blend::fillet_executive::p2::SurfaceFilletOptions;
 use crate::blend::fillet_geom::p1::FilletSolverId;
@@ -65,6 +76,37 @@ use crate::topology::{Brep, EdgeId, FaceId, VertexId};
 
 const OP: &str = "blend::fillet_executive::api";
 
+/// Run `fillet` (a session's set-up, `do_fillet` and the stitch) on `brep`; with
+/// `fixes.fillet_refuse_non_manifold_result` (WR-212, not upstream), a refusal of a
+/// result that is not a closed manifold solid puts back the body as it was before the
+/// call (a [`Brep::clone_for_rollback`] taken first) and names no entity, as the
+/// refused result's edge is gone with it. Every other result is `fillet`'s own.
+fn refusing_non_manifold_result(
+    k: &mut Kernel,
+    brep: &mut Brep,
+    fillet: impl FnOnce(&mut Kernel, &mut Brep) -> Result<()>,
+) -> Result<()> {
+    let saved = if k.fixes.fillet_refuse_non_manifold_result {
+        Some(brep.clone_for_rollback())
+    } else {
+        None
+    };
+    let result = fillet(k, brep);
+    match (saved, result) {
+        (Some(saved), Err(error)) if is_non_manifold_refusal(&error) => {
+            brep.restore_from(saved);
+            Err(without_entity(error))
+        }
+        (_, result) => {
+            // (not upstream: the port's cached topology fields, true again for the
+            // caller; the body keeps the edits the executive made before a failure,
+            // as upstream)
+            brep.refresh_cached_topology();
+            result
+        }
+    }
+}
+
 fn invalid_input() -> SolidError {
     SolidError::Upstream {
         operation: OP,
@@ -77,6 +119,11 @@ fn invalid_input() -> SolidError {
 /// cross-section (`xsect_type` 0 linear, 2 blend curve, any other value circular),
 /// then `StitchAndOrient` with its defaults. `continuity` (1, 2 or 3 for G1-G3) and
 /// `thumbweight` apply to blend-curve cross-sections.
+///
+/// The executive's own error info is not returned here: this wrapper drops its session
+/// and returns only the later fillet failure. A caller that needs the retained
+/// missing-corner note (`fixes.fillet_vertex_error_diagnostics`) drives
+/// [`FilletSession`] directly and reads [`FilletSession::error_info`].
 ///
 /// # Errors
 /// `SM_ERR_INVALID_INPUT` for an empty edge list or a radius below 8 times the
@@ -97,18 +144,22 @@ pub fn fillet_edges(
     if !is_radius_supported(radius, brep.tolerance()) {
         return Err(invalid_input());
     }
-    let fillet = {
-        let mut session = FilletSession::new(k, brep)?;
-        session
-            .prepare_constant_radius_edges(k, edges, radius, xsect_type, continuity, thumbweight)
-            .and_then(|()| session.do_fillet(k))
-    };
-    let result =
-        fillet.and_then(|()| stitch_and_orient(k, brep, &StitchAndOrientOptions::default()));
-    // (not upstream: the port's cached topology fields, true again for the caller;
-    // the body keeps the edits the executive made before a failure, as upstream)
-    brep.refresh_cached_topology();
-    result
+    refusing_non_manifold_result(k, brep, |k, brep| {
+        {
+            let mut session = FilletSession::new(k, brep)?;
+            session
+                .prepare_constant_radius_edges(
+                    k,
+                    edges,
+                    radius,
+                    xsect_type,
+                    continuity,
+                    thumbweight,
+                )
+                .and_then(|()| session.do_fillet(k))
+        }?;
+        stitch_and_orient(k, brep, &StitchAndOrientOptions::default())
+    })
 }
 
 /// `SmApiFilletEdgesPerEdge`: fillet `edges` of `brep` with a constant radius and
@@ -138,18 +189,22 @@ pub fn fillet_edges_per_edge(
             return Err(invalid_input());
         }
     }
-    let fillet = {
-        let mut session = FilletSession::new(k, brep)?;
-        session
-            .prepare_per_edge_constant_radius(k, edges, radii, xsect_types, continuity, thumbweight)
-            .and_then(|()| session.do_fillet(k))
-    };
-    let result =
-        fillet.and_then(|()| stitch_and_orient(k, brep, &StitchAndOrientOptions::default()));
-    // (not upstream: the port's cached topology fields, true again for the caller;
-    // the body keeps the edits the executive made before a failure, as upstream)
-    brep.refresh_cached_topology();
-    result
+    refusing_non_manifold_result(k, brep, |k, brep| {
+        {
+            let mut session = FilletSession::new(k, brep)?;
+            session
+                .prepare_per_edge_constant_radius(
+                    k,
+                    edges,
+                    radii,
+                    xsect_types,
+                    continuity,
+                    thumbweight,
+                )
+                .and_then(|()| session.do_fillet(k))
+        }?;
+        stitch_and_orient(k, brep, &StitchAndOrientOptions::default())
+    })
 }
 
 /// `SmApiVariableRadiusFillet`: fillet `edges` of `brep` with a radius running
@@ -181,18 +236,15 @@ pub fn variable_radius_fillet(
         return Err(invalid_input());
     }
     let law = FilletLaw::linear(start_radius, end_radius, None);
-    let fillet = {
-        let mut session = FilletSession::new(k, brep)?;
-        session
-            .prepare_variable_radius_edges(k, edges, start_radius, law, xsect_type, continuity)
-            .and_then(|()| session.do_fillet(k))
-    };
-    let result =
-        fillet.and_then(|()| stitch_and_orient(k, brep, &StitchAndOrientOptions::default()));
-    // (not upstream: the port's cached topology fields, true again for the caller;
-    // the body keeps the edits the executive made before a failure, as upstream)
-    brep.refresh_cached_topology();
-    result
+    refusing_non_manifold_result(k, brep, |k, brep| {
+        {
+            let mut session = FilletSession::new(k, brep)?;
+            session
+                .prepare_variable_radius_edges(k, edges, start_radius, law, xsect_type, continuity)
+                .and_then(|()| session.do_fillet(k))
+        }?;
+        stitch_and_orient(k, brep, &StitchAndOrientOptions::default())
+    })
 }
 
 /// Keep a value of an upstream call whose status is ignored; `Unported` propagates.
@@ -370,6 +422,37 @@ pub fn set_bevel_corners(
     // the body keeps the edits the executive made before a failure, as upstream)
     brep.refresh_cached_topology();
     result
+}
+
+/// `SmApiFilletPreview`: the untrimmed fillet surfaces a constant circular `radius`
+/// fillet of `edges` of `brep` would use (`SetFilletParameters` with its default
+/// continuity 1 and thumbweight 1.0, then `GetPreviewFilletSurfaces`), without filleting:
+/// each solver's surfaces in order, `None` for a fillet geometry without one. The corners
+/// are built in the session's pseudo-B-rep; `brep` keeps its faces.
+///
+/// # Errors
+/// `SM_ERR_INVALID_INPUT` for an empty edge list; the fillet executive's errors (`SM_ERR`
+/// when no edge gets a solver).
+pub fn fillet_preview(
+    k: &mut Kernel,
+    brep: &mut Brep,
+    edges: &[EdgeId],
+    radius: f64,
+) -> Result<Vec<Option<Surface>>> {
+    if edges.is_empty() {
+        return Err(invalid_input());
+    }
+    let preview = {
+        let mut session = FilletSession::new(k, brep)?;
+        // SetFilletParameters(.., SM_FSG_CIRCULAR, SM_FS_CONST_RADIUS, dRadius, NULL,
+        // -1, -1, -1, -1) with lContinuity = 1, dThumbweight = 1.0 defaulted
+        session
+            .prepare_constant_radius_edges(k, edges, radius, 1, 1, 1.0)
+            .and_then(|()| session.preview_fillet_surfaces(k))
+    };
+    // (not upstream: the port's cached topology fields, true again for the caller)
+    brep.refresh_cached_topology();
+    preview
 }
 
 /// `SmBrep::CreateFaceFromSurface(pSurface, pSurface->GetNaturalUVDomain(), pFace)`:

@@ -1185,7 +1185,10 @@ pub fn check_nx1_degeneracy_status(
         match eu3::evaluate_binormal(k, b, eu, t, false, &options) {
             Ok(e) => Ok(Ok(e.face_normal)),
             Err(e @ (SolidError::Unported { .. } | SolidError::NotFound { .. })) => Err(e),
-            Err(e @ SolidError::InvalidInput { reason, .. }) if reason == NULL_DEREF => Err(e),
+            Err(
+                e @ (SolidError::InvalidInput { reason, .. }
+                | SolidError::PortInvariant { reason, .. }),
+            ) if reason == NULL_DEREF => Err(e),
             Err(e) => Ok(Err(e)),
         }
     };
@@ -1197,7 +1200,15 @@ pub fn check_nx1_degeneracy_status(
         Ok(n) => n,
         Err(e) => return Ok(Err(e)),
     };
-    // Check if faceuse normals are parallel to each other
+    // Check if faceuse normals are parallel to each other. With
+    // `fillet_knife_edge_rounds` (WR-570, fork b7ec55b) anti-parallel normals are a cusp
+    // (the faces folded back on each other, a knife edge): the ball touches them back
+    // from the vertex and the fillet ends there as at any other corner
+    if k.fixes.fillet_knife_edge_rounds {
+        // (`bAntiParallel` starts FALSE; `IsParallelTo` leaves it for a zero vector)
+        let (parallel, anti) = faceuse_normal1.parallel_sense(faceuse_normal2, EFF_ZERO_SQRT);
+        return Ok(Ok(parallel && !anti.unwrap_or(false)));
+    }
     Ok(Ok(
         faceuse_normal1.is_parallel_to(faceuse_normal2, EFF_ZERO_SQRT)
     ))

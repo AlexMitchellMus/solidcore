@@ -824,7 +824,7 @@ fn rust_prob(kind: u8, n: u64, ops: &[[i64; 4]]) -> Result<Output, HarnessError>
                 let r = match kind {
                     1 => match pair.remove(&arena, p) {
                         Ok(r) => r,
-                        Err(SolidError::InvalidInput { .. }) => {
+                        Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => {
                             o.push(NULL_DEREF);
                             stop = true;
                             continue;
@@ -966,7 +966,7 @@ fn classify(e: SolidError) -> Fail {
         return Fail::Deferred(o);
     }
     match e {
-        SolidError::InvalidInput { .. } => Fail::NullDeref,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => Fail::NullDeref,
         SolidError::Upstream { code, .. } => Fail::Status(code),
         e => Fail::Other(e.to_string()),
     }
@@ -1321,6 +1321,7 @@ const CONV: Conventions<'static> = Conventions {
     skip_edge_list: false,
     face_owner: &arena_face_owner,
     edge_owner: &arena_edge_owner,
+    edgeuse_owner: &crate::own_builder::notify_edgeuse_owner,
 };
 
 /// `new (ctx) SmBrep()`, then `SmPrimitiveCreation(brep->GetInfiniteRegion())

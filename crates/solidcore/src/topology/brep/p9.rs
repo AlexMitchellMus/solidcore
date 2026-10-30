@@ -42,6 +42,10 @@
 //! `UpdateVertexEdgeIntervals` sets it. By default it leaves gaps up to the full
 //! tolerance, as the pinned C++ does, which `AssertValid` refuses above half of it.
 //! See `plan/upstream-issues/WR-469--make-edge-in-face-vertex-tolerance-gap.md`.
+//! Opt-in ([`UpstreamFixes::boolean_skips_faces_apart`](crate::kernel::UpstreamFixes::boolean_skips_faces_apart),
+//! WR-527, #1527): on two planes, `MakeEdgeInFaceWithVU` leaves an inner loop whose
+//! test point lies outside the new face's outer loop box (at the retry tolerance)
+//! in place without classifying it, as the fork's tangency-labs/smlib@60b1c6a.
 
 use crate::curve::curve::Curve;
 use crate::error::{ignore_status, Result, SolidError, SM_ERR};
@@ -2226,6 +2230,16 @@ fn redistribute_inner_loops(
     let missing_new = lu::is_missing_seam_at_vertices(k, b, new_outer)?;
     let classify_to_original = !missing_original;
     let mut loops = fp2::loops(b, face, false, None)?;
+
+    // Opt-in (WR-527, #1526/#1527): on a plane the region a loop bounds lies within the
+    // loop's box, so an inner loop sampled outside the box of the new face's outer loop
+    // is not in the new face and stays: only when every edge has a box.
+    let new_outer_box = if k.fixes.boolean_skips_faces_apart {
+        new_face_outer_box(k, b, face, new_face)?
+    } else {
+        None
+    };
+
     let mut i = 1;
     while let Some(&loop_) = loops.get(i) {
         if loop_ == new_loop || loop_ == start_loop {
@@ -2243,6 +2257,12 @@ fn redistribute_inner_loops(
             )?;
             (b.vertex(v)?.point, b.vertex(v)?.tolerance)
         };
+        // Opt-in (WR-527): no move - the test point is outside the new face's outer loop
+        // box, even at the retry tolerance below
+        if new_outer_box.is_some_and(|bbox| !bbox.contains_point(point, tolerance * 100.0)) {
+            i += 1;
+            continue;
+        }
         let target = if classify_to_original { face } else { new_face };
         let other = if classify_to_original { new_face } else { face };
         let mut pc = PointClassification::<EntityRef>::new(tolerance);
@@ -2348,6 +2368,54 @@ fn redistribute_inner_loops(
         }
     }
     Ok(())
+}
+
+/// The box of `new_face`'s outer loop edges, each grown by its tolerance, when both
+/// faces lie on planes and every one of those edges has a curve whose box can be
+/// computed (the fork's `sNewFOuterBox`, WR-527).
+fn new_face_outer_box(
+    k: &Kernel,
+    b: &Brep,
+    face: FaceId,
+    new_face: FaceId,
+) -> Result<Option<crate::geom::extent3d::Extent3d>> {
+    use crate::nurbs::b_spline_curve::BoundingBoxRequest;
+    use crate::surface::surface::SurfaceKind;
+    let on_plane = |f: FaceId| -> Result<bool> {
+        Ok(b.face(f)?
+            .surface
+            .as_ref()
+            .is_some_and(|s| matches!(s.kind(), SurfaceKind::Plane(_))))
+    };
+    if !on_plane(face)? || !on_plane(new_face)? {
+        return Ok(None);
+    }
+    let edges = face_outer_edges(b, new_face)?;
+    if edges.is_empty() {
+        return Ok(None);
+    }
+    let req = BoundingBoxRequest {
+        normal: true,
+        pseudo: false,
+        polar: false,
+    };
+    let mut outer_box = crate::geom::extent3d::Extent3d::new();
+    for edge in edges {
+        let record = b.edge(edge)?;
+        let Some(curve) = record.curve.as_ref() else {
+            return Ok(None);
+        };
+        let Some(mut edge_box) = curve
+            .calculate_bounding_box(k, &record.interval, req, true)
+            .ok()
+            .and_then(|boxes| boxes.normal)
+        else {
+            return Ok(None);
+        };
+        edge_box.expand_absolute(record.tolerance);
+        outer_box = outer_box.union(&edge_box);
+    }
+    Ok(Some(outer_box))
 }
 
 fn edge_sample(k: &Kernel, b: &Brep, edge: EdgeId) -> Result<(Point3, f64)> {
@@ -2528,9 +2596,9 @@ pub fn drop_edge_curve_on_face(
 }
 
 /// [`drop_edge_curve`] onto face `face` of `b`, whose surface `surface` is (a copy for
-/// evaluation): upstream's surface is owned by the face, so the start point drop's
-/// fast-drop trim test classifies on the face
-/// ([`crate::intersect::point_class::live_face_fast_drop_test`]).
+/// evaluation): upstream's surface is owned by the face, so `DropCurve` fetches the
+/// face's cache (made here when its start point drop first asks) but, with that cache's
+/// point testing off for the whole call, never classifies a drop on the face.
 #[allow(clippy::too_many_arguments)]
 fn drop_edge_curve_in_face(
     k: &Kernel,
@@ -2542,17 +2610,21 @@ fn drop_edge_curve_in_face(
     interval: &Extent1d,
     face_tolerance: f64,
 ) -> Result<EdgeCurveDrop> {
-    let mut test_on: Option<bool> = None;
+    let mut cache_made = false;
     for factor in [1.0, 10.0, 300.0] {
-        let mut classify = |k: &Kernel, uv: crate::math::Point2, src_tol: f64| -> Result<bool> {
-            crate::intersect::point_class::live_face_fast_drop_test(
-                k,
-                b,
-                face,
-                &mut test_on,
-                uv,
-                src_tol,
-            )
+        // SmSurface::DropCurve turns the face cache's point testing off for its whole call
+        // (`sChange1`, SmSurfaceDropLib.cpp:4315), so its start point drop keeps every
+        // fast-drop solution without classifying it on the face; the face's cache is
+        // still made there (`smsurf_GetSurfaceCache`, which may create its UV trims)
+        let mut classify = |k: &Kernel, _: crate::math::Point2, _: f64| -> Result<bool> {
+            if !cache_made {
+                cache_made = true;
+                // (`GetOwner()` is NULL while `CreateUVTrimCurve(s)` clears it: no face)
+                if !b.is_surface_owner_cleared(face) {
+                    crate::query::face::p2::face_surface_cache(k, b, face)?.release();
+                }
+            }
+            Ok(true)
         };
         // the virtual SmSurface::DropCurve with the defaults bKeepAllDropCurves = TRUE,
         // no failure record, bCreatingUVTrimCurve = TRUE
@@ -3165,7 +3237,7 @@ mod tests {
                 entity: EntityRef::Edge(EdgeId::from_index(7)),
             },
             SolidError::PreparationRequired { operation: OP },
-            SolidError::invalid_input("topology::brep_cache", "edge owner is not in source B-rep"),
+            SolidError::port_invariant("topology::brep_cache", "edge owner is not in source B-rep"),
         ];
         for e in internal {
             assert_eq!(ray_success(&Err(e.clone())), Err(e));

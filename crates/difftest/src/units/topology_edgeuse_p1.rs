@@ -41,6 +41,7 @@ use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::local_solve_nd::EvalNFunctions;
 use solidcore::geom::matrix::Matrix;
+use solidcore::geom::object::ObjectRef;
 use solidcore::geom::solution_array::{ObjectKind, Solution};
 use solidcore::geom::vector3d::Vec3;
 use solidcore::kernel::Kernel;
@@ -58,8 +59,8 @@ use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::shell::{ShellMembers, ShellType};
 use solidcore::topology::{
     Brep, Edge, EdgeId, Edgeuse, EdgeuseId, EdgeuseOwner, Face, FaceId, Faceuse, FaceuseId, Loop,
-    LoopId, Loopuse, LoopuseId, LoopuseStart, ObjectHandle, Region, RegionId, Shell, ShellId,
-    Vertex, VertexId, Vertexuse, VertexuseId, VertexuseOwner,
+    LoopId, Loopuse, LoopuseId, LoopuseStart, NamingScheme, ObjectHandle, Region, RegionId, Shell,
+    ShellId, Vertex, VertexId, Vertexuse, VertexuseId, VertexuseOwner,
 };
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::topology_edgeuse_p1::{self as ffi, Op};
@@ -154,6 +155,14 @@ pub(crate) enum BrepIn {
         natural: [f64; 2],
         inside_out: bool,
         oob: bool,
+    },
+    /// Native sheet face on the cubic Hermite shape `S(u, v) = C(u) + v * (0, 0, scale)`
+    /// over the unit domain: its four edges are cubic Hermite curves of the affine UV
+    /// segments of that sheet, with the edge tolerance `edge_tol` (kind 15; `scale` is
+    /// the sheet's physical size).
+    HermiteSheetFace {
+        scale: f64,
+        edge_tol: f64,
     },
     Network,
     Vertices {
@@ -394,6 +403,9 @@ pub(crate) fn brep_block_of(
             v.extend(angles);
             v.extend(natural);
             v.extend([flag(*inside_out), flag(*oob)]);
+        }
+        BrepIn::HermiteSheetFace { scale, edge_tol } => {
+            v.extend([15.0, *scale, *edge_tol]);
         }
         BrepIn::Network => v.push(3.0),
         BrepIn::Vertices { points } => {
@@ -723,6 +735,9 @@ fn run_cpp(i: &Inputs) -> Result<Output, HarnessError> {
     let path = path_of(i.brep.as_ref())?;
     let out = ffi::eval(code, &path, &input).map_err(|e| harness(format!("c++: {e}")))?;
     let body = out.get(1..).ok_or_else(|| harness("c++: empty output"))?;
+    if file_sourced(i) && matches!(op, OpIn::SetUv { .. }) {
+        return Ok(brep_output(&op, &strip_eu_owners(body)));
+    }
     Ok(brep_output(&op, body))
 }
 
@@ -1199,7 +1214,7 @@ pub(crate) fn import_raw_with_types(ex: &[f64]) -> Result<(Brep, ImportTypes), H
         let vertexuse = opt(rd.idx()?, VertexuseId::from_index)?;
         let orientation = orient_of(rd.idx()?)?;
         let uv_trim_curve = read_curve(&mut rd, true)?;
-        rd.idx()?; // the curve's owner: the holding edge use
+        rd.idx()?; // the curve's owner: not compared for a file's B-rep ([`strip_eu_owners`])
         let has_fail = rd.num()? != 0.0;
         let fail_status = rd.idx()?;
         let fail_brep = rd.num()? != 0.0;
@@ -1444,7 +1459,7 @@ pub(crate) fn import_raw_with_types(ex: &[f64]) -> Result<(Brep, ImportTypes), H
 fn slot<T>(r: Result<T, SolidError>, f: impl FnOnce(T) -> i64) -> Result<i64, SolidError> {
     match r {
         Ok(v) => Ok(f(v)),
-        Err(SolidError::InvalidInput { .. }) => Ok(NULL_DEREF),
+        Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => Ok(NULL_DEREF),
         Err(e) => Err(e),
     }
 }
@@ -1519,7 +1534,7 @@ fn run_rust(k: &mut Kernel, i: &Inputs) -> Result<Output, HarnessError> {
     if let Some(o) = inexact_geometry(&b, &types, &op) {
         return Ok(o);
     }
-    match run_rust_brep(k, &mut b, &op) {
+    match run_rust_brep(k, &mut b, &op, file_sourced(i)) {
         Ok(o) => Ok(o),
         Err(Fail::Solid(e)) => rust_err(&e),
         Err(Fail::Harness(h)) => Err(h),
@@ -1630,6 +1645,64 @@ fn eid(i: i64) -> EdgeuseId {
     EdgeuseId::from_index(i as u32)
 }
 
+/// The shim's `g.find(6, uv->GetOwner())` of a UV trim curve owner: the index of the
+/// edge use named `owner` (`own_builder::notify_edgeuse_owner`), `-1` for none, `-3`
+/// for one no edge use has.
+fn owner_index(b: &Brep, owner: Option<ObjectRef>) -> f64 {
+    let Some(owner) = owner else {
+        return -1.0;
+    };
+    b.edgeuses()
+        .ids()
+        .find(|&x| crate::own_builder::notify_edgeuse_owner(x) == owner)
+        .map_or(-3.0, |x| f64::from(x.index()))
+}
+
+/// A `SetUv` state record (`status`, then two `put_eu_state` blocks, then the edge
+/// tolerance and the drop record's B-rep flag) without the UV trim curve owner of each
+/// block. A B-rep read from a file is the C++ export imported, so its owners would be
+/// C++'s (no C++ state reaches the Rust side): both sides drop them there, and the
+/// owners are compared only where the Rust side builds its own B-rep.
+fn strip_eu_owners(state: &[f64]) -> Vec<f64> {
+    let mut out = Vec::with_capacity(state.len());
+    let Some((&status, rest)) = state.split_first() else {
+        return out;
+    };
+    out.push(status);
+    if status != 0.0 {
+        out.extend_from_slice(rest);
+        return out;
+    }
+    let mut at = 0;
+    for _ in 0..2 {
+        // present: -1 for none, else 1 and the block
+        let Some(&present) = rest.get(at) else { break };
+        out.push(present);
+        at += 1;
+        if present < 0.0 {
+            continue;
+        }
+        // the curve fingerprint: -1, or 1 t0 t1 and three points
+        let curve = if rest.get(at).copied() == Some(-1.0) {
+            1
+        } else {
+            12
+        };
+        out.extend(rest.iter().skip(at).take(curve));
+        // then the owner, dropped; then the drop record (3) and the vertex/face gap flag
+        at += curve + 1;
+        out.extend(rest.iter().skip(at).take(4));
+        at += 4;
+    }
+    out.extend(rest.iter().skip(at));
+    out
+}
+
+/// Whether case `i`'s B-rep is read from an `.smb` file (the C++ export imported).
+fn file_sourced(i: &Inputs) -> bool {
+    matches!(i.brep, Some(BrepIn::File { .. }))
+}
+
 /// The state of an edge use after `SetUVTrimCurve`, as the shim's `put_eu_state`.
 fn eu_state(k: &Kernel, b: &Brep, eu: Option<EdgeuseId>, out: &mut Vec<f64>) -> Result<(), SolidError> {
     let Some(eu) = eu else {
@@ -1650,10 +1723,9 @@ fn eu_state(k: &Kernel, b: &Brep, eu: Option<EdgeuseId>, out: &mut Vec<f64>) -> 
             }
         }
     }
-    out.push(if r.uv_trim_curve.is_some() {
-        f64::from(eu.index())
-    } else {
-        -1.0
+    out.push(match r.uv_trim_curve.as_ref() {
+        Some(c) => owner_index(b, c.owner()),
+        None => -1.0,
     });
     match r.drop_curve_fail.as_deref() {
         Some(f) => out.extend([1.0, f64::from(f.fail_status), flag(f.brep.is_some())]),
@@ -1669,12 +1741,15 @@ fn eu_state(k: &Kernel, b: &Brep, eu: Option<EdgeuseId>, out: &mut Vec<f64>) -> 
 fn status_of(e: &SolidError) -> f64 {
     match e {
         SolidError::Upstream { code, .. } => f64::from(*code),
-        SolidError::InvalidInput { .. } => NULL_DEREF as f64,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => NULL_DEREF as f64,
         _ => -9.0,
     }
 }
 
-fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
+/// The Rust side of B-rep op `op` on `b`; `file` drops the UV trim curve owners from a
+/// `SetUv` state, as [`run_cpp`] does for a B-rep read from a file
+/// ([`strip_eu_owners`]).
+fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn, file: bool) -> Result<Output, Fail> {
     match op {
         OpIn::EuQuery { eu, vertex } => {
             let e = eid(*eu);
@@ -1827,9 +1902,15 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
             fail,
         } => {
             let e = eid(*eu);
+            // the builders and the import name UV trim curve owners as Notify B-reps do
+            // (`own_builder::notify_edgeuse_owner`), so `SetUVTrimCurve` /
+            // `SetMemberUVTrimCurve` name the new owner the same way
+            if b.naming() == NamingScheme::Unknown {
+                b.set_naming(NamingScheme::Notify);
+            }
             let mate = match eu1::mate(b, e) {
                 Ok(m) => m,
-                Err(SolidError::InvalidInput { .. }) => {
+                Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => {
                     return Ok(Output::new().values("state", vec![NULL_DEREF as f64]))
                 }
                 Err(x) => return Err(x.into()),
@@ -1861,7 +1942,7 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
             };
             match r {
                 Ok(()) => {}
-                Err(SolidError::InvalidInput { .. }) => {
+                Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => {
                     return Ok(Output::new().values("state", vec![NULL_DEREF as f64]))
                 }
                 Err(x) => return Err(x.into()),
@@ -1876,6 +1957,7 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
             out.push(flag(
                 *kind != 4 && arg_fail.as_ref().is_some_and(|f| f.brep.is_some()),
             ));
+            let out = if file { strip_eu_owners(&out) } else { out };
             Ok(Output::new().values("state", out))
         }
         OpIn::Gaps {
