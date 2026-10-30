@@ -127,7 +127,7 @@ pub(super) enum Source {
 }
 impl Source {
     /// Source kind code and the shim's fixed-length parameter block.
-    fn wire(&self) -> (f64, [f64; ffi::SOURCE_PARAMS]) {
+    pub(super) fn wire(&self) -> (f64, [f64; ffi::SOURCE_PARAMS]) {
         let mut p = [0.0; ffi::SOURCE_PARAMS];
         let boxes = |p: &mut [f64; ffi::SOURCE_PARAMS], a: &BoxSpec, b: &BoxSpec| {
             for (slot, v) in p.iter_mut().zip(
@@ -162,7 +162,7 @@ impl Source {
             }
         }
     }
-    fn path(&self) -> Option<&str> {
+    pub(super) fn path(&self) -> Option<&str> {
         match self {
             Self::File { path } => Some(path),
             _ => None,
@@ -643,7 +643,7 @@ fn point(out: &mut Vec<f64>, p: Vec3) {
 }
 pub(super) fn status(error: SolidError) -> SolidResult<f64> {
     match error {
-        SolidError::InvalidInput { .. } => Ok(1007.0),
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => Ok(1007.0),
         SolidError::Upstream { code, .. } => Ok(f64::from(code)),
         error => Err(error),
     }
@@ -712,26 +712,36 @@ pub(super) fn topology(b: &Brep, out: &mut Vec<f64>) -> SolidResult<()> {
 /// The Rust body of `input`'s source (the box by default).
 fn build(k: &mut Kernel, input: &RealSolid) -> Result<SolidResult<Brep>, HarnessError> {
     use solidcore::primitive::api_primitives as primitives;
-    let boxed = |k: &mut Kernel, b: &BoxSpec| {
-        let [x, y, z] = b.size;
-        primitives::create_box(k, Vec3::from(b.origin), x, y, z)
-    };
     Ok(match &input.source {
         None => {
             let [x, y, z] = input.dimensions.unwrap_or_default();
             primitives::create_box(k, Vec3::ZERO, x, y, z)
         }
-        Some(Source::File { path }) => crate::own_reader::read_file(k, path)?,
-        Some(Source::Cylinder {
+        Some(source) => build_source(k, source)?,
+    })
+}
+/// The Rust body of a non-box `source` (the shim's `build_source`).
+pub(super) fn build_source(
+    k: &mut Kernel,
+    source: &Source,
+) -> Result<SolidResult<Brep>, HarnessError> {
+    use solidcore::primitive::api_primitives as primitives;
+    let boxed = |k: &mut Kernel, b: &BoxSpec| {
+        let [x, y, z] = b.size;
+        primitives::create_box(k, Vec3::from(b.origin), x, y, z)
+    };
+    Ok(match source {
+        Source::File { path } => crate::own_reader::read_file(k, path)?,
+        Source::Cylinder {
             origin,
             radius,
             height,
-        }) => primitives::create_cylinder(k, Vec3::from(*origin), *radius, *height),
-        Some(Source::BoxUnion { a, b }) => boxed(k, a).and_then(|first| {
+        } => primitives::create_cylinder(k, Vec3::from(*origin), *radius, *height),
+        Source::BoxUnion { a, b } => boxed(k, a).and_then(|first| {
             let second = boxed(k, b)?;
             solidcore::boolean::api_brep::boolean_union(k, first, second)
         }),
-        Some(Source::BoxDifference { a, b }) => boxed(k, a).and_then(|first| {
+        Source::BoxDifference { a, b } => boxed(k, a).and_then(|first| {
             let second = boxed(k, b)?;
             solidcore::boolean::api_brep::boolean_difference(k, first, second)
         }),
@@ -892,7 +902,7 @@ fn setback_fillet_edges(
     }
     // SmApiSetBevelCorners ignores the ordinary StitchAndOrient return status.
     match stitch_and_orient(k, body, &StitchAndOrientOptions::default()) {
-        Ok(()) | Err(SolidError::Upstream { .. } | SolidError::InvalidInput { .. }) => Ok(()),
+        Ok(()) | Err(SolidError::Upstream { .. } | SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => Ok(()),
         Err(error) => Err(error.into()),
     }
 }
@@ -987,7 +997,7 @@ fn law_fillet_edges(
         session.do_fillet(k)?;
     }
     match stitch_and_orient(k, body, &StitchAndOrientOptions::default()) {
-        Ok(()) | Err(SolidError::Upstream { .. } | SolidError::InvalidInput { .. }) => Ok(()),
+        Ok(()) | Err(SolidError::Upstream { .. } | SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => Ok(()),
         Err(error) => Err(error),
     }
 }
