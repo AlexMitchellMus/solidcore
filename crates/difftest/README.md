@@ -252,6 +252,12 @@ HEAP blend.fillet_executive_p3 pads=1,3,8 checked=1 padded=1 address_dependent=1
 `padded=0` the line says so (`C++ runs in-process here: reruns unpadded, no address
 check`), because then nothing was tested for address dependence.
 
+Padding settings and counters are per calling thread; clearing padding leaves later
+children unpadded. A particular allocation is not guaranteed to keep its address
+between unpadded forks, or to change under a pad: parent allocations and allocator
+policy can move it. Check native output sensitivity rather than pinning raw heap
+addresses in a regression.
+
 It is a flag, not a gate: each case's outcome is judged against that run's first C++
 result, the summary line and exit status follow those outcomes, and no report is
 written. The reruns do shift the parent's heap and any in-process C++ state before the
@@ -792,6 +798,7 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<f
   that step failing with that error defers the case on the issue; any other error stays
   an `ERROR`, and the deferral keeps the full error text (for example
   `324-*/round_4_over_hole`, tangency-labs/solidcore#422).
+  An empty or whitespace-only `error` never matches: the step failure stays an `ERROR`.
 * **Expectations** (`expect`): `lumps` (bounded regions; `0` = nothing left), `volume`
   (`value`, absolute `tol`, the `formula` it came from), `cylinder_faces_max`,
   `sheet_corner` (signed end distances and flat-pattern invariants).
@@ -814,6 +821,8 @@ nice -n 10 cargo run -p difftest -- --solidcraft-cases '3526-*'        # ids (<f
 
   and `reports/solidcraft-cases.json` (`reports/solidcraft-cases_<glob>.json` for a
   glob): per case its source links, verdict, deferral, measured values and checks.
+  With no matching cases, the report still contains an empty case list and zero
+  verdict counts, replacing any earlier report at that path. `--no-report` writes nothing.
 * `cargo test -p difftest --lib solidcraft` checks that every case file loads, every
   case runs to a verdict, and every deferral names a plan unit.
 * **Adding cases:** add a new `fixtures/solidcraft/<issue>-<slug>.json`. Files load in
@@ -889,7 +898,8 @@ nice -n 10 cargo run --profile difftest -p difftest --features cpp -- --step-cor
   values within `1e-9` relative), `HEAL-DIFF` (every build stage agrees, the heal or a
   later stage differs), `DIFF` (a build stage differs), `DEFERRED` (the Rust side
   reached unported code; the unit is shown), `CRASH` (a child crashed, timed out or
-  the shim rejected the input), `SKIPPED` (no B-rep body in the file).
+  the shim rejected the input), `SKIPPED` (no B-rep body in the file), `RUST-ONLY` (a
+  build without `cpp`: the Rust side built the body, nothing was compared).
 * Each (body, kernel) runs in its own child process (`--step-case <file> <body>
   <cpp|rust> <out.json>`). Output: one line per body, a `STEP-CORPUS` summary line, and
   `bin/step-corpus/report.json` (per body: source counts, both sides' stages, verdict).

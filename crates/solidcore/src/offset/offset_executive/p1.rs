@@ -86,11 +86,12 @@ use crate::geom::global_solver::{SolutionRequested, SolverOperation};
 use crate::geom::object::{NotifyOperation, ObjectRef};
 use crate::geom::solution_array::{Solution, SolutionArray};
 use crate::geom::tol::Relation;
+use crate::heal::stitch::p1::{BorrowedStitchEdits, StitchEditContext};
 use crate::heal::stitch::p2 as stitch;
 use crate::intersect::topology_solver::p1::TopologySolver;
 use crate::intersect::topology_solver::p2::TopologySolveOptions;
 use crate::kernel::Kernel;
-use crate::math::{Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
+use crate::math::{min2, Vec3, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQRT, PI};
 use crate::nurbs::b_spline_surface_n_lib::p1::OffsetParamType;
 use crate::nurbs::b_spline_surface_n_lib::p2::OrientType;
 use crate::nurbs::knots::Side;
@@ -103,6 +104,7 @@ use crate::surface::surface::{Surface, SurfaceKind};
 use crate::topology::brep::p1::{self as bp1, SetRegionVoidType};
 use crate::topology::brep::p4::shrink_geometry;
 use crate::topology::brep::p7::{self as bp7, FaceCurvesInput, SelfIntersectionCurve};
+use crate::topology::brep::p9::CurveIdentity;
 use crate::topology::brep_cache::{
     arena_identity, make_brep_cache, BrepCache, BrepObjects, CacheObject, CacheSource,
 };
@@ -180,6 +182,122 @@ pub struct VertexOffset {
     pub curve_orientations: Vec<OrientType>,
 }
 
+/// Not upstream (WR-532; the fork's tangency-labs/smlib@b283ea2, `sm_ExtendConeAsItself`):
+/// cone (or cylinder) `surface` extended by `dist` along its rulings and around its axis
+/// as itself, each direction's end spans carried on (`SM_CT_CINFINITY`), which stays on
+/// the circle where a tangent extension (`SM_CT_G1R`) leaves it. Around the axis it goes
+/// no farther than half the turn the cone leaves open on each side, so it never laps
+/// itself; a closed cone is extended along its rulings only. Around the axis each
+/// side is extended on its own and each old end made a knot of multiplicity equal to
+/// the degree again ([`full_knot`]; tangency-labs/smlib@3626d4b).
+///
+/// # Errors
+///
+/// Those of the extensions and knot insertions.
+fn extend_cone_as_itself(
+    kernel: &Kernel,
+    surface: &Surface,
+    cone: &crate::surface::cone::Cone,
+    dist: f64,
+) -> Result<Surface> {
+    use crate::nurbs::b_spline_surface::SurfParamType;
+    let (around, along) = if cone.rev().swap_uv() {
+        (SurfParamType::V, SurfParamType::U)
+    } else {
+        (SurfParamType::U, SurfParamType::V)
+    };
+    let along_srf =
+        surface.create_extended_surface_dir(kernel, along, dist, ContinuityType::CInfinity)?;
+
+    // around: half the open turn on each side, in arc length on the smaller end circle
+    let sweep_rad = cone.rev().step_uv_domain().u_interval().length() * PI / 180.0;
+    let radius = min2(cone.bot_radius(), cone.top_radius());
+    let open = 2.0 * PI - sweep_rad;
+    let around_dist = min2(dist, 0.5 * 0.5 * open * radius);
+    // (`SM_CAST_PTR(SmBSplineSurface, ..)`: the B-spline surface and its subclasses)
+    let is_bspline = !matches!(
+        along_srf.kind(),
+        SurfaceKind::OffsetSurface(_)
+            | SurfaceKind::CurveBounded(_)
+            | SurfaceKind::Step(_)
+            | SurfaceKind::SrfInVolume(_)
+    );
+    if !is_bspline || open <= 0.0 || around_dist <= EFF_ZERO_SQRT * (1.0 + radius) {
+        return Ok(along_srf);
+    }
+    // (tangency-labs/smlib@3626d4b) each side on its own, each old end then a knot of
+    // multiplicity equal to the degree again: SMLib's own form for a circle
+    // (`SmCone::IsNurbSurfaceCone` takes only a triple knot at each end and double knots
+    // inside); both sides in one call extend the first side's extended span again and
+    // leave a single knot at the old end, and a face on that surface is no longer found
+    // to be a cone
+    let around_ivl = if around == SurfParamType::U {
+        along_srf.natural_uv_domain_with_nurb(kernel)?.u_interval()
+    } else {
+        along_srf.natural_uv_domain_with_nurb(kernel)?.v_interval()
+    };
+    let (min_side, max_side) = if around == SurfParamType::U {
+        (SurfParamType::UMin, SurfParamType::UMax)
+    } else {
+        (SurfParamType::VMin, SurfParamType::VMax)
+    };
+    let mut min_srf = along_srf.create_extended_surface_dir(
+        kernel,
+        min_side,
+        around_dist,
+        ContinuityType::CInfinity,
+    )?;
+    full_knot(&mut min_srf, around, around_ivl.min())?;
+    let mut both = min_srf.create_extended_surface_dir(
+        kernel,
+        max_side,
+        around_dist,
+        ContinuityType::CInfinity,
+    )?;
+    full_knot(&mut both, around, around_ivl.max())?;
+    Ok(both)
+}
+
+/// Not upstream (WR-532; tangency-labs/smlib@3626d4b): makes the knot of B-spline
+/// `surface` at `at` in direction `dir` of multiplicity equal to the degree
+/// (`InsertOneKnot` of the missing count; a knot within `EFF_ZERO` of the interval's
+/// length counts as the same).
+///
+/// # Errors
+///
+/// `SM_ERR_NULL_POINTER` for a surface that is not a B-spline surface (upstream's
+/// `NER` of the cast); those of the knot query and insertion.
+fn full_knot(
+    surface: &mut Surface,
+    dir: crate::nurbs::b_spline_surface::SurfParamType,
+    at: f64,
+) -> Result<()> {
+    use crate::nurbs::b_spline_surface::SurfParamType;
+    const OP: &str = "offset::offset_executive::p1::extend_cone_as_itself";
+    let SurfaceKind::BSpline(bs) = surface.kind_mut() else {
+        return Err(SolidError::null_pointer(OP));
+    };
+    let (knots, mults) = bs.knots(dir, None)?;
+    let domain = bs.natural_uv_domain();
+    let ivl = if dir == SurfParamType::U {
+        domain.u_interval()
+    } else {
+        domain.v_interval()
+    };
+    let same = EFF_ZERO * (1.0 + ivl.length());
+    let mut have = 0;
+    for (&knot, &mult) in knots.iter().zip(&mults) {
+        if (knot - at).abs() <= same {
+            have = mult;
+        }
+    }
+    let degree = bs.degree(dir);
+    if have < degree {
+        bs.insert_one_knot(at, degree - have, dir)?;
+    }
+    Ok(())
+}
+
 /// The 27-bit object namespace under which the lamina clean-up's `DeleteFaces`
 /// (merge p4's arena adapter) records its notifications; distinct from the Boolean
 /// kernels' namespaces, which share no attribute store with an offset executive.
@@ -212,6 +330,11 @@ pub struct OffsetExecutive {
     /// convex round thinner than the wall), mated across instead of offset
     /// (`m_sCollapsedFaces`; only with `Kernel::fixes.offset_collapsed_rounds_mated`).
     pub(super) collapsed_faces: Vec<FaceId>,
+    /// The faces of a local operation and the surfaces replacing theirs, in step (the
+    /// part of `SmLocalOperationGeometryCreation` the executive reads: `m_vFaces`,
+    /// `m_vSurfaces`).
+    pub(super) local_faces: Vec<FaceId>,
+    pub(super) local_surfaces: Vec<Surface>,
 }
 
 impl OffsetExecutive {
@@ -258,6 +381,8 @@ impl OffsetExecutive {
             blend_to_faces: Relation::default(),
             extended_surfaces: BTreeMap::new(),
             collapsed_faces: Vec::new(),
+            local_faces: Vec::new(),
+            local_surfaces: Vec::new(),
         }
     }
 
@@ -340,6 +465,13 @@ impl OffsetExecutive {
     pub fn set_shell_faces(&mut self, faces: &[FaceId]) {
         self.shell_faces.clear();
         self.shell_faces.extend_from_slice(faces);
+    }
+
+    /// The geometry of a local operation (`SmLocalOperationGeometryCreation`'s face and
+    /// surface lists): `surfaces[i]` replaces the surface of `faces[i]`.
+    pub fn set_local_surfaces(&mut self, faces: &[FaceId], surfaces: Vec<Surface>) {
+        self.local_faces = faces.to_vec();
+        self.local_surfaces = surfaces;
     }
 
     /// Sets `m_eOffsetOperation`.
@@ -599,11 +731,14 @@ impl OffsetExecutive {
             std::collections::btree_map::Entry::Vacant(entry) => {
                 // The obsolete offset-specific `else` at cpp:2158 is unreachable:
                 // NER(pBase) already established pOrigSurf == pBase != NULL.
-                let extension = base.create_extended_surface(
-                    kernel,
-                    self.offset_distance * 5.0,
-                    ContinuityType::G1R,
-                )?;
+                let dist = self.offset_distance * 5.0;
+                let extension = match base.kind() {
+                    // Not upstream (WR-532), opt-in `offset_extends_cones_as_themselves`
+                    SurfaceKind::Cone(cone) if kernel.fixes.offset_extends_cones_as_themselves => {
+                        extend_cone_as_itself(kernel, base, cone, dist)?
+                    }
+                    _ => base.create_extended_surface(kernel, dist, ContinuityType::G1R)?,
+                };
                 Ok(entry.insert(extension))
             }
         }
@@ -655,8 +790,10 @@ impl OffsetExecutive {
             let base = offset
                 .extended_base_surface()
                 .unwrap_or_else(|| offset.base_surface());
-            // make sure base surface is an SmBSplineSurface
-            let SurfaceKind::BSpline(nurb) = base.kind() else {
+            // make sure base surface is an SmBSplineSurface (`SM_CAST_PTR`, which every
+            // subclass passes: plane, extrusion, revolution, cone, sphere, torus); its
+            // B-spline part with the NURB `GetOrCreateGwNurbPointer` makes when missing
+            let Some(nurb) = crate::topology::brep::p3::with_nurb(kernel, base)? else {
                 return Err(SolidError::sm_err(OP));
             };
             // use NLIB function to build offset surface approximation
@@ -1107,6 +1244,14 @@ impl OffsetExecutive {
                 &[],
                 &mut notifications.rekey(offset_key_of),
             )?;
+            // Not upstream (opt-in `Kernel::fixes.local_operation_step_walls`, fork
+            // tangency-labs/smlib 5d428ae): a step wall spans the gap between two edges
+            // exactly, as a lamina side wall does, and is kept out of the face extensions
+            // as one (extended along its rulings it can pass through its own axis, a step
+            // round a circle, and fold over itself).
+            if cap.closing_wall {
+                self.closing_faces.push(new_face);
+            }
             // map origEdge to its offset capFaces
             new_faces.push(new_face);
             self.relate_edge_face(edge, new_face);
@@ -1554,19 +1699,50 @@ impl OffsetExecutive {
         if !self.merge_results {
             self.clear_relations();
             let mut result = required(self.offset_brep.take())?;
-            // the stitch statuses are ignored upstream
-            if self.create_offset_solid {
-                // Tol: StitchIntoShell() adds in the tols of the topology objects,
-                // so the Brep's tolerance should be plenty.
-                let stitch_tol_3d = result.tolerance();
-                ignore_status(stitch::stitch_into_shell(
-                    kernel,
-                    &mut result,
-                    true,
-                    stitch_tol_3d,
-                ))?;
-            } else {
-                ignore_status(stitch::stitch_into_solid(kernel, &mut result))?;
+            // the stitch statuses are ignored upstream. Its edits notify the offset's
+            // objects (its glue merges and splits carry their attributes, as upstream's
+            // objects' own do) through the caller's stores under the result identities;
+            // without them, on call-local records.
+            let create_offset_solid = self.create_offset_solid;
+            let run = |kernel: &mut Kernel,
+                       result: &mut Brep,
+                       edits: Option<&mut dyn StitchEditContext>|
+             -> Result<()> {
+                if create_offset_solid {
+                    // Tol: StitchIntoShell() adds in the tols of the topology objects,
+                    // so the Brep's tolerance should be plenty.
+                    let stitch_tol_3d = result.tolerance();
+                    ignore_status(stitch::stitch_into_shell_with(
+                        kernel,
+                        result,
+                        true,
+                        stitch_tol_3d,
+                        edits,
+                    ))
+                } else {
+                    ignore_status(stitch::stitch_into_solid_with(kernel, result, edits))
+                }
+            };
+            match notifications {
+                Some(n) => {
+                    let key_of = n.result_key_of;
+                    let curve_ref = n.result_curve_ref;
+                    let (records, attributes) = (&mut *n.records, &mut *n.attributes);
+                    Context::with_notification_context(kernel, |kernel, context| {
+                        let mut env = NotifyEnv {
+                            records,
+                            attributes,
+                            context: Some(context),
+                            key_of,
+                        };
+                        let mut edits = BorrowedStitchEdits {
+                            env: &mut env,
+                            curve_identity: CurveIdentity::Legacy(curve_ref),
+                        };
+                        run(kernel, &mut result, Some(&mut edits))
+                    })??;
+                }
+                None => run(kernel, &mut result, None)?,
             }
 
             if bp1::regions(&result, None)?.len() > 1 {
@@ -1713,6 +1889,16 @@ impl OffsetExecutive {
                 ignore_status(surface.make_nurb(kernel))?;
             }
             SurfaceKind::SurfOfExtrusion(surface) if surface.base().gw_nurb().is_none() => {
+                ignore_status(surface.make_nurb(kernel))?;
+            }
+            // (SmCone/SmCylinder, SmSphere and SmTorus are SmBSplineSurfaces too)
+            SurfaceKind::Cone(surface) if surface.rev().base().gw_nurb().is_none() => {
+                ignore_status(surface.make_nurb(kernel))?;
+            }
+            SurfaceKind::Sphere(surface) if surface.base().base().gw_nurb().is_none() => {
+                ignore_status(surface.make_nurb(kernel))?;
+            }
+            SurfaceKind::Torus(surface) if surface.base().base().gw_nurb().is_none() => {
                 ignore_status(surface.make_nurb(kernel))?;
             }
             _ => {}
@@ -2316,18 +2502,19 @@ impl OffsetExecutive {
         let domain = ignored(original_face.uv_domain.intersect(&offset_face.uv_domain))?
             .unwrap_or_else(Extent2d::new);
         let mid_uv = domain.evaluate(0.5, 0.5);
+        // (`EvaluateNormal(sMidUV, TRUE, TRUE, ..)`: from the left)
         let normal = ignored(required(original_face.surface.as_ref())?.evaluate_normal(
             kernel.kernel(),
             mid_uv,
-            Side::Right,
-            Side::Right,
+            Side::Left,
+            Side::Left,
         ))?
         .unwrap_or(Vec3::UNDEF);
         let offset_normal = ignored(required(offset_face.surface.as_ref())?.evaluate_normal(
             kernel.kernel(),
             mid_uv,
-            Side::Right,
-            Side::Right,
+            Side::Left,
+            Side::Left,
         ))?
         .unwrap_or(Vec3::UNDEF);
         let same_normals = normal.dot(offset_normal) > 0.0;
@@ -3806,8 +3993,30 @@ mod tests {
             .unwrap();
         assert!((p.z - 0.25).abs() < 1.0e-6, "{p:?}");
 
-        // a base that is not a B-spline surface is SM_ERR
+        // a plane is an SmBSplineSurface too (issue #1476): its offset is approximated
         let offset = OffsetSurface::new(&kernel, 0.25, plane(0.0), true, 0).unwrap();
+        let mut brep = Brep::new();
+        let (offset_face, _) = add_face(&mut brep, Surface::from(offset));
+        OffsetExecutive::replace_implicit_offsets(
+            &mut kernel,
+            &mut brep,
+            1.0e-6,
+            &mut NotificationStores {
+                records: &mut records,
+                attributes: &mut attributes,
+                key_of: &loopuse::notify_ref,
+            },
+        )
+        .unwrap();
+        let surface = brep.face(offset_face).unwrap().surface.clone().unwrap();
+        assert!(matches!(surface.kind(), SurfaceKind::BSpline(_)));
+        let mid = surface.natural_uv_domain_if_built().mid();
+        let p = surface.evaluate_point(&kernel, mid).unwrap();
+        assert!((p.z - 0.25).abs() < 1.0e-6, "{p:?}");
+
+        // a base that is not a B-spline surface (here an offset surface) is SM_ERR
+        let inner = OffsetSurface::new(&kernel, 0.25, plane(0.0), true, 0).unwrap();
+        let offset = OffsetSurface::new(&kernel, 0.25, Surface::from(inner), true, 0).unwrap();
         let mut brep = Brep::new();
         add_face(&mut brep, Surface::from(offset));
         let status = OffsetExecutive::replace_implicit_offsets(

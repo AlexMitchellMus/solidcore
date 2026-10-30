@@ -155,6 +155,7 @@ use crate::geom::vector3d::{Point3, Vec3};
 use crate::intersect::surface_silhouette::SurfaceSilhouette;
 use crate::intersect::surface_tracer::SurfaceTrace;
 use crate::kernel::Kernel;
+
 #[cfg(test)]
 use crate::math::EFF_ZERO_DEG;
 use crate::math::{max2, min2, BIG_DOUBLE, EFF_ZERO, EFF_ZERO_SQ, EFF_ZERO_SQRT, PI};
@@ -1511,6 +1512,124 @@ impl Surface {
         }
     }
 
+    /// [`Surface::evaluate`] into the caller's array `d` (flat, entry
+    /// `i * (highest_v_deriv + 1) + j` the derivative of order `i` in u and `j` in v):
+    /// the entries upstream's evaluation does not write keep the caller's values, as
+    /// upstream's `aDerivatives` does. A curve bounded surface passes the call to its
+    /// basis surface and a STEP surface to its base's `EvaluateSTEP`
+    /// ([`Surface::evaluate_step_into`]); the other kinds write every entry, except
+    /// the lower half when `flags.only_upper_half` is set.
+    ///
+    /// # Errors
+    ///
+    /// Those of the evaluation; `InvalidInput` when `d` is too short, for a STEP
+    /// surface without base surface, or a chain deeper than
+    /// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING).
+    pub fn evaluate_into(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        highest_u_deriv: usize,
+        highest_v_deriv: usize,
+        flags: EvaluateFlags,
+        d: &mut [Vec3],
+    ) -> Result<()> {
+        self.evaluate_into_at(k, uv, highest_u_deriv, highest_v_deriv, flags, d, 0)
+    }
+
+    /// [`Surface::evaluate_step`] into the caller's array `d`, as
+    /// [`Surface::evaluate_into`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::evaluate_into`].
+    pub fn evaluate_step_into(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        highest_u_deriv: usize,
+        highest_v_deriv: usize,
+        flags: EvaluateFlags,
+        d: &mut [Vec3],
+    ) -> Result<()> {
+        self.evaluate_step_into_at(k, uv, highest_u_deriv, highest_v_deriv, flags, d, 0)
+    }
+
+    /// [`Surface::evaluate_into`] at chain depth `depth`.
+    fn evaluate_into_at(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        hu: usize,
+        hv: usize,
+        flags: EvaluateFlags,
+        d: &mut [Vec3],
+        depth: usize,
+    ) -> Result<()> {
+        const OP: &str = "surface::surface::p1::evaluate_into";
+        match self.kind() {
+            // pass the call along
+            SurfaceKind::CurveBounded(s) => {
+                s.basis()
+                    .evaluate_into_at(k, uv, hu, hv, flags, d, nesting_depth(depth, OP)?)
+            }
+            SurfaceKind::Step(s) => {
+                let base = s
+                    .surface()
+                    .ok_or_else(|| SolidError::invalid_input(OP, "STEP surface without base"))?;
+                base.evaluate_step_into_at(k, uv, hu, hv, flags, d, nesting_depth(depth, OP)?)
+            }
+            _ => {
+                let m = self.evaluate(k, uv, hu, hv, flags)?;
+                copy_written(&m, hu, hv, flags.only_upper_half, d, OP)
+            }
+        }
+    }
+
+    /// [`Surface::evaluate_step_into`] at chain depth `depth`.
+    fn evaluate_step_into_at(
+        &self,
+        k: &Kernel,
+        uv: Point2,
+        hu: usize,
+        hv: usize,
+        flags: EvaluateFlags,
+        d: &mut [Vec3],
+        depth: usize,
+    ) -> Result<()> {
+        const OP: &str = "surface::surface::p1::evaluate_step_into";
+        self.check_evaluation_copy_depth(0)?;
+        match self.kind_with_nurb(k)? {
+            SurfaceKind::CurveBounded(s) => {
+                s.basis()
+                    .evaluate_step_into_at(k, uv, hu, hv, flags, d, nesting_depth(depth, OP)?)
+            }
+            // the overrides (the side and half flags are not used)
+            SurfaceKind::Cone(s) => s.evaluate_step_into(uv, hu, hv, d),
+            SurfaceKind::Sphere(s) => s.evaluate_step_into(uv, hu, hv, d),
+            SurfaceKind::Torus(s) => s.evaluate_step_into(uv, hu, hv, d),
+            SurfaceKind::SurfOfRevolution(s) => s.evaluate_step_at_into(k, uv, hu, hv, d),
+            SurfaceKind::SurfOfExtrusion(s) => s.evaluate_step_into(k, uv, hu, hv, d),
+            // pass the call along (the base default, `Evaluate`)
+            SurfaceKind::BSpline(_)
+            | SurfaceKind::Plane(_)
+            | SurfaceKind::Step(_)
+            | SurfaceKind::OffsetSurface(_)
+            | SurfaceKind::SrfInVolume(_) => self.evaluate_into_at(
+                k,
+                uv,
+                hu,
+                hv,
+                EvaluateFlags {
+                    non_zero_tangents: true,
+                    ..flags
+                },
+                d,
+                nesting_depth(depth, OP)?,
+            ),
+        }
+    }
+
     /// [`Surface::evaluate_step`] for a caller that ignores its status: the derivative
     /// array it leaves, `None` when it fails before writing it. A curve bounded surface
     /// passes the caller's array on to its basis surface; the `SmSurfOfRevolution`
@@ -1797,7 +1916,6 @@ impl Surface {
     ///
     /// Those of [`Surface::domain_with_continuity`] and of the context's cache
     /// preparation.
-    #[allow(clippy::too_many_arguments)]
     pub fn domain_with_continuity_with_context<O: Copy + PartialEq>(
         &self,
         k: &Kernel,
@@ -1810,7 +1928,6 @@ impl Surface {
         self.domain_with_continuity_in(k, min_continuity, uv, uv_vector, Some(context), handle)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn domain_with_continuity_in<O: Copy + PartialEq>(
         &self,
         k: &Kernel,
@@ -2116,20 +2233,76 @@ impl Surface {
     /// of revolution reads the domain of the NURB its `MakeNurb` gives
     /// ([`Surface::kind_with_nurb`]), where [`Surface::natural_uv_domain_if_built`] answers the
     /// NURB-less base's empty domain; an offset surface reads its base's (or extended
-    /// surface's) the same way ([`OffsetSurface::natural_uv_domain_with_nurb`]). A
-    /// surface of extrusion already answers from its generator, and every other kind as
+    /// surface's) the same way ([`OffsetSurface::natural_uv_domain_with_nurb`]), and so
+    /// does a lazy surface of extrusion (`SmSurfOfExtrusion` does not override
+    /// `GetNaturalUVDomain`: its made NURB's domain, whatever the generator's kind).
+    /// A curve bounded surface and a surface in a volume pass the call to their basis /
+    /// base surface, and a STEP surface answers its base's STEP domain
+    /// ([`Surface::step_uv_domain_with_nurb`]), so a lazy analytic under them is made
+    /// as upstream's virtual calls make it. Every other kind answers as
     /// [`Surface::natural_uv_domain_if_built`].
     ///
     /// # Errors
     ///
-    /// [`SolidError::Unported`] from the make.
+    /// [`SolidError::Unported`] from the make; `InvalidInput` for a curve bounded, STEP
+    /// or volume chain deeper than [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING).
     pub fn natural_uv_domain_with_nurb(&self, k: &Kernel) -> Result<Extent2d> {
+        self.natural_uv_domain_with_nurb_at(k, 0)
+    }
+
+    /// [`Surface::step_uv_domain`] as upstream's `GetSTEPUVDomain`, whose base default
+    /// is the virtual `GetNaturalUVDomain` ([`Surface::natural_uv_domain_with_nurb`]):
+    /// the kinds with their own STEP domain answer it, a surface in a volume its base's,
+    /// the others their natural domain with a lazy NURB made.
+    ///
+    /// # Errors
+    ///
+    /// As [`Surface::natural_uv_domain_with_nurb`].
+    pub fn step_uv_domain_with_nurb(&self, k: &Kernel) -> Result<Extent2d> {
+        self.step_uv_domain_with_nurb_at(k, 0)
+    }
+
+    /// [`Surface::step_uv_domain_with_nurb`] at chain depth `depth`.
+    fn step_uv_domain_with_nurb_at(&self, k: &Kernel, depth: usize) -> Result<Extent2d> {
+        Ok(match self.kind() {
+            SurfaceKind::Plane(_)
+            | SurfaceKind::Cone(_)
+            | SurfaceKind::Sphere(_)
+            | SurfaceKind::Torus(_)
+            | SurfaceKind::SurfOfRevolution(_)
+            | SurfaceKind::SurfOfExtrusion(_) => self.step_uv_domain(),
+            SurfaceKind::SrfInVolume(s) => s.surface().step_uv_domain_with_nurb_at(
+                k,
+                nesting_depth(depth, "surface::surface::p1::step_uv_domain_with_nurb")?,
+            )?,
+            SurfaceKind::BSpline(_)
+            | SurfaceKind::CurveBounded(_)
+            | SurfaceKind::Step(_)
+            | SurfaceKind::OffsetSurface(_) => self.natural_uv_domain_with_nurb_at(k, depth)?,
+        })
+    }
+
+    /// [`Surface::natural_uv_domain_with_nurb`] at chain depth `depth`.
+    fn natural_uv_domain_with_nurb_at(&self, k: &Kernel, depth: usize) -> Result<Extent2d> {
+        const OP: &str = "surface::surface::p1::natural_uv_domain_with_nurb";
         Ok(match self.kind_with_nurb(k)? {
+            SurfaceKind::CurveBounded(s) => s
+                .basis()
+                .natural_uv_domain_with_nurb_at(k, nesting_depth(depth, OP)?)?,
+            SurfaceKind::SrfInVolume(s) => s
+                .surface()
+                .natural_uv_domain_with_nurb_at(k, nesting_depth(depth, OP)?)?,
+            SurfaceKind::Step(s) => match s.surface() {
+                Some(base) => base.step_uv_domain_with_nurb_at(k, nesting_depth(depth, OP)?)?,
+                None => s.natural_uv_domain(),
+            },
             SurfaceKind::Cone(s) => s.rev().base().natural_uv_domain(),
             SurfaceKind::SurfOfRevolution(s) => s.base().natural_uv_domain(),
             SurfaceKind::Sphere(s) => s.base().base().natural_uv_domain(),
             SurfaceKind::Torus(s) => s.base().base().natural_uv_domain(),
             SurfaceKind::OffsetSurface(s) => s.natural_uv_domain_with_nurb(k)?,
+            // (the made kind: its base holds the NURB unless the make failed)
+            SurfaceKind::SurfOfExtrusion(s) => s.natural_uv_domain_for_query(),
             // (the other kinds are never lazy)
             _ => self.natural_uv_domain_if_built(),
         })
@@ -2290,9 +2463,14 @@ impl Surface {
         let iso = |param: SurfParamType, value: f64| -> Result<Curve> {
             Ok(Curve::from(match self.kind() {
                 SurfaceKind::BSpline(bs) => IsoCurve::new(bs.clone(), param, value, true, true),
-                _ => {
-                    IsoCurve::from_surface(self.clone_for_evaluation()?, param, value, true, true)?
-                }
+                _ => IsoCurve::from_surface(
+                    k,
+                    self.clone_for_evaluation()?,
+                    param,
+                    value,
+                    true,
+                    true,
+                )?,
             }))
         };
 
@@ -3879,7 +4057,6 @@ impl<'t, 's, O: SolutionObject> CsGlobalSolver<'t, 's, O> {
 impl<'t, 's, O: SolutionObject> LsiGlobalSolver<'t, 's, O> {
     /// The constructor (`SmLSIGlobalSolver`): one tree, two variables.
     #[must_use]
-    #[allow(clippy::too_many_arguments)] // upstream's constructor arguments
     pub fn new(
         k: &'s Kernel,
         surface_tree: &'t Tree<O>,
@@ -4249,6 +4426,48 @@ impl<'a> SssIntersectEnfo<'a> {
             srf_tangents: [[undef; 2]; 3],
         }
     }
+}
+
+/// Copies an evaluation matrix `m` into the flat caller array `d` (entry
+/// `i * (hv + 1) + j`): every entry, or only the upper half (`i + j <= hu`) when
+/// `only_upper_half` is set, leaving the others untouched.
+fn copy_written(
+    m: &[Vec<Vec3>],
+    hu: usize,
+    hv: usize,
+    only_upper_half: bool,
+    d: &mut [Vec3],
+    op: &'static str,
+) -> Result<()> {
+    for i in 0..=hu {
+        for j in 0..=hv {
+            if only_upper_half && i + j > hu {
+                continue;
+            }
+            let v = m
+                .get(i)
+                .and_then(|row| row.get(j))
+                .copied()
+                .ok_or_else(|| SolidError::invalid_input(op, "evaluation matrix too small"))?;
+            let slot = d
+                .get_mut(i * (hv + 1) + j)
+                .ok_or_else(|| SolidError::invalid_input(op, "derivative array too short"))?;
+            *slot = v;
+        }
+    }
+    Ok(())
+}
+
+/// The next depth of a curve bounded, STEP or volume chain walk, `InvalidInput` past
+/// [`MAX_GEOMETRY_NESTING`](crate::surface::surface::p2::MAX_GEOMETRY_NESTING).
+fn nesting_depth(depth: usize, op: &'static str) -> Result<usize> {
+    if depth >= crate::surface::surface::p2::MAX_GEOMETRY_NESTING {
+        return Err(SolidError::invalid_input(
+            op,
+            "surface chain deeper than MAX_GEOMETRY_NESTING",
+        ));
+    }
+    Ok(depth + 1)
 }
 
 #[cfg(test)]

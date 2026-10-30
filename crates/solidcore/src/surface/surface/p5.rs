@@ -90,7 +90,7 @@ use crate::nurbs::knots::Side;
 use super::p1::{
     evaluate_1st_derivatives, get_surface_cache, FindPsNormalEnfo, SurfaceSolveContext,
 };
-use super::p2::{LsiGlobalSolver, SurfaceEval};
+use super::p2::{LsiGlobalSolver, SurfaceEval, B_SPLINE_SURFACE_TYPE};
 use super::p4::is_point_on_normal;
 use super::p4::NoObject;
 use super::p7::{good_drop_result, load_guesses, SpGlobalSolver};
@@ -463,12 +463,14 @@ pub struct IsoParametricCurve {
 
 /// An `SmIsoCurve` of the original concrete surface.
 fn iso_curve_of(
+    k: &Kernel,
     surface: &Surface,
     param: SurfParamType,
     iso: f64,
     from_left: bool,
 ) -> Result<IsoCurve> {
     IsoCurve::from_surface(
+        k,
         surface.clone_for_evaluation()?,
         param,
         iso,
@@ -596,11 +598,11 @@ impl Surface {
         }
 
         // define the isoParameter Curve as an object
-        let iso = iso_curve_of(self, param, iso_parameter, true)?;
+        let iso = iso_curve_of(k, self, param, iso_parameter, true)?;
 
         // when asked - build OptUVIsoCurve (status ignored)
         let uv_iso_curve = if want_uv_iso_curve {
-            ignored(iso.create_uv_iso_line())?
+            ignored(iso.create_uv_iso_line_with_nurb(k))?
         } else {
             None
         };
@@ -1769,9 +1771,9 @@ impl Surface {
         };
 
         let is_plane = |s: &Self| matches!(s.kind(), SurfaceKind::Plane(_));
-        // SM_CAST_PTR(SmBSplineSurface, ..): a plane is one too (tried before)
-        let is_bspline =
-            |s: &Self| matches!(s.kind(), SurfaceKind::BSpline(_) | SurfaceKind::Plane(_));
+        // SM_CAST_PTR(SmBSplineSurface, ..): every kind derived from it (a plane, tried
+        // before, a cone, sphere, torus or surface of revolution or extrusion)
+        let is_bspline = |s: &Self| s.is_kind_of(B_SPLINE_SURFACE_TYPE);
         let mut tried0 = false;
         let mut tried1 = false;
 
@@ -1840,7 +1842,7 @@ impl Surface {
         }
 
         // Next, favor SmBSplineSurfaces.
-        if !tried0 && is_bspline(self) {
+        if !tried0 && is_bspline(self)? {
             tried0 = true;
             if try_cover(
                 k,
@@ -1855,7 +1857,7 @@ impl Surface {
                 return Ok(done(&mut st, false));
             }
         }
-        if !tried1 && is_bspline(other) {
+        if !tried1 && is_bspline(other)? {
             tried1 = true;
             if try_cover(
                 k,
@@ -2051,7 +2053,7 @@ pub fn sp_local_solve<O: SolutionObject>(
                         kk == 0,
                     )
                 };
-                let iso = Curve::from(iso_curve_of(surface, dir, param_value, from_left)?);
+                let iso = Curve::from(iso_curve_of(k, surface, dir, param_value, from_left)?);
 
                 // for NonDegenerate Boundary Curves
                 if !iso.is_degenerate(k, EFF_ZERO, None)? {

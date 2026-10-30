@@ -90,7 +90,7 @@ pub enum Boolean2d {
     Merge = 4,
 }
 
-fn new_brep(k: &mut Kernel) -> Result<Brep> {
+pub(super) fn new_brep(k: &mut Kernel) -> Result<Brep> {
     crate::topology::brep::p3::new_brep(
         k,
         crate::geom::tol::USE_DEFAULT,
@@ -163,7 +163,7 @@ fn planar_face(
         )
     })
 }
-fn planar_faces(
+pub(super) fn planar_faces(
     k: &mut Kernel,
     b: &mut Brep,
     region: Option<RegionId>,
@@ -796,7 +796,24 @@ impl PrimitiveCreation {
                         .as_ref()
                         .ok_or_else(|| SolidError::null_pointer(op))?
                         .clone_for_evaluation()?;
-                    cover_face_surface(k, a, first, &other, tolerance * 2.0, Some(&other_domain))?;
+                    let covered = cover_face_surface(
+                        k,
+                        a,
+                        first,
+                        &other,
+                        tolerance * 2.0,
+                        Some(&other_domain),
+                    )?;
+                    // Not upstream (WR-536, opt-in): b's faces are rebuilt on copies of
+                    // the first surface below: one it does not cover would carry edges
+                    // far off its surface
+                    if k.fixes.boolean2d_plane_covers_far_faces && !covered {
+                        return Err(SolidError::Upstream {
+                            operation: op,
+                            code: crate::error::SM_ERR_INVALID_INPUT,
+                            entity: None,
+                        });
+                    }
                 }
             }
             // extend the rest of the surface domains to cover the first surface's domain
@@ -811,7 +828,16 @@ impl PrimitiveCreation {
                 (&mut *b, faces_b.as_slice()),
             ] {
                 for face in faces {
-                    cover_face_surface(k, brep, *face, &first_surface, tolerance * 2.0, None)?;
+                    let covered =
+                        cover_face_surface(k, brep, *face, &first_surface, tolerance * 2.0, None)?;
+                    // (WR-536, opt-in) a plane that cannot be grown to cover the first face
+                    if k.fixes.boolean2d_plane_covers_far_faces && !covered {
+                        return Err(SolidError::Upstream {
+                            operation: op,
+                            code: crate::error::SM_ERR_INVALID_INPUT,
+                            entity: None,
+                        });
+                    }
                 }
             }
             super::boolean::finish(k, a, b, first, operation, output, marks, notifications)?;
@@ -832,7 +858,8 @@ impl PrimitiveCreation {
 
 /// `pFace->GetSurface()->CoverCoincidentSurface(pOther, tol, ..)` of `Boolean2D` on the
 /// surface of face `face` of `brep`, followed by the `SmFace::RemoveUVTrimCurves`
-/// (status ignored) a successful cover of a face-owned surface ends with.
+/// (status ignored) a successful cover of a face-owned surface ends with. Returns
+/// `bSuccess`, which upstream's `Boolean2D` ignores (WR-536 refuses on it).
 ///
 /// Upstream's `STEPInversion` solves inside run on the face's own surface, whose
 /// `GlobalPointSolve` classifies drops against the face (`GetFace()->PointClassify`).
@@ -848,7 +875,7 @@ fn cover_face_surface(
     other: &Surface,
     tol: f64,
     other_domain: Option<&Extent2d>,
-) -> Result<()> {
+) -> Result<bool> {
     use crate::query::brep::BrepFaceServices;
     use crate::topology::brep_cache::CacheObject;
 
@@ -876,10 +903,11 @@ fn cover_face_surface(
     );
     brep.face_mut(face)?.surface = Some(surface);
     brep.sync_face_surface_tolerance(face)?;
-    if r?.remove_uv_trim_curves_of.is_some() {
+    let r = r?;
+    if r.remove_uv_trim_curves_of.is_some() {
         ignore_status(crate::topology::face::p1::remove_uv_trim_curves(brep, face))?;
     }
-    Ok(())
+    Ok(r.success)
 }
 
 /// Not upstream (WR-501, #1477, `fixes.linear_sweep_arc_is_cylinder`): the cylinder of
