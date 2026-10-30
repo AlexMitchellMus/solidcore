@@ -449,8 +449,7 @@ fn prefilled(prefill: u8) -> SolidResult<Part> {
 
 /// `create_box(0, size)`, then `circular_fillet(fillet)` when `fillet > 0`.
 fn build_box(k: &mut Kernel, size: [f64; 3], fillet: f64) -> SolidResult<Brep> {
-    let mut b =
-        api_primitives::create_box(k, Vec3::ZERO, size[0], size[1], size[2])?;
+    let mut b = api_primitives::create_box(k, Vec3::ZERO, size[0], size[1], size[2])?;
     if fillet > 0.0 {
         solidcore::blend::fillet_executive::api::circular_fillet(k, &mut b, fillet)?;
     }
@@ -560,9 +559,19 @@ fn part_record(k: &mut Kernel, data: Option<Vec<u8>>, prefill: u8) -> SolidResul
 fn write_bytes(k: &Kernel, b: &Brep, file_type: FileType) -> SolidResult<Vec<u8>> {
     let attributes = AttributeStore::default();
     let records = NotifyRecords::new();
+    // `FromBrep` keeps the surfaces and curves their faces and edges own: a face's (an
+    // edge's) identity is the owner its geometry records under the box's own naming
+    let key_of = |e: EntityRef| -> ObjectRef {
+        let owner = match e {
+            EntityRef::Face(f) => b.face(f).ok().and_then(|x| x.surface.as_ref()?.owner()),
+            EntityRef::Edge(x) => b.edge(x).ok().and_then(|y| y.curve.as_ref()?.owner()),
+            _ => None,
+        };
+        owner.unwrap_or_else(|| crate::own_reader::read_key_of(e))
+    };
     let env = FromBrepEnv {
         attributes: &attributes,
-        key_of: &crate::own_reader::read_key_of,
+        key_of: &key_of,
         records: &records,
         curve_key: &|_: EdgeId| ObjectKey(0),
         uv_curve_key: &|_: EdgeuseId| ObjectKey(0),
