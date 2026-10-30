@@ -183,6 +183,8 @@ pub struct UpstreamFixes {
     pub offset_extended_edges_mated: bool,
     /// The extended offset (`SmOffsetExecutive::GetCreateExtendedSurface`) extends a cone or cylinder as itself, along its rulings and around its axis with `SM_CT_CINFINITY` (around by no more than half the turn it leaves open on each side), where upstream extends every surface by a tangent extension (`SM_CT_G1R`) that leaves a cylinder at once; a face that reaches a hair into that extension is later fitted back into a cylinder off its radius (WR-532; the fork's tangency-labs/smlib@b283ea2).
     pub offset_extends_cones_as_themselves: bool,
+    /// Thickening a sheet (`ShellBrep` with `bCreateOffsetSolid` on a non-manifold input) puts every planar side wall onto its plane (the fork's `sm_PutPlanarFaceOnItsPlane`) and deletes the old surface's seam it leaves as a slit, where upstream keeps each wall as the ruled surface between the lamina edge and its offset: a tube's end rings are `SmPlane`s with two loops, not `SmSurfOfRevolution`s (WR-564, #1599; the fork's tangency-labs/smlib#62).
+    pub thicken_planar_side_walls: bool,
     /// A volumetric Boolean removes the zero-area loops a contact curve inside a face leaves, and splits shells joined only through them (WR-360, #746).
     pub remove_slit_loops_where_solids_touch: bool,
     /// A face a Boolean takes over from its second operand keeps that operand's exact UV trims (WR-361, #488).
@@ -195,6 +197,8 @@ pub struct UpstreamFixes {
     pub check_loop_vertex_tolerance: bool,
     /// `CheckLoop` compares an end projected from its vertex (no UV trim) with its neighbour on the nearest natural period of a closed direction, so a one-period seam jump is not an `SM_ERR` (WR-440, #530).
     pub check_loop_projected_seam_ends: bool,
+    /// `SmEdge::AssertValid` test 9 orders the faces round an edge by the direction to each face's point 20 edge tolerances into it (square to the edge) where two of them leave the edge within `SM_ANG_TOL_DEG` of each other, instead of by the binormals alone, which tie for faces tangent along the edge (a cylinder resting on a plane, kept by a boolean as a four-face edge) and fail the valid order (WR-540, #383; the fork's tangency-labs/smlib@5533bbb).
+    pub edge_check_orders_tangent_faces: bool,
     /// `CreateOrientedTrimBoundary` takes a UV gap of whole periods (up to 1% of one) in a closed direction between consecutive curves for a seam crossing and moves the curves after it by the period, instead of filling it with a line across the whole domain that doubles the loop back on itself (WR-491). A loop that does not close that way keeps the line, and so does a gap along a singular side of the surface (a sphere's pole, a cone's apex; #1437).
     pub trim_boundary_seam_wrap: bool,
     /// `SmBSplineCurve::AssertValid` reads the minimum radius of curvature before tests 13/14 compare it (WR-382, #475).
@@ -349,6 +353,8 @@ pub struct UpstreamFixes {
     pub precise_properties_body_length_scale: bool,
     /// `SmFace::ComputePreciseProperties` integrates each UV trim curve piece by piece between its knots and its crossings of the surface's u knot lines, and each iso-u integral of `SmODEAreaIFEO` piece by piece between the surface's v knots, so no Runge-Kutta step crosses a knot of a B-spline surface (a NURB cylinder's, sphere's or torus's rational-circle double knots) where the integrand's derivatives jump and the step's error estimate does not bound its error; the requested accuracy then holds at 1e-8 (WR-494, #1435; the SolidCraft fork's tangency-labs/smlib@08d9a14).
     pub precise_properties_split_at_surface_knots: bool,
+    /// `SmFace::ComputePreciseProperties` starts each iso-u integral of `SmODEAreaIFEO` at the lowest v of the face's UV trim curves (the union of their bounding boxes, kept no lower than the face's UV domain), not at the UV domain's lowest v: on a face whose domain is the surface's unbounded one (`±INFINITE_PARAMETER` in v) the integrals ran about 1.2e6 parameter units below the face and the area came out as a small difference of large terms, off by up to 190% (WR-563, #1556).
+    pub precise_properties_trim_base_v: bool,
     /// `SmBrep::ComputePreciseProperties` adds a volume-separating faceuse's volume and mass only where it bounds a non void region and its area only where the area behaviour selects it, where upstream adds both whenever either behaviour selects the faceuse: a face between two solid regions (a merge of overlapping bodies) was counted in the area once per side (WR-535; the fork's tangency-labs/smlib@d2d9586).
     pub brep_area_between_solid_and_void: bool,
     /// An offset surface evaluated beyond its base's domain extends the base itself on every side that can grow at once, each by the domain size times the least power of two that reaches the point and never less than the extension it replaces, so two copies of one offset give the same points whatever was evaluated first (WR-458, #419; the fork's tangency-labs/smlib@2d7c7ed).
