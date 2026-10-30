@@ -85,6 +85,9 @@ use crate::error::{EntityRef, Result, SolidError};
 use crate::geom::attribute::{ids, Attribute, AttributeHandle, AttributeStore, Behavior};
 use crate::geom::geom_utility::p2::ContinuityType;
 use crate::geom::solution_array::{ObjectKind, SolutionObject};
+use crate::heal::stitch::p1::{
+    select_topology_to_keep, DefaultStitchCallback, KeepChoice, StitchCallback,
+};
 use crate::intersect::point_class::{ClassObject, ClassObjectKind};
 use crate::kernel::Kernel;
 use crate::surface::surface::Surface;
@@ -93,8 +96,9 @@ use crate::topology::{Brep, EdgeId, EdgeuseId, FaceId, VertexId};
 mod big_radius;
 mod classification;
 mod concave_nxn;
+mod corner_marks;
 mod crossing_rails;
-mod finish;
+pub(crate) mod finish;
 mod original_merge;
 mod original_trim;
 mod piecewise;
@@ -2667,6 +2671,47 @@ impl FaceStitchAccess<FilletObject> for SessionObjects<'_> {
         body: FilletObject,
         tolerance: f64,
     ) -> Result<StitchAttempt> {
+        self.stitch_intermediate(k, body, tolerance, &mut DefaultStitchCallback::new())
+    }
+    fn stitch_body_keeping_fillet_edges(
+        &mut self,
+        k: &mut Kernel,
+        body: FilletObject,
+        tolerance: f64,
+        corners: &[FilletObject],
+    ) -> Result<StitchAttempt> {
+        // The patch faces are those MakeFaceBrep made on each corner's surfaces.
+        let mut patch_faces = BTreeSet::new();
+        for corner in corners {
+            // (no corner object: no surfaces)
+            let FilletObject::Corner(id) = corner else {
+                continue;
+            };
+            let corner = self
+                .corners
+                .get(id.0 as usize)
+                .ok_or_else(|| invalid("corner is not live in this session"))?;
+            patch_faces.extend(corner.surface_faces.iter().copied());
+        }
+        self.stitch_intermediate(
+            k,
+            body,
+            tolerance,
+            &mut FilletPatchStitchCallback { patch_faces },
+        )
+    }
+}
+
+impl SessionObjects<'_> {
+    /// `m_pFilletBrep->StitchFaces(...)` of the intermediate body with `callback`'s
+    /// keep/delete choice for the glued pairs.
+    fn stitch_intermediate<C: StitchCallback>(
+        &mut self,
+        k: &mut Kernel,
+        body: FilletObject,
+        tolerance: f64,
+        callback: &mut C,
+    ) -> Result<StitchAttempt> {
         if body != FilletObject::IntermediateBrep {
             return Err(invalid("stitch body is not the actual intermediate body"));
         }
@@ -2715,7 +2760,7 @@ impl FaceStitchAccess<FilletObject> for SessionObjects<'_> {
                     &crate::topology::brep::p9::issue_curve_identity,
                 ),
             };
-            StitchAttempt::from_stitch(crate::topology::brep::p4::stitch_faces_with_context(
+            StitchAttempt::from_stitch(crate::topology::brep::p4::stitch_faces_with_callback(
                 k,
                 body,
                 tolerance,
@@ -2723,8 +2768,98 @@ impl FaceStitchAccess<FilletObject> for SessionObjects<'_> {
                 false,
                 Some(identity),
                 Some(&mut edits),
+                callback,
             ))
         })?
+    }
+}
+
+/// The fork's `SmFilletPatchStitchCallback` (tangency-labs/smlib@1072d1b, behind
+/// [`crate::kernel::UpstreamFixes::fillet_patch_keeps_fillet_edges`]; WR-546, #1377):
+/// the stitch of the fillet body keeps a fillet's own edge where a corner's patch meets
+/// it. An N-sided patch's faces are bounded by their surfaces' isoparametric curves,
+/// the approximations the patch was fitted to, as far from the fillet's surface as the
+/// fillet's exact edge is from the patch; `SmStitchCallback`'s choice between the two
+/// is no choice at all. Every other pair takes that choice.
+struct FilletPatchStitchCallback {
+    /// The corner patch faces of the fillet body.
+    patch_faces: BTreeSet<FaceId>,
+}
+
+/// Whether an edge's faces are all corner patches, none, or some of each (or it has
+/// none at all).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PatchSide {
+    NoPatch,
+    PatchOnly,
+    Mixed,
+}
+
+impl FilletPatchStitchCallback {
+    /// `SideOf`.
+    fn side_of(&self, b: &Brep, e: EdgeId) -> Result<PatchSide> {
+        let faces = crate::topology::edge::faces(b, e, None)?;
+        let patches = faces
+            .iter()
+            .filter(|&&f| self.patch_faces.contains(&f))
+            .count();
+        if faces.is_empty() || (patches > 0 && patches < faces.len()) {
+            return Ok(PatchSide::Mixed);
+        }
+        Ok(if patches == 0 {
+            PatchSide::NoPatch
+        } else {
+            PatchSide::PatchOnly
+        })
+    }
+}
+
+impl StitchCallback for FilletPatchStitchCallback {
+    fn select_topology_to_keep(
+        &mut self,
+        k: &Kernel,
+        b: &Brep,
+        first: EntityRef,
+        second: EntityRef,
+        dist_between: f64,
+    ) -> Result<KeepChoice> {
+        let choice = select_topology_to_keep(self, k, b, first, second, dist_between)?;
+        let (EntityRef::Edge(edge1), EntityRef::Edge(edge2)) = (first, second) else {
+            return Ok(choice);
+        };
+        let (keep, drop) = match (self.side_of(b, edge1)?, self.side_of(b, edge2)?) {
+            (PatchSide::PatchOnly, PatchSide::NoPatch) => (edge2, edge1),
+            (PatchSide::NoPatch, PatchSide::PatchOnly) => (edge1, edge2),
+            _ => return Ok(choice),
+        };
+
+        // How far the kept edge is from the faces of the one it replaces, measured as
+        // the default choice measures it.
+        let null = || SolidError::null_pointer(OP);
+        let keep_curve = crate::topology::edge::curve(b, keep)?.ok_or_else(null)?;
+        let keep_interval = crate::topology::edge::interval(b, keep)?;
+        let mut max_distance = dist_between;
+        for face in crate::topology::edge::faces(b, drop, None)? {
+            let surface = crate::topology::face::p2::surface(b, face)?.ok_or_else(null)?;
+            let dist = keep_curve
+                .surface_max_distance_between(
+                    k,
+                    &keep_interval,
+                    surface,
+                    &crate::topology::face::p2::uv_domain(b, face)?,
+                    0,
+                    None,
+                )?
+                .max_distance;
+            // smos_Max
+            if dist > max_distance {
+                max_distance = dist;
+            }
+        }
+        Ok(KeepChoice {
+            max_distance,
+            keep_first: keep == edge1,
+        })
     }
 }
 
@@ -3294,6 +3429,153 @@ impl SolverGeometryAccess<FilletObject> for SessionObjects<'_> {
                 }
                 if closes_to_a_point && !all_tangent {
                     return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+    fn geometry_bands_clear_other_rails(
+        &mut self,
+        k: &mut Kernel,
+        solvers: &[FilletObject],
+    ) -> Result<bool> {
+        use crate::blend::fillet_geom::p1::FilletGeomType;
+        use crate::geom::global_solver::SolverOperation;
+        use crate::intersect::point_class::{PointClassType, PointClassification};
+        use crate::topology::edgeuse::p1 as eu;
+        // each solver's rails (the face each rolls on and its curve), its filleted edge
+        // (with its ends and curve), and the largest solver tolerance
+        let mut rails: Vec<Vec<(FaceId, crate::curve::curve::Curve)>> = Vec::new();
+        let mut edges = Vec::new();
+        let mut tol = 0.0;
+        for &solver in solvers {
+            let FilletObject::Solver(id) = solver else {
+                return Err(invalid("object is not a solver"));
+            };
+            let base = self.solver(id)?.base();
+            if base.approx_tol_3d > tol {
+                tol = base.approx_tol_3d;
+            }
+            let mut own = Vec::new();
+            for geom in base.fillet_geoms() {
+                let geom = self.pseudo.geom(geom)?;
+                if geom.fillet_geom_type() != FilletGeomType::Default {
+                    continue;
+                }
+                for ii in 0..2 {
+                    let rail = geom
+                        .rail(ii)
+                        .ok_or_else(|| invalid("geometry without rail"))?;
+                    let curve = crate::topology::edge::curve(self.pseudo.brep(), rail)?
+                        .ok_or_else(|| invalid("rail without curve"))?
+                        .clone();
+                    if let Some(face) = self.pseudo.fillet_edge(rail)?.original_face() {
+                        own.push((face, curve));
+                    }
+                }
+            }
+            rails.push(own);
+            let fil_eu = base
+                .edgeuse(0)?
+                .ok_or_else(|| invalid("solver without first edgeuse"))?;
+            let edge = eu::edge(self.target, fil_eu)?
+                .ok_or_else(|| invalid("solver edgeuse without edge"))?;
+            let ends = [
+                crate::topology::edge::start_vertex(self.target, edge)?,
+                crate::topology::edge::end_vertex(self.target, edge)?,
+            ];
+            edges.push((edge, ends));
+        }
+        let apart = 10.0 * tol;
+        for (a, &(edge_a, ends_a)) in edges.iter().enumerate() {
+            for (b, &(edge_b, ends_b)) in edges.iter().enumerate() {
+                if a == b || edge_a == edge_b {
+                    continue;
+                }
+                if ends_a.iter().any(|v| ends_b.contains(v)) {
+                    continue; // a corner trims them where they meet
+                }
+                let edge_curve_b = self
+                    .target
+                    .edge(edge_b)?
+                    .curve
+                    .clone()
+                    .ok_or_else(|| invalid("filleted edge without curve"))?;
+                let edge_ivl_b = self.target.edge(edge_b)?.interval;
+                let (Some(rails_a), Some(rails_b)) = (rails.get(a), rails.get(b)) else {
+                    continue;
+                };
+                for (face_a, curve_a) in rails_a {
+                    for (face_b, curve_b) in rails_b {
+                        if face_a != face_b {
+                            continue;
+                        }
+                        let ivl_a = curve_a.natural_interval();
+                        let ivl_b = curve_b.natural_interval();
+                        for s in 1..16_u32 {
+                            let p =
+                                curve_a.evaluate_point(k, ivl_a.evaluate(f64::from(s) / 16.0))?;
+                            let face_tol = crate::geom::tol::zone_tol3d(
+                                k,
+                                crate::topology::face::p2::tolerance(self.target, *face_a)?,
+                            );
+                            let mut on = PointClassification::<EntityRef>::new(face_tol);
+                            crate::query::face::p1::point_3d_classify(
+                                k,
+                                self.target,
+                                *face_a,
+                                p,
+                                face_tol,
+                                true,
+                                &mut on,
+                                crate::query::face::p1::Point3dClassifyOptions::default(),
+                            )?;
+                            if on.point_class() == PointClassType::Unknown {
+                                continue; // off the face
+                            }
+                            let on_edge = edge_curve_b.drop_point(
+                                k,
+                                &edge_ivl_b,
+                                p,
+                                None,
+                                crate::math::BIG_DOUBLE,
+                                None,
+                                SolverOperation::Minimize,
+                            )?;
+                            let on_rail = curve_b.drop_point(
+                                k,
+                                &ivl_b,
+                                p,
+                                None,
+                                crate::math::BIG_DOUBLE,
+                                None,
+                                SolverOperation::Minimize,
+                            )?;
+                            let t = on_edge.parameter;
+                            if !on_edge.success
+                                || !on_rail.success
+                                || t <= edge_ivl_b.min()
+                                || t >= edge_ivl_b.max()
+                            {
+                                continue; // beside the band, not across it
+                            }
+                            let e = edge_curve_b.evaluate_point(k, t)?;
+                            let r = curve_b.evaluate_point(k, on_rail.parameter)?;
+                            let mut chord = e - r;
+                            let width = chord.length();
+                            if !matches!(
+                                width.partial_cmp(&(2.0 * apart)),
+                                Some(core::cmp::Ordering::Greater)
+                            ) {
+                                continue;
+                            }
+                            chord *= 1.0 / width;
+                            let from_rail = (p - r).dot(chord);
+                            if from_rail > apart && from_rail < width - apart {
+                                return Ok(false);
+                            }
+                        }
+                    }
                 }
             }
         }

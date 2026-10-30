@@ -32,6 +32,8 @@ mod end_to_end;
 mod preview;
 #[path = "blend_fillet_executive_p3/surface_bodies.rs"]
 mod surface_bodies;
+#[path = "blend_fillet_executive_p3/two_offset_chamfer.rs"]
+mod two_offset_chamfer;
 
 /// Parity runner for the three executive orchestration methods.
 pub struct Runner;
@@ -54,12 +56,17 @@ struct Inputs {
     attributed: Option<attributed::AttributedFillet>,
     #[serde(default)]
     fillet_preview: Option<preview::FilletPreview>,
+    /// tangency-labs/solidcore#880's unequal chamfer (module `two_offset_chamfer`).
+    #[serde(default)]
+    two_offset_chamfer: Option<two_offset_chamfer::TwoOffsetChamfer>,
 }
 
 impl Inputs {
     /// Whether any form but `attributed` is present.
     fn has_other_form(&self) -> bool {
-        self.fillet_preview.is_some() || self.has_record_form()
+        self.fillet_preview.is_some()
+            || self.two_offset_chamfer.is_some()
+            || self.has_record_form()
     }
     /// Whether any form but `attributed` and `fillet_preview` is present.
     fn has_record_form(&self) -> bool {
@@ -72,6 +79,11 @@ impl Inputs {
     /// Whether any other fixture form accompanies a `fillet_preview` case.
     fn mixed_with_preview(&self) -> bool {
         self.attributed.is_some() || self.has_record_form()
+    }
+
+    /// Whether any other fixture form accompanies a `two_offset_chamfer` case.
+    fn mixed_with_chamfer(&self) -> bool {
+        self.fillet_preview.is_some() || self.mixed_with_preview()
     }
 }
 
@@ -862,6 +874,8 @@ fn rust(input: &Inputs) -> Result<Output, HarnessError> {
         vertex_corner_map: BTreeMap::new(),
         edgeuse_solver_map: BTreeMap::new(),
         self_intersection_handler: None,
+        blend_curve_at_thirds: false,
+        mark_corner_patches: false,
     };
     // The executive constructor sets this after constructing its SmMerge base.
     executive.intersector.ignore_tangency = true;
@@ -975,6 +989,12 @@ impl UnitDiff for Runner {
             }
             return attributed::cpp(attributed);
         }
+        if let Some(chamfer) = &input.two_offset_chamfer {
+            if input.mixed_with_chamfer() {
+                return Err(HarnessError::new("mixed fixture forms"));
+            }
+            return two_offset_chamfer::cpp(chamfer);
+        }
         if let Some(preview) = &input.fillet_preview {
             if input.mixed_with_preview() {
                 return Err(HarnessError::new("mixed fixture forms"));
@@ -1027,6 +1047,12 @@ impl UnitDiff for Runner {
                 return Err(HarnessError::new("mixed fixture forms"));
             }
             return attributed::rust(attributed);
+        }
+        if let Some(chamfer) = &input.two_offset_chamfer {
+            if input.mixed_with_chamfer() {
+                return Err(HarnessError::new("mixed fixture forms"));
+            }
+            return two_offset_chamfer::rust(chamfer);
         }
         if let Some(preview) = &input.fillet_preview {
             if input.mixed_with_preview() {

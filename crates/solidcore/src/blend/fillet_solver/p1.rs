@@ -268,9 +268,19 @@ impl FilletSurfaceGenerator {
     /// `SmBlendCurveCrossSectionFSG(dBlendScale, lContinuity)`.
     #[must_use]
     pub const fn blend_curve(blend_scale: f64, continuity: u32) -> Self {
+        Self::blend_curve_at_thirds(blend_scale, continuity, false)
+    }
+
+    /// `SmBlendCurveCrossSectionFSG(dBlendScale, lContinuity, bAtThirds)` (the fork's,
+    /// tangency-labs/smlib `fd3b6a7`): with `at_thirds`, each section's inner control
+    /// points sit a third and two thirds of the way from each contact to where the
+    /// contacts' tangent lines meet.
+    #[must_use]
+    pub const fn blend_curve_at_thirds(blend_scale: f64, continuity: u32, at_thirds: bool) -> Self {
         Self::BlendCurve(BlendCurveCrossSectionFsg {
             continuity,
             blend_scale,
+            at_thirds,
         })
     }
 
@@ -3217,6 +3227,7 @@ pub fn trim_rail(k: &Kernel, b: &mut Brep, rail: EdgeId, trim_interval: &Extent1
     // path reads it
     tk.rng = k.rng.clone();
     tk.fixes.bspline_trim_preserves_uv_spans = k.fixes.bspline_trim_preserves_uv_spans;
+    tk.fixes.bspline_trim_keeps_rational_end_spans = k.fixes.bspline_trim_keeps_rational_end_spans;
     b.edge_mut(rail)?
         .curve
         .as_mut()

@@ -57,7 +57,7 @@ use crate::geom::assert_array::{
 use crate::geom::object::ObjectRef;
 use crate::kernel::Kernel;
 use crate::math::UNDEF_DOUBLE;
-use crate::topology::{Brep, BrepId, NamingScheme};
+use crate::topology::{Brep, BrepId};
 
 /// `SM_LEVEL_GIVEN`: every test, no base classes.
 const LEVEL_GIVEN: u8 = 4;
@@ -173,33 +173,23 @@ fn report_line(r: &AssertReport) -> String {
     )
 }
 
-/// The geometry-owner identities of `b`'s topology by its naming scheme: the Euler
-/// operators' notification identities for a [`NamingScheme::Notify`] B-rep, else the
-/// arena identities ([`crate::topology::brep_cache::arena_identity`]).
-fn naming_keys(b: &Brep) -> fn(EntityRef) -> ObjectRef {
-    fn arena(e: EntityRef) -> ObjectRef {
-        use crate::topology::brep_cache::{arena_identity, CacheObject};
-        match e {
-            EntityRef::Edge(x) => arena_identity(CacheObject::Edge(x)),
-            EntityRef::Face(x) => arena_identity(CacheObject::Face(x)),
-            EntityRef::Vertex(x) => arena_identity(CacheObject::Vertex(x)),
-            EntityRef::Brep(_) => arena_identity(CacheObject::Brep),
-            other => crate::topology::loopuse::notify_ref(other),
-        }
-    }
-    match b.naming() {
-        NamingScheme::Notify => crate::topology::loopuse::notify_ref,
-        _ => arena,
-    }
-}
-
-/// [`check_brep_with_keys`] with the geometry-owner identities of `b`'s naming scheme.
+/// [`check_brep_with_keys`] with the geometry-owner identities of `b`'s naming scheme
+/// ([`Brep::owner_identity`]): the Euler operators' notification identities for a
+/// [`NamingScheme::Notify`](crate::topology::NamingScheme::Notify) B-rep; for a
+/// [`NamingScheme::Caller`](crate::topology::NamingScheme::Caller) B-rep the caller
+/// key recorded where the entity was built or its geometry bound (an imported body,
+/// [`crate::topology::brep::p3::api_brep_copy`], an operation on either), else the
+/// arena identities ([`crate::topology::brep_cache::arena_identity`]), which the
+/// binders name an entity with no recorded key by too.
 ///
 /// # Errors
 ///
 /// Those of [`check_brep_with_keys`].
 pub fn check_brep(k: &mut Kernel, b: &mut Brep, level: CheckLevel) -> Result<BrepCheck> {
-    let keys = naming_keys(b);
+    let naming = b.naming();
+    let recorded = b.geometry_owner_keys().clone();
+    let keys =
+        |e: EntityRef| crate::topology::owner_identity_of(naming, recorded.get(&e).copied(), e);
     check_brep_with_keys(k, b, level, &keys)
 }
 

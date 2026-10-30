@@ -14,6 +14,7 @@
 //! | [`TopologyData::write_to_db`] ... [`VertexData::write_to_db`] | `SmTopologyData::WriteToDB` ... `SmVertexData::WriteToDB` |
 //! | [`AttributeTable`]                    | `rAllAttributes` and `rAttrMap`                  |
 //! | [`BrepData::from_brep`], [`FromBrepEnv`] | `SmBrepData::FromBrep`                        |
+//! | [`write_brep_to_file`]                | `SmBrep::WriteToFile` (new file, native geometry) |
 //! | `get_map`, `edgeuse_index` (private)  | `sm_GetMap`, `sm_GetEdgeuseIndex`                |
 //! | `extract_attributes` (private)        | `sm_ExtractAttributes`, `sm_FindAttribute`       |
 //! | `write_indexed_attributes` (private)  | `SmAttributeData::WriteIndexedAttributesToDB`    |
@@ -506,8 +507,14 @@ fn bspline_curve_part_mut(c: &mut Curve) -> Option<&mut BSplineCurve> {
 
 /// `SM_CAST_PTR(SmBSplineSurface, pSrf)`: the B-spline part of the kinds derived from
 /// `SmBSplineSurface` (a plane's made with its NURB when missing), `None` for the
-/// others.
-fn bspline_surface_part(s: &Surface) -> Result<Option<Cow<'_, BSplineSurface>>> {
+/// others. Public for exporters that write a surface as its B-spline part, as
+/// `smu_AddSmBSplineSurface` does (#1767).
+///
+/// # Errors
+///
+/// Those of [`Plane::base_with_nurb`](crate::surface::plane::Plane::base_with_nurb) for a
+/// plane without its NURB.
+pub fn bspline_surface_part(s: &Surface) -> Result<Option<Cow<'_, BSplineSurface>>> {
     Ok(match s.kind() {
         SurfaceKind::BSpline(b) => Some(Cow::Borrowed(b)),
         SurfaceKind::Plane(p) => Some(p.base_with_nurb()?),
@@ -1103,6 +1110,27 @@ pub struct FromBrepEnv<'a> {
     pub uv_curve_key: &'a dyn Fn(EdgeuseId) -> ObjectKey,
     /// The identity of a face's surface.
     pub surface_key: &'a dyn Fn(FaceId) -> ObjectKey,
+}
+
+/// `SmBrep::WriteToFile(name, eType, TRUE, FALSE, 0.0)`: `b` flattened into a
+/// temporary `SmBrepData` ([`BrepData::from_brep`]) and written as a new file in
+/// native formats ([`BrepData::write_to_file_with_nurbs`]). Returns the file's
+/// contents. Upstream ignores `FromBrep`'s status; its failures here are the null
+/// dereferences upstream would crash on, so they are returned.
+///
+/// # Errors
+///
+/// Those of [`BrepData::from_brep`] and [`BrepData::write_to_file_with_nurbs`].
+pub fn write_brep_to_file(
+    k: &Kernel,
+    b: &Brep,
+    env: &FromBrepEnv<'_>,
+    file_type: FileType,
+) -> Result<Vec<u8>> {
+    // (the attribute pointers FromBrep collects; the file is written without them)
+    let mut attributes = Vec::new();
+    let mut data = BrepData::from_brep(b, env, &mut attributes)?;
+    data.write_to_file_with_nurbs(k, file_type)
 }
 
 /// `SM_ERR_NULL_POINTER` of [`BrepData::from_brep`].
