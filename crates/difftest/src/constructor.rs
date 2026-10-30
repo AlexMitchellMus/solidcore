@@ -303,12 +303,16 @@ fn run_into(
             } => match surfaces.get_mut(*surface).and_then(Option::take) {
                 None => Ok(SKIPPED),
                 Some(s) => {
+                    // `GetNaturalUVDomain`, which makes a lazy analytic's NURB
+                    // (`Surface::natural_uv_domain_with_nurb`)
                     let d = if *natural {
-                        s.natural_uv_domain()
+                        s.natural_uv_domain_with_nurb(k)
                     } else {
-                        Extent2d::from_bounds(domain[0], domain[1], domain[2], domain[3])
+                        Ok(Extent2d::from_bounds(
+                            domain[0], domain[1], domain[2], domain[3],
+                        ))
                     };
-                    status(&c.set_face_surface(s, &d), notes)?
+                    status(&d.and_then(|d| c.set_face_surface(s, &d)), notes)?
                 }
             },
             Op::StartLoop(o) => pointer(&c.start_loop(orient(*o)), notes)?,
