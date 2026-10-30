@@ -28,8 +28,10 @@
 //!
 //! Op 1 (`want_points same curve1 [curve2]`) returns `status n (t1 t2 [x y z])*`; op 2
 //! (`surface1 surface2`) returns `status n curve*` (also on a failed status: what the call
-//! left in the array), or `-998 0` without calling it for the coincident cylinders whose
-//! intersection dereferences the absent tolerance (UB-123); op 3
+//! left in the array), or without calling it `-998 0` for the coincident cylinders whose
+//! intersection dereferences the absent tolerance (UB-123) and `-997 0` for the extrusion
+//! pairs whose `sm_IntersectGenerators` dereferences the absent curve-type array or an
+//! unset cylinder generator (UB-81, UB-93); op 3
 //! (`want_points one body1 [body2] face1 face2`, `GetFaces` indices) and op 4
 //! (`want_points same body1 [body2]`) return `status n curve* npoints point*` (`npoints`
 //! `-1` when not asked for). A curve is `type lo hi` and five `status x y z` samples. On

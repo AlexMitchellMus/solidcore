@@ -27,6 +27,7 @@
 #include <SmSurface.h>
 #include <SmSurfOfExtrusion.h>
 #include <SmSurfOfRevolution.h>
+#include <SmSolutionArray.h>
 #include <SmContext.h>
 #include <SmApiBrep.h>
 #include <SmApiCurves.h>
@@ -232,6 +233,117 @@ bool ub_123(SmSurface* s1, SmSurface* s2) {
     return !radial_disjoint && !axial_disjoint && distance <= tol_default;
 }
 
+// sm_IntersectGenerators (SmSurfOfExtrusion.cpp:2658) replayed on copies of the two
+// generators, up to its range-solution test (:2978): true when it would read the curve-type
+// array SmApiIntersectSurfaces passes as NULL (`pOptCurveTypes->GetAt` at :2981, reached
+// when the first range solution has both ends overlapping, `lNewCurveCount == 2`; a range
+// solution with fewer returns "too complicated" first, without reading it). See UB-81
+// (same lines: the NULL curve list and unset offsets).
+bool generators_read_null_types(const SmSurfOfExtrusion& ext, const SmCurve& other_gen,
+                                const SmVector3d& other_vec, const SmExtent1d& other_ivl,
+                                double tol)
+{
+    SmBSplineCurve* gen = NULL;
+    SmVector3d vec;
+    ((SmSurfOfExtrusion&)ext).GetCanonical(gen, vec);
+    if (!gen) return false;
+    SmExtent1d ext_ivl = ext.GetSTEPUVDomain().GetVInterval();
+    double ext_len = vec.Length();
+    double other_len = other_vec.Length();
+    if (!other_vec.IsParallelTo(vec, SM_EFF_ZERO_RAD)) return false;
+    SmVector3d unit = vec;
+    unit.Unitize();
+    // (copies: the replay leaves the operands' curve caches as they are)
+    const SmContext& ctx = *SmApiGetOrCreateContext();
+    SmCurve* c1 = NULL;
+    SmCurve* c2 = NULL;
+    gen->Copy(ctx, c1);
+    std::unique_ptr<SmCurve> own1(c1);
+    other_gen.Copy(ctx, c2);
+    std::unique_ptr<SmCurve> own2(c2);
+    if (!c1 || !c2) return false;
+    SmSolutionArray sols;
+    if (c1->GlobalCurveSolve(gen->GetNaturalInterval(), *c2, other_gen.GetNaturalInterval(),
+                             SM_SO_PROJECTED_INTERSECT, tol, NULL, &unit, SM_SR_ALL,
+                             sols) != SM_SUCCESS)
+        return false;
+    if (sols.GetSize() == 0) return false;
+    bool same_dir = other_vec.Dot(vec) > 0;
+    SmExtent1d other_line_ivl =
+        same_dir ? SmExtent1d(other_ivl.GetMin() * other_len / ext_len,
+                              other_ivl.GetMax() * other_len / ext_len)
+                 : SmExtent1d(other_ivl.GetMax() * -other_len / ext_len,
+                              other_ivl.GetMin() * -other_len / ext_len);
+    for (ULONG ii = 0; ii < sols.GetSize(); ii++) {
+        SmSolution& sol = sols[ii];
+        bool range = sol.m_eSolutionType == SM_ST_RANGE_OF_VALUES;
+        ULONG count = 0;
+        for (ULONG jj = 0; jj < 1 || (jj < 2 && range); jj++) {
+            double ext_end = jj == 0 ? sol.m_vStart[0] : sol.m_vEnd[0];
+            double other_end = jj == 0 ? sol.m_vStart[1] : sol.m_vEnd[1];
+            SmPoint3d p1, p2;
+            // (upstream returns these statuses before the test)
+            if (c1->EvaluatePoint(ext_end, p1) != SM_SUCCESS) return false;
+            if (c2->EvaluatePoint(other_end, p2) != SM_SUCCESS) return false;
+            double line_param = 0.0;
+            smgu_LineClosestPoint(p1, vec, p2, line_param);
+            SmExtent1d mapped(other_line_ivl.GetMin() + line_param,
+                              other_line_ivl.GetMax() + line_param);
+            SmExtent1d xsect;
+            ext_ivl.Intersect(mapped, xsect);
+            if (xsect.IsInit()) continue;
+            count++;
+        }
+        if (range) return count == 2;
+    }
+    return false;
+}
+
+// SmApiIntersectSurfaces inputs whose special case dereferences a NULL output or an unset
+// generator inside sm_IntersectGenerators: an extrusion with an extrusion
+// (IntersectWithSurfOfExtrusion), or an extrusion with a rectilinear cone/cylinder either way
+// round (IntersectWithCylinder). For the cylinder, an unbounded height interval or a NULL
+// iso circle is UB-93 (its generator is made from unset values or stays NULL).
+bool ub_null_types(SmSurface* s1, SmSurface* s2)
+{
+    SmSurfOfExtrusion* ext = NULL;
+    SmCone* cyl = NULL;
+    if (s1->GetType() == SmSurfOfExtrusion_TYPE) {
+        ext = (SmSurfOfExtrusion*)s1;
+        if (s2->GetType() == SmSurfOfExtrusion_TYPE) {
+            const SmSurfOfExtrusion& o = *(SmSurfOfExtrusion*)s2;
+            if (!o.GetGenCurve()) return false;
+            return generators_read_null_types(*ext, *o.GetGenCurve(), o.GetExtrusionVector(),
+                                              o.GetSTEPUVDomain().GetVInterval(),
+                                              SM_EFF_ZERO_SQRT);
+        }
+        // (SmSurfOfExtrusion::GlobalSurfaceIntersect: SmCone_TYPE only)
+        if (s2->GetType() != SmCone_TYPE) return false;
+        cyl = (SmCone*)s2;
+    } else if ((s1->GetType() == SmCone_TYPE || s1->GetType() == SmCylinder_TYPE) &&
+               s2->GetType() == SmSurfOfExtrusion_TYPE && ((SmCone*)s1)->IsCylinder()) {
+        // (SmCone::GlobalSurfaceIntersect, the cylinder case)
+        ext = (SmSurfOfExtrusion*)s2;
+        cyl = (SmCone*)s1;
+    } else {
+        return false;
+    }
+    // SmSurfOfExtrusion::IntersectWithCylinder (:3164) to its sm_IntersectGenerators call
+    double bot = cyl->GetBotRadius(), top = cyl->GetTopRadius();
+    if (smos_Fabs(bot - top) > SM_EFF_ZERO * (1.0 + smos_Max(bot, top))) return false;
+    double tol = SM_EFF_ZERO_SQRT;
+    SmExtent1d ivl(cyl->GetBotHeight(), cyl->GetTopHeight());
+    if (ivl.GetMin() <= -SM_INFINITE_PARAMETER || ivl.GetMax() >= SM_INFINITE_PARAMETER)
+        return true;
+    SmVector3d axis = cyl->GetPosition().GetZAxis();
+    SmPoint3d start(cyl->GetPosition().GetOriginRef() + ivl.GetMin() * axis);
+    SmBSplineCurve* circle = NULL;
+    cyl->CreateIsoCircleFromPoint(*SmApiGetOrCreateContext(), start, tol, circle);
+    std::unique_ptr<SmBSplineCurve> own(circle);
+    if (!circle) return true;
+    return generators_read_null_types(*ext, *circle, axis, ivl, tol);
+}
+
 // A surface: 1 = SmBSplineSurface::CreateCanonical(nu x nv net, degrees du, dv, clamped
 // knots), 2 = SmApiCreateCylinder(origin, r, h) (SmSurface overload),
 // 3 = SmApiCreateSurfaceRevolution(SmApiCreateCurve(points), origin, axis, angle),
@@ -404,6 +516,8 @@ void put_intersections(std::vector<double>& o, SmStatus status, SmTArray<SmCurve
 //   -> `status n (t1 t2 [x y z])*` (`status 0` on a failed status);
 // 2 SmApiIntersectSurfaces: surface1 surface2 -> `status n curve*` (the curves the call left
 //   in the array, also on a failed status); `-998 0` for the coincident cylinders of UB-123;
+//   `-997 0` for the extrusion pairs whose sm_IntersectGenerators dereferences the NULL
+//   curve-type array or an unset cylinder generator (ub_null_types);
 // 3 SmApiIntersectFaces: want_points, one, body1 [body2 unless one], face1, face2 (indices
 //   into GetFaces of body1 and of body2, or both of body1 with `one`);
 // 4 SmApiIntersectBreps: want_points, same, body1 [body2 unless same];
@@ -489,6 +603,10 @@ SC_EXPORT int32_t sc_intersect_api_intersectors_eval(int32_t op, const double* a
         if (in.at != in.n) return SC_ERR_ARG;
         if (ub_123(s1.get(), s2.get())) {
             std::vector<double> r = {-998.0, 0.0};
+            return sc_copy_out(r.data(), (int64_t)r.size(), out, cap, out_len);
+        }
+        if (ub_null_types(s1.get(), s2.get())) {
+            std::vector<double> r = {-997.0, 0.0};
             return sc_copy_out(r.data(), (int64_t)r.size(), out, cap, out_len);
         }
         SmTArray<SmCurve*> curves;

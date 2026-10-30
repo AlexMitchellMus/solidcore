@@ -480,6 +480,11 @@ fn args(i: &Inputs) -> (u8, Vec<f64>) {
 fn native(i: &Inputs) -> Result<Result<Vec<f64>, Output>, HarnessError> {
     let (op, a) = args(i);
     match ffi::eval(op, &a) {
+        Ok(raw) if raw.first() == Some(&-997.) => Ok(Err(Output::rejected(
+            "UB-81/UB-93: sm_IntersectGenerators dereferences SmApiIntersectSurfaces' NULL \
+             curve-type array (a range solution with both ends overlapping) or an unset \
+             cylinder generator; not run",
+        ))),
         Ok(raw) if raw.first() == Some(&-998.) => Ok(Err(Output::rejected(
             "UB-123: SmCone::IntersectWithCone dereferences the absent tolerance for \
              coincident overlapping cylinders; not run",
