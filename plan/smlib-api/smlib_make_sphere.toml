@@ -1,0 +1,7 @@
+family = "F1"
+status = "missing"
+solidcore_fn = ""
+pr = ""
+fork_file = "capi/src/smlib_primitives.cpp"
+fork_commit = "4c23cbe"
+notes = "Kernel: primitive::api_primitives::create_*."
