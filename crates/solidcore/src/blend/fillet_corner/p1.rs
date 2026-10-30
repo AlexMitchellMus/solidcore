@@ -1185,7 +1185,10 @@ pub fn check_nx1_degeneracy_status(
         match eu3::evaluate_binormal(k, b, eu, t, false, &options) {
             Ok(e) => Ok(Ok(e.face_normal)),
             Err(e @ (SolidError::Unported { .. } | SolidError::NotFound { .. })) => Err(e),
-            Err(e @ SolidError::InvalidInput { reason, .. }) if reason == NULL_DEREF => Err(e),
+            Err(
+                e @ (SolidError::InvalidInput { reason, .. }
+                | SolidError::PortInvariant { reason, .. }),
+            ) if reason == NULL_DEREF => Err(e),
             Err(e) => Ok(Err(e)),
         }
     };
@@ -2252,7 +2255,7 @@ impl FilletCorner {
         let surface0 = env
             .pseudo
             .geom(fg0)?
-            .fillet_surface()?
+            .fillet_surface(None)?
             .cloned()
             .ok_or_else(null)?;
         let prim_eu1 = prim_of(env.pseudo, edge1)?;
@@ -2264,7 +2267,7 @@ impl FilletCorner {
         let surface1 = env
             .pseudo
             .geom(fg1)?
-            .fillet_surface()?
+            .fillet_surface(None)?
             .cloned()
             .ok_or_else(null)?;
 
@@ -2478,7 +2481,7 @@ impl FilletCorner {
 
         env.pseudo
             .geom(new_fg)?
-            .fillet_surface()?
+            .fillet_surface(None)?
             .cloned()
             .ok_or_else(deref)
     }

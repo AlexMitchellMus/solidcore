@@ -1099,7 +1099,9 @@ impl Surface {
             Ok(blend) => blend,
             // too few intersection parameters: upstream reads and writes past the end of
             // its array here (UB-157), which the port does not reproduce
-            Err(e @ SolidError::InvalidInput { .. }) => return Err(e),
+            Err(e @ (SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. })) => {
+                return Err(e)
+            }
             Err(e) if e.is_unported() => return Err(e),
             // a NULL blend surface
             Err(_) => return Err(SolidError::sm_err(OP_BLEND)),
@@ -3279,7 +3281,7 @@ pub fn intersect_srf_bndry_crv(
     };
 
     // specify CurveSurface 3DIsoParameterCurve
-    let iso = super::p6::boundary_iso_curve(curve_surface, param, iso_parameter, true)?;
+    let iso = super::p6::boundary_iso_curve(k, curve_surface, param, iso_parameter, true)?;
 
     // skip degenerate curves
     if iso.is_degenerate(k, EFF_ZERO, None)? {

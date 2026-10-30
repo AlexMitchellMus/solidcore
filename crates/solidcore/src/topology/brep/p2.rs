@@ -1601,8 +1601,16 @@ pub fn replace_surface(
     };
     // calls SmFace::Notify(SM_NO_CHANGE_GEOMETRY, ..) which tells all Face SmEdgeuses
     // and SmVertexuses to delete all their cached data
-    let old_surface =
-        face1::set_surface_notified(b, env, top_face, face_ref, new_surface, false, surface_refs)?;
+    let old_surface = face1::set_surface_notified(
+        k,
+        b,
+        env,
+        top_face,
+        face_ref,
+        new_surface,
+        false,
+        surface_refs,
+    )?;
 
     // default faceDomain to NewSurface Domain
     face2::set_uv_domain(b, top_face, &new_domain)?;
@@ -1918,7 +1926,7 @@ fn region_post_insert_shell(b: &mut Brep, r: RegionId, s: ShellId) -> Result<()>
 fn region_remove_shell(b: &mut Brep, s: ShellId) -> Result<()> {
     let r = shell_region(b, s)?.ok_or(null_deref("shell without region"))?;
     match shell::region_remove_shell(b, r, s) {
-        Err(SolidError::InvalidInput { .. }) | Ok(()) => Ok(()),
+        Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) | Ok(()) => Ok(()),
         Err(e) => Err(e),
     }
 }

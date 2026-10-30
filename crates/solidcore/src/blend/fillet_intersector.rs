@@ -1311,6 +1311,16 @@ impl<'s, 't, O: SolutionObject + 't, G: Clone> FilletIntersector<'s, 't, O, G> {
             return Ok(out);
         }
 
+        // (not upstream, `fixes.fillet_trace_rejects_short_step`, WR-503) a point far short of the
+        // step is another root of the equations, not the next point of this trace
+        if k.fixes.fillet_trace_rejects_short_step
+            && !step.clipped
+            && tsect.crv_pos().distance(next_tsp.crv_pos()) < 0.5 * step_size.abs()
+        {
+            demote_singularity(next_tsp);
+            return Ok(out);
+        }
+
         // get change in 3dCurve angle for this step
         let angle_found_rad = tsect.crv_deriv().angle_between(next_tsp.crv_deriv())?;
         out.angle_found_rad = Some(angle_found_rad);
@@ -2656,7 +2666,12 @@ mod tests {
             .unwrap();
         assert!(pseudo.geom(g).unwrap().center_line_curve().is_some());
         s.set_fillet_surface(&mut pseudo, &g, None).unwrap();
-        assert!(pseudo.geom(g).unwrap().fillet_surface().unwrap().is_none());
+        assert!(pseudo
+            .geom(g)
+            .unwrap()
+            .fillet_surface(None)
+            .unwrap()
+            .is_none());
         // a geometry without rails: upstream dereferences NULL
         assert!(matches!(
             s.set_rail_curve(&mut pseudo, &g, 0, line.clone())
