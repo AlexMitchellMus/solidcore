@@ -70,8 +70,9 @@
 //!   inversion in `CreateIsoCircleFromPoint`) is returned. `GetApex` of a cylinder and
 //!   `STEPInversion` of a point outside the sweep return `SM_ERR` upstream with their
 //!   outputs set (callers use them): here they return the outputs ([`Apex::is_cylinder`],
-//!   [`ConeStepInversion::inside`]). `Evaluate` and `EvaluateSTEP` entries upstream
-//!   does not write are `0`. `ConvertUVFromSTEPToNURBS` without polar curve (upstream
+//!   [`ConeStepInversion::inside`]). `Evaluate` entries upstream does not write are `0`;
+//!   `EvaluateSTEP` entries it does not write are [`Vec3::UNDEF`] (the caller's
+//!   default-constructed `SmVector3d`, untouched). `ConvertUVFromSTEPToNURBS` without polar curve (upstream
 //!   dereferences `NULL`) is `InvalidInput`. The unbounded constructor propagates an
 //!   error from `GetApex` (upstream ignores its status and then reads an
 //!   uninitialised `dApexParam`); a cylinder's apex is not an error here.
@@ -1480,7 +1481,8 @@ impl Cone {
     /// The point and triangular derivatives at the STEP parameters `uv` (degrees,
     /// height) (`EvaluateSTEP`): `uv` is clamped to the STEP domain unless
     /// out-of-bounds evaluation is enabled; the derivatives are per degree in u. The
-    /// result is laid out as [`Self::evaluate`]'s; entries upstream does not write
+    /// result is laid out as [`Self::evaluate`]'s; entries upstream does not write (the
+    /// mixed derivatives of total order above `min(hu, hv)`)
     /// are `0`.
     ///
     /// # Errors
@@ -1516,7 +1518,8 @@ impl Cone {
         let sin_u = (uv.x * PI / 180.0).sin();
 
         let n = (hu + 1) * (hv + 1);
-        let mut d = vec![Vec3::ZERO; n];
+        // (unwritten entries: an untouched, default-constructed `SmVector3d`)
+        let mut d = vec![Vec3::UNDEF; n];
         let mut set = |i: usize, val: Vec3| {
             if let Some(slot) = d.get_mut(i) {
                 *slot = val;

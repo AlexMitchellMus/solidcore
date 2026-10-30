@@ -63,8 +63,8 @@
 //! - **Arguments.** Out-params become return values; `SmContext` arguments and the
 //!   arguments upstream marks `NotUsed` (`CreateIsoParametricCurve`'s approximation
 //!   tolerance, `EvaluateSTEP`'s side flags, `IntersectWithPlane`'s UV domain and
-//!   angle tolerance) are dropped. `EvaluateSTEP` entries it does not write are `0`
-//!   (upstream leaves the caller's values). Unequal STEP derivative orders retain
+//!   angle tolerance) are dropped. `EvaluateSTEP` entries it does not write are
+//!   [`Vec3::UNDEF`] (upstream leaves the caller's default-constructed `SmVector3d`). Unequal STEP derivative orders retain
 //!   release C++ behavior despite its equal-order assertion: unevaluated generator
 //!   derivatives keep `SmVector3d`'s default `UNDEF` values. Boundary iso curves
 //!   require the sweep-only (`hv = 0`) case, whose outputs are fully evaluated.
@@ -1361,7 +1361,8 @@ impl SurfOfRevolution {
         let pz = p.dot(s_z);
 
         let n = (hu + 1) * (hv + 1);
-        let mut d = vec![Vec3::ZERO; n];
+        // (unwritten entries: an untouched, default-constructed `SmVector3d`)
+        let mut d = vec![Vec3::UNDEF; n];
         let mut set = |i: usize, v: Vec3| {
             if let Some(slot) = d.get_mut(i) {
                 *slot = v;

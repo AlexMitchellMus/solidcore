@@ -63,7 +63,8 @@
 //!   intersections return [`SurfaceIntersection`] (the null UV curves upstream appends
 //!   are `None`) and whether the general intersector is needed; an intersection with
 //!   `pOpt3DCurves == NULL` (`SM_ERR` upstream for the plane and the cone) cannot be
-//!   asked for. `EvaluateSTEP` entries it does not write are `0`.
+//!   asked for. `EvaluateSTEP` entries it does not write are
+//!   [`Vec3::UNDEF`] (the caller's default-constructed `SmVector3d`, untouched).
 //! - **Copies.** The copy constructor copies the radius and the inside-out flag, so
 //!   `Clone` does too.
 //! - **Statuses.** Calls whose status upstream ignores keep upstream's values, except
@@ -727,7 +728,8 @@ impl Sphere {
         let sin_v = (uv.y * PI / 180.0).sin();
 
         let n = (hu + 1) * (hv + 1);
-        let mut d = vec![Vec3::ZERO; n];
+        // (unwritten entries: an untouched, default-constructed `SmVector3d`)
+        let mut d = vec![Vec3::UNDEF; n];
         let mut set = |i: usize, v: Vec3| {
             if let Some(slot) = d.get_mut(i) {
                 *slot = v;

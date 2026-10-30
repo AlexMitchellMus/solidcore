@@ -64,7 +64,7 @@
 //!   `CreateIsoParametricCurve`'s approximation tolerance, `ReadFromDB`'s type) are
 //!   dropped. `CreateIsoParametricCurve`'s optional UV iso line is forwarded to the
 //!   B-spline surface. `EvaluateSTEP` entries it does not write are
-//!   `0`. `CreateOffsetSurface` returns `None` where upstream succeeds without a surface
+//!   [`Vec3::UNDEF`] (the caller's default-constructed `SmVector3d`, untouched). `CreateOffsetSurface` returns `None` where upstream succeeds without a surface
 //!   (a new minor radius below the approximation tolerance).
 //! - **Statuses.** Calls whose status upstream ignores keep upstream's values, except
 //!   that [`SolidError::Unported`] always propagates and a failure whose output
@@ -812,7 +812,8 @@ impl Torus {
         let sin_v = (uv.y * PI / 180.0).sin();
 
         let n = (hu + 1) * (hv + 1);
-        let mut d = vec![Vec3::ZERO; n];
+        // (unwritten entries: an untouched, default-constructed `SmVector3d`)
+        let mut d = vec![Vec3::UNDEF; n];
         let mut set = |i: usize, v: Vec3| {
             if let Some(slot) = d.get_mut(i) {
                 *slot = v;
