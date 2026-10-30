@@ -147,6 +147,7 @@ fn torus(api: &mut Smlib, name: &'static str, o: [f64; 3], big: f64, r: f64) -> 
     }
 }
 
+/// The primitives whose faces are planes, cylinders and cones, against their closed forms.
 #[test]
 fn primitives_against_closed_forms() {
     let mut api = Smlib::default();
@@ -156,22 +157,41 @@ fn primitives_against_closed_forms() {
         bx(&mut api, "oracle 01-box 40x30x20", at0, 40.0, 30.0, 20.0),
         cylinder(&mut api, "oracle 02-cylinder r15 h50", at0, 15.0, 50.0),
         cylinder(&mut api, "oracle 38 cylinder r10 h50", at0, 10.0, 50.0),
-        sphere(&mut api, "sphere r12", at0, 12.0),
-        torus(&mut api, "torus R22 r4", at0, 22.0, 4.0),
         cone(&mut api, "frustum r10..4 h20", at0, 10.0, 4.0, 20.0),
         cone(&mut api, "cone r10 h20", at0, 10.0, 0.0, 20.0),
         cone(&mut api, "inverted frustum r3..9 h7", at0, 3.0, 9.0, 7.0),
         bx(&mut api, "box far", far, 3.0, 50.0, 0.5),
         cylinder(&mut api, "cylinder far", far, 0.25, 80.0),
-        sphere(&mut api, "sphere far", far, 7.0),
-        torus(&mut api, "torus far", far, 30.0, 0.5),
         cone(&mut api, "frustum far", far, 6.0, 2.0, 9.0),
     ];
+    against_closed_forms(&mut api, &cases);
+}
+
+/// The sphere and torus (doubly curved faces) against their closed forms. At 1e-8 these
+/// take about 12 s each unoptimised and about 0.2 s optimised, so CI skips this test in
+/// its unoptimised `cargo test --workspace` step and runs it in the difftest-profile step
+/// (`cargo test --profile difftest -p solidcore-smlib-api --test measure`).
+#[test]
+fn doubly_curved_against_closed_forms() {
+    let mut api = Smlib::default();
+    let at0 = [0.0; 3];
+    let far = [1000.0, -2000.0, 500.0];
+    let cases = [
+        sphere(&mut api, "sphere r12", at0, 12.0),
+        torus(&mut api, "torus R22 r4", at0, 22.0, 4.0),
+        sphere(&mut api, "sphere far", far, 7.0),
+        torus(&mut api, "torus far", far, 30.0, 0.5),
+    ];
+    against_closed_forms(&mut api, &cases);
+}
+
+/// Each body's area, volume, centroid and inertia at 1e-8 against its closed form.
+fn against_closed_forms(api: &mut Smlib, cases: &[Expected]) {
     // Relative errors: area, volume and inertia against themselves; the centroid against the
     // body's box diagonal, the products against its largest moment.
     let labels = ["area", "volume", "centroid", "inertia", "products"];
     let mut worst = [0.0f64; 5];
-    for e in &cases {
+    for e in cases {
         let m = api.brep_mass_properties(&e.body, 1e-8).unwrap();
         let area = api.brep_area(&e.body, 1e-8).unwrap();
         let (lo, hi) = api.brep_bounds(&e.body).unwrap();
