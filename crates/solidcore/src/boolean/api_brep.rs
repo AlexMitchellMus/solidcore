@@ -25,6 +25,7 @@
 //! | [`piecewise_merge`], [`PiecewiseMergeOutcome`] | `SmApiPiecewiseMerge`                       |
 //! | [`boolean_lists`], [`BooleanListsResult`]     | `SmApiBooleanLists`                          |
 //! | [`boolean_trees`]                             | `SmApiBooleanTrees`                          |
+//! | [`tessellate_boundaries`]                     | `SmApiTessellateBoundaries`                  |
 //!
 //! Deviations:
 //! - **Ownership.** Upstream passes `SmBrep*` operands that the kernel modifies in
@@ -68,7 +69,25 @@
 //!   component traversal's mark locks.
 //! - **Nullable tree output.** Tree operands are `Option<Brep>` slots, preserving
 //!   consumed entries on failure and defined null outputs of repeated leaves.
+//! - **Attributes.** Upstream's attributes live on the operands' objects, which the merge
+//!   edits in place. Here each [`Brep`] owns its attributes ([`Brep::add_attribute`]):
+//!   the two-B-rep entry points move both operands' attributes into the merge's store
+//!   under the merge's names of their objects, the merge's notifications propagate them
+//!   with SMLib's handlers, and the attributes left on the result's (and a kept other
+//!   B-rep's) objects go back to those B-reps; those of objects the merge deleted are
+//!   cleared as upstream's destructors do. A reference attribute on objects of both
+//!   returned B-reps becomes one attribute per B-rep. [`merge_breps`] and
+//!   [`boolean_trees`] do the same for every merge they run. [`boolean_lists`] carries
+//!   each list B-rep's attributes into its operand copies (`SM_NO_COPY`), through the
+//!   merge and to every component B-rep it returns; a reference attribute shared by
+//!   several output B-reps (or with the inputs, which keep theirs) becomes one per
+//!   B-rep. `SM_BO_EXTRACT_SEPARATE`'s component B-reps are not returned by any entry
+//!   point here (it is rejected), so their attributes stay in the merge's store.
 //! - The debug drawing (`SM_DEBUG_CODE`) and `SM_ASSERT_VALID` checks are not ported.
+//! - **`SmApiTessellateBoundaries`.** The B-rep is a reference (no `NULL` check); its
+//!   out-arrays are the returned [`BoundaryTessellation`], whose `complete` flag is
+//!   upstream's `SM_ERR` with partial output. An invalid angle tolerance is
+//!   [`SolidError::InvalidInput`] (upstream clears the arrays).
 //! - **Cached topology.** Every returned B-rep has the port's own cached fields
 //!   ([`crate::topology::Edge::vertices`], `Face::shell`, ..., which topology edits
 //!   inside the merge do not maintain) rewritten from its use links by
@@ -81,6 +100,7 @@ use crate::kernel::Kernel;
 use crate::primitive::primitive_creation::model::PrimitiveModel;
 use crate::primitive::primitive_creation::p1::PrimitiveCreation;
 use crate::surface::surface::Surface;
+use crate::topology::brep::p1::{self as brep_p1, BoundaryTessellation};
 use crate::topology::brep::p2::ArenaNotifyState;
 use crate::topology::{Brep, EdgeId};
 
@@ -212,7 +232,9 @@ fn merge_boolean_by(
     // SmMerge sMerge(*pContext, pBrep1, pBrep2) (or 0, 0, &sOptions): tolerance and
     // angle 0, both computed by the constructor.
     use crate::boolean::merge::p3::BooleanDriver;
-    let mut driver = crate::boolean::merge::p3::DependencyMerge::default();
+    // (not upstream) the driver carries the operands' attributes through the merge, as
+    // upstream's live on the objects the merge edits
+    let mut driver = crate::boolean::merge::p3::DependencyMerge::carrying_attributes();
     let mut primary = Some(brep1);
     let mut other = Some(brep2);
     driver.construct(k, &mut primary, &mut other, 0.0, 0.0, options.as_ref())?;
@@ -353,7 +375,7 @@ pub fn merge_breps(
         breps,
         kernel_operation,
         None,
-        &mut crate::boolean::merge::p3::DependencyMerge::default(),
+        &mut crate::boolean::merge::p3::DependencyMerge::carrying_attributes(),
     )?;
     // (not upstream: the port's cached topology fields, true again for the caller)
     result.refresh_cached_topology();
@@ -557,7 +579,7 @@ pub fn boolean_trees(
         breps,
         post_fix_trees,
         None,
-        &mut crate::boolean::merge::p3::DependencyMerge::default(),
+        &mut crate::boolean::merge::p3::DependencyMerge::carrying_attributes(),
     )?;
     // (not upstream: the port's cached topology fields, true again for the caller)
     for b in breps.iter_mut().flatten() {
@@ -566,10 +588,59 @@ pub fn boolean_trees(
     Ok(())
 }
 
+/// `SmApiTessellateBoundaries`: the edges of `b` as polylines within
+/// `angle_tol_deg` ([`brep_p1::tessellate_boundaries`], `SmBrep::TessellateBoundaries`).
+///
+/// # Errors
+///
+/// Those of [`brep_p1::tessellate_boundaries`].
+pub fn tessellate_boundaries(
+    k: &Kernel,
+    b: &Brep,
+    angle_tol_deg: f64,
+) -> Result<BoundaryTessellation> {
+    brep_p1::tessellate_boundaries(k, b, angle_tol_deg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::geom::context::MarkType;
+
+    /// `TestSmTessellateBoundaries` (`tests/SM_API_test/src/TestSmBrep.cpp:1328`): a
+    /// box's 12 edges are 2 points each; an edge without curve has none and makes the
+    /// result incomplete; an invalid angle tolerance is refused.
+    #[test]
+    fn tessellate_boundaries_of_a_box() {
+        let mut k = Kernel::default();
+        let mut b = crate::primitive::api_primitives::create_box(
+            &mut k,
+            crate::math::Point3::ZERO,
+            10.0,
+            10.0,
+            10.0,
+        )
+        .unwrap();
+        let t = tessellate_boundaries(&k, &b, 5.0).unwrap();
+        assert!(t.complete);
+        assert_eq!(t.edges.len(), 12);
+        assert_eq!(t.vertex_counts, vec![2; 12]);
+        assert_eq!(t.points.len(), 24);
+
+        b.edge_mut(t.edges[0]).unwrap().curve = None;
+        let t = tessellate_boundaries(&k, &b, 5.0).unwrap();
+        assert!(!t.complete);
+        assert_eq!(t.vertex_counts.len(), 12);
+        assert_eq!(t.vertex_counts[0], 0);
+        assert_eq!(t.points.len(), 22);
+
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(matches!(
+                tessellate_boundaries(&k, &b, bad),
+                Err(SolidError::InvalidInput { .. })
+            ));
+        }
+    }
 
     const ALL: [BooleanOperation; 11] = [
         BooleanOperation::Unknown,

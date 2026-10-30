@@ -1,22 +1,20 @@
 //! Regression test for WR-531 (the fork's tangency-labs/smlib@d5dadaa, capi test
 //! `shelled_box_with_a_drilled_hole`): a box with a blind drilled hole (r 3, a 118
-//! degree tip) shelled 2 mm inward, open at a side. The hole's tip is a cone's apex
-//! whose seam is its only edge: the extended offset builds no offset there, so the
-//! cone's offset ends open on a circle and the offset is no closed solid. With
-//! `offset_point_vertex_caps` the apex's offset is a sphere zone of radius 2 and the
-//! shell is a sound closed solid.
+//! degree tip) shelled 2 mm inward, open at a side and, separately, at the top. The
+//! hole's tip is a cone's apex whose seam is its only edge: the extended offset builds
+//! no offset there, so the cone's offset ends open on a circle. `ShellBrep` then hands
+//! back the offset as it is, not a closed solid (upstream returns `SM_SUCCESS` with that
+//! non-manifold result, `SmOffsetExecutive.cpp:255-262`); the fork's shell fails (1001)
+//! because its WR-454 check (`shell_empty_cavity_fails`, tangency-labs/smlib@fbe43bb)
+//! refuses that open offset. With `offset_point_vertex_caps` the apex's offset is a
+//! sphere zone of radius 2 and the shell is a closed solid.
 //!
-//! Without the opt-in the pinned `SmOffsetExecutive::ShellBrep` hands that open offset
-//! back as a success (`SmOffsetExecutive.cpp:255-262`: not a manifold solid and no
-//! offset solid asked for, `return SM_SUCCESS; // was SM_ERR: ??`). The fork's "the
-//! shell fails" is that open offset refused by its WR-454 check
-//! (`shell_empty_cavity_fails`, tangency-labs/smlib@fbe43bb), so that case runs with it.
-//!
-//! The result is checked with the geometry owners the body itself records: a shell
-//! result names its edges' curves by the caller's merge and result identities while
-//! being labelled `NamingScheme::Notify` (#1670, open), so `check_brep`'s owner
-//! comparison in test 61 fails on every such edge of any merged shell. Every other
-//! check, and the rest of test 61 (each edge's ends on its vertices), still runs.
+//! The result is checked with the geometry owners the body itself records: a merged
+//! shell result is labelled `NamingScheme::Notify` while its edges' curves are owned
+//! under the caller's merge and result identities (#1670, open), so `check_brep`'s owner
+//! comparison in `SmBrep` test 61 fails on such edges of any merged shell, with or
+//! without the opt-in. Every other check, and the rest of test 61 (each edge's ends on
+//! its vertices), still runs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -35,9 +33,9 @@ use solidcore::geom::object::ObjectRef;
 use solidcore::math::{Point3, Vec3};
 use solidcore::primitive::api_curves::create_line_segment;
 use solidcore::primitive::api_primitives::create_box;
+use solidcore::query::api_queries::brep_is_manifold_solid;
 use solidcore::surface::surface::SurfaceKind;
 use solidcore::sweep::api_brep::create_rotational_sweep;
-use solidcore::topology::brep::p2::is_manifold_solid;
 use solidcore::topology::brep::validation::{check_brep_with_keys, CheckLevel};
 use solidcore::{Brep, EntityRef, Kernel};
 use std::collections::BTreeMap;
@@ -73,17 +71,21 @@ fn drilled_box(k: &mut Kernel) -> Brep {
     boolean_difference(k, block, drill).unwrap()
 }
 
-/// The drilled box shelled 2 inward, open at x = 0, with WR-531's `caps` and WR-454's
-/// `refuse_open`.
-fn shelled(caps: bool, refuse_open: bool) -> solidcore::Result<(Kernel, Brep)> {
+/// The drilled box shelled 2 inward, open at the top or at x = 0, with WR-531's `fixed`
+/// and WR-454's `refuse_open`.
+fn shelled(fixed: bool, refuse_open: bool, open_top: bool) -> solidcore::Result<(Kernel, Brep)> {
     let mut k = Kernel::default();
-    k.fixes.offset_point_vertex_caps = caps;
+    k.fixes.offset_point_vertex_caps = fixed;
     k.fixes.shell_empty_cavity_fails = refuse_open;
     let part = drilled_box(&mut k);
-    let side = planar_faces_at(&k, &part, 0, 0.0);
-    assert_eq!(side.len(), 1, "the side x = 0");
-    let result = shell(&mut k, part, -2.0, &side)?;
-    Ok((k, result))
+    let open = if open_top {
+        planar_faces_at(&k, &part, 2, 20.0)
+    } else {
+        planar_faces_at(&k, &part, 0, 0.0)
+    };
+    assert_eq!(open.len(), 1, "the open face");
+    let b = shell(&mut k, part, -2.0, &open)?;
+    Ok((k, b))
 }
 
 /// The geometry owners `b` records: each edge's curve's, face's surface's and edge
@@ -142,21 +144,33 @@ fn spheres(b: &Brep) -> usize {
 
 #[test]
 fn wr_531_drilled_hole_shells_with_a_sphere_cap() {
-    for refuse_open in [false, true] {
-        let (mut k, mut b) = shelled(true, refuse_open).unwrap();
-        assert!(is_manifold_solid(&b).unwrap(), "refuse_open {refuse_open}");
-        let (failed, lines) = check(&mut k, &mut b);
-        assert_eq!(failed, 0, "refuse_open {refuse_open}: {lines:?}");
-        assert_eq!(spheres(&b), 1, "one cap on a sphere");
+    for open_top in [false, true] {
+        for refuse_open in [false, true] {
+            let case = format!("open_top {open_top} refuse_open {refuse_open}");
+            let (mut k, mut b) = shelled(true, refuse_open, open_top).unwrap();
+            assert!(
+                brep_is_manifold_solid(&b).unwrap(),
+                "{case}: not a closed solid"
+            );
+            assert_eq!(spheres(&b), 1, "{case}: one cap on a sphere");
+            let (failed, lines) = check(&mut k, &mut b);
+            assert_eq!(failed, 0, "{case}: {lines:?}");
+        }
     }
 }
 
-/// Without the opt-in the offset is left open at the apex: the pinned `ShellBrep` hands
-/// it back as a success, and WR-454's check refuses it (the fork's failing shell).
+/// Without the opt-in the cone's offset stays open at the tip: the pinned `ShellBrep`
+/// hands it back as a success, no closed solid, and WR-454's check refuses it (the
+/// fork's failing shell).
 #[test]
-fn wr_531_without_the_opt_in_the_shell_is_left_open() {
-    let (_, b) = shelled(false, false).unwrap();
-    assert!(!is_manifold_solid(&b).unwrap(), "open at the apex");
-    assert_eq!(spheres(&b), 0);
-    assert!(shelled(false, true).is_err());
+fn wr_531_without_the_opt_in_the_shell_is_open() {
+    for open_top in [false, true] {
+        let (_, b) = shelled(false, false, open_top).unwrap();
+        assert!(!brep_is_manifold_solid(&b).unwrap(), "open_top {open_top}");
+        assert_eq!(spheres(&b), 0, "open_top {open_top}");
+        assert!(
+            shelled(false, true, open_top).is_err(),
+            "open_top {open_top}"
+        );
+    }
 }

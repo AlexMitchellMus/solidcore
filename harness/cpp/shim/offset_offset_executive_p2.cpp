@@ -23,10 +23,12 @@
 #include <SmApiBrep.h>
 #include <SmApiGeneral.h>
 #include <SmApiPrimitives.h>
+#include <SmAttribute.h>
 #include <SmBSplineCurve.h>
 #include <SmBSplineSurface.h>
 #include <SmBrep.h>
 #include <SmContext.h>
+#include <SmCylinder.h>
 #include <SmEdge.h>
 #include <SmEdgeuse.h>
 #include <SmFace.h>
@@ -42,6 +44,7 @@
 #include <SmShell.h>
 #include <SmVertex.h>
 #include <nurbs.h>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <memory>
@@ -90,12 +93,12 @@ struct Spec {
     std::string path; // kind 7: an ASCII .smb file
     int64_t faces() const {
         return kind == 3 ? 1 : kind == 4 ? 6 : kind == 5 ? 3 : kind == 6 ? 1
-            : kind == 7 ? max_file_faces : 0;
+            : kind == 7 ? max_file_faces : kind == 8 ? 1 : 0;
     }
 };
 Spec read_spec(Reader& rd) {
     Spec s;
-    s.kind = (int)rd.integer(0, 7);
+    s.kind = (int)rd.integer(0, 8);
     if (s.kind == 7) {
         // the byte count, then one value per byte (no NUL)
         int64_t n = rd.integer(1, max_file_path);
@@ -103,7 +106,7 @@ Spec read_spec(Reader& rd) {
         return s;
     }
     int n = s.kind == 2 ? 10 : s.kind == 3 ? 15 : s.kind == 4 ? 6 : s.kind == 5 ? 5
-        : s.kind == 6 ? 4 : 0;
+        : s.kind == 6 ? 4 : s.kind == 8 ? 5 : 0;
     for (int i=0; i<n; ++i) s.v[i] = rd.number();
     const auto& v = s.v;
     if (s.kind == 2) {
@@ -131,6 +134,11 @@ Spec read_spec(Reader& rd) {
         for (int i=0; i<3; ++i) { finite(v[i]+v[3]); finite(v[i]-v[3]); }
         finite(v[3]*v[3]);
         if (s.kind == 5) finite(v[2]+v[4]);
+    } else if (s.kind == 8) {
+        // Cylinder sheet (origin, radius, height): positive radius and height.
+        for (int i=0; i<3; ++i) { finite(v[i]+v[3]); finite(v[i]-v[3]); }
+        finite(v[3]*v[3]); finite(v[2]+v[4]);
+        if (!(v[3] > 0) || !(v[4] > 0)) throw Argument{};
     }
     return s;
 }
@@ -143,6 +151,7 @@ struct Program {
     SmBoolean inset, extend, merge, solid, skip;
     Spec source, foreign;
     std::vector<Selection> selections;
+    int attributed = -1; // -1: no attributes, else the tags' SmAttributeBehaviorType
     bool member() const { return operation == 2 || operation == 3; }
     bool can_extend() const {
         // Called only after the whole DTO is parsed and every index validated.
@@ -181,6 +190,7 @@ Program read_program(Reader& rd) {
             throw Argument{};
         p.selections.push_back({origin, index});
     }
+    p.attributed = (int)rd.integer(-1, 4);
     if (rd.pos != rd.size) throw Argument{};
     // All scalars remain finite and all selectors remain bounds-checked, even
     // for proven early returns. Only the unused fivefold product is exempted.
@@ -314,6 +324,17 @@ SmBrep* build(const Spec& s, SmContext& ctx, double tolerance) {
         // pending guard only deletes it if it still has no native topology owner.
         constructed(result->MakeWireEdge(nullptr, first, second, line, trim, SM_OT_SAME, edge));
         if (!edge) throw std::runtime_error("successful wire constructor returned null");
+    } else if (s.kind == 8) {
+        // A cylinder sheet: CreateFaceFromSurface on a bounded SmCylinder over its
+        // natural domain (closed round along a seam edge).
+        PendingGeometry<SmSurface> pending{
+            new (ctx) SmCylinder(point(v,0), SmVector3d(1,0,0), SmVector3d(0,1,0), v[3],
+                                 0.0, 360.0, v[4], FALSE, FALSE, FALSE, &ctx)
+        };
+        SmExtent2d domain = pending.ptr->GetNaturalUVDomain();
+        SmFace* face = nullptr;
+        constructed(result->CreateFaceFromSurface(pending.ptr, domain, face));
+        if (!face) throw std::runtime_error("successful sheet constructor returned null");
     } else if (s.kind == 3) {
         SmExtent2d domain(SmPoint2d(v[11],v[12]), SmPoint2d(v[13],v[14]));
         PendingGeometry<SmSurface> pending{
@@ -511,6 +532,65 @@ void put_block(std::vector<double>& out, const Block& block) {
     out.insert(out.end(),block.values.begin(),block.values.end());
 }
 
+// Attributed cases (#1462): every source face (GetFaces order) and edge (GetEdges order)
+// gets its own SmLongAttribute, id = value = attribute_base + index (+ 500 for an edge).
+constexpr ULONG attribute_base = 10007;
+void tag_source(SmBrep* b, SmContext& ctx, SmAttributeBehaviorType behavior) {
+    SmTArray<SmFace*> faces;
+    b->GetFaces(faces);
+    for (ULONG i=0; i<faces.GetSize(); ++i) {
+        ULONG id = attribute_base + i;
+        faces[i]->AddAttribute(new (ctx) SmLongAttribute(id, (long)id, behavior));
+    }
+    SmTArray<SmEdge*> edges;
+    b->GetEdges(edges);
+    for (ULONG i=0; i<edges.GetSize(); ++i) {
+        ULONG id = attribute_base + 500 + i;
+        edges[i]->AddAttribute(new (ctx) SmLongAttribute(id, (long)id, behavior));
+    }
+}
+// One object's row: `n`, then per attribute `id behavior value` (value: an
+// SmLongAttribute's, else 0), the attributes in ascending order.
+std::vector<double> attribute_row(const SmAObject* obj) {
+    SmTArray<SmAttribute*> attrs;
+    obj->GetAttributes(attrs);
+    std::vector<std::array<double, 3>> entries;
+    for (ULONG i=0; i<attrs.GetSize(); ++i) {
+        SmAttribute* a = attrs[i];
+        SmLongAttribute* l = dynamic_cast<SmLongAttribute*>(a);
+        entries.push_back({(double)a->GetAttributeID(), (double)a->GetBehavior(),
+            l ? (double)l->GetValue() : 0.0});
+    }
+    std::sort(entries.begin(), entries.end());
+    std::vector<double> row{(double)entries.size()};
+    for (const auto& e : entries) row.insert(row.end(), e.begin(), e.end());
+    return row;
+}
+template<class T> void put_rows(std::vector<double>& out, const SmTArray<T*>& objects) {
+    std::vector<std::vector<double>> rows;
+    for (ULONG i=0; i<objects.GetSize(); ++i) rows.push_back(attribute_row(objects[i]));
+    std::sort(rows.begin(), rows.end());
+    out.push_back((double)rows.size());
+    for (const auto& row : rows) out.insert(out.end(), row.begin(), row.end());
+}
+// `present`, then `count` and the result's face rows then edge rows, each sorted (the
+// sets are compared, not the lists' order).
+void put_attributes(std::vector<double>& out, SmBrep* brep) {
+    out.push_back(brep ? 1.0 : 0.0);
+    if (!brep) return;
+    SmTArray<SmFace*> faces;
+    SmTArray<SmEdge*> edges;
+    brep->GetFaces(faces);
+    brep->GetEdges(edges);
+    std::vector<double> rows;
+    put_rows(rows, faces);
+    put_rows(rows, edges);
+    if (rows.size() + out.size() + 1 > max_output)
+        throw std::length_error("native attribute output budget");
+    out.push_back((double)rows.size());
+    out.insert(out.end(), rows.begin(), rows.end());
+}
+
 std::vector<double> observe_selectors(const SmTArray<SmFace*>& selectors, SmBrep* source,
                                      SmBrep* foreign, const std::vector<double>* before = nullptr) {
     SmTArray<SmFace*> sources, foreigners;
@@ -541,6 +621,7 @@ void run(const Program& p, std::vector<double>& out) {
     size_t source_token = allocations.token(source), foreign_token = allocations.token(foreign);
     SmTArray<SmFace*> source_faces, foreign_faces, selectors;
     SmTArray<const SmFace*> api_selectors;
+    if (source && p.attributed >= 0) tag_source(source, ctx, (SmAttributeBehaviorType)p.attributed);
     if (source) source->GetFaces(source_faces);
     if (foreign) foreign->GetFaces(foreign_faces);
     for (const auto& selection : p.selections) {
@@ -628,6 +709,7 @@ void run(const Program& p, std::vector<double>& out) {
     put_block(out,snapshot(foreign_live ? foreign : nullptr));
     put_block(out,snapshot(result));
     put_block(out,snapshot(offset));
+    if (p.attributed >= 0) put_attributes(out, result);
     // Executive destruction owns offset; then allocation scope reclaims every
     // remaining distinct B-rep (source/foreign/result/unreturned native working data).
     executive.reset();

@@ -98,12 +98,43 @@ pub(crate) fn notification_key(namespace: u32, other: bool, entity: EntityRef) -
     }
 }
 
+/// The operand slot (`true` for the other B-rep) and entity that [`notification_key`]
+/// names `key` in `namespace`, if any (its inverse on keys).
+pub(crate) fn entity_of_notification_key(
+    namespace: u32,
+    key: ObjectKey,
+) -> Option<(bool, EntityRef)> {
+    if key.0 >> 37 != u64::from(namespace) {
+        return None;
+    }
+    let other = (key.0 >> 36) & 1 == 1;
+    let kind = (key.0 >> 32) & 0xf;
+    let index = u32::try_from(key.0 & u64::from(u32::MAX)).ok()?;
+    let entity = match kind {
+        0 => EntityRef::Brep(BrepId::from_index(index)),
+        1 => EntityRef::Region(RegionId::from_index(index)),
+        2 => EntityRef::Face(FaceId::from_index(index)),
+        3 => EntityRef::Edge(EdgeId::from_index(index)),
+        4 => EntityRef::Vertex(VertexId::from_index(index)),
+        7 => EntityRef::Shell(crate::topology::ShellId::from_index(index)),
+        8 => EntityRef::Loop(crate::topology::LoopId::from_index(index)),
+        9 => EntityRef::Faceuse(FaceuseId::from_index(index)),
+        10 => EntityRef::Loopuse(crate::topology::LoopuseId::from_index(index)),
+        11 => EntityRef::Edgeuse(crate::topology::EdgeuseId::from_index(index)),
+        12 => EntityRef::Vertexuse(crate::topology::VertexuseId::from_index(index)),
+        _ => return None,
+    };
+    Some((other, entity))
+}
+
 /// Hands the geometry a merge made under the adapter's namespace back to the B-rep's
 /// own naming: a face's surface (an edge's curve) owned under that face's (edge's)
 /// [`notification_key`] in `namespace` is the record's own geometry (upstream's owner
 /// is the record), so it takes the record's name in `b`'s recorded scheme
 /// ([`Brep::naming`](crate::topology::Brep::naming): notification or arena identity)
-/// and the face's tolerance is re-recorded on it. Called when the namespace ends with
+/// and the face's tolerance is re-recorded on it. An edge use's UV trim curve owned
+/// under the edge use's key takes the edge use's notification identity (upstream's owner
+/// is the edge use; `SmEdgeuse::AssertValid` test #6). Called when the namespace ends with
 /// the merge (its records and attributes go with it); a B-rep of another or unknown
 /// scheme is left as it is.
 ///
@@ -157,6 +188,22 @@ pub(crate) fn adopt_namespace_owners(b: &mut Brep, namespace: u32, other: bool) 
         });
         if adopted {
             b.set_geometry_owner_key(EntityRef::Edge(e), Some(own));
+        }
+    }
+    // An edge use's UV trim curve is owned by the edge use (`SmEdgeuse` test #6); one
+    // the merge set under the namespace takes the edge use's own name. Both schemes
+    // name edge uses by their notification identity (the check's keys for an arena
+    // B-rep fall back to it too).
+    if matches!(b.naming(), NamingScheme::Notify | NamingScheme::Arena) {
+        let uses: Vec<_> = b.edgeuses().iter().map(|(id, _)| id).collect();
+        for eu in uses {
+            let merged = notification_key(namespace, other, EntityRef::Edgeuse(eu));
+            if let Some(trim) = b.edgeuse_mut(eu)?.uv_trim_curve.as_mut() {
+                if trim.owner() == Some(merged) {
+                    let own = crate::topology::loopuse::notify_ref(EntityRef::Edgeuse(eu));
+                    trim.set_owner(Some(own), None);
+                }
+            }
         }
     }
     Ok(())
@@ -1418,6 +1465,7 @@ impl ManifoldIntersector for ManifoldKernelAdapter<'_> {
         &mut self,
         kernels: &mut BooleanKernels<'_>,
         primary: &mut Brep,
+        attributes: &mut AttributeStore,
         state: &ManifoldState,
         check_all_edges: bool,
     ) -> Result<()> {
@@ -1429,7 +1477,27 @@ impl ManifoldIntersector for ManifoldKernelAdapter<'_> {
             mates: std::mem::take(&mut self.merge.intersector),
             ..p1::CleanupRelations::default()
         };
-        let result = p1::boolean_post_process(kernels.primary, primary, &cleanup, check_all_edges);
+        // The cleanup's deletions notify on the merge's records, attributes and names, as
+        // every other edit of the merge (upstream: the objects' own attributes).
+        let keys = self.keys;
+        let key_of = move |e: EntityRef| keys.object(false, e);
+        let records = &mut self.records;
+        let result = Context::with_notification_context(kernels.primary, |k, context| {
+            let mut env = crate::topology::edge::NotifyEnv {
+                records,
+                attributes,
+                context: Some(context),
+                key_of: &key_of,
+            };
+            p1::boolean_post_process_with_notifications(
+                k,
+                primary,
+                &cleanup,
+                check_all_edges,
+                Some(&mut env),
+            )
+        })
+        .and_then(|r| r);
         self.merge.intersector = cleanup.mates;
         result
     }
@@ -1760,11 +1828,23 @@ mod tests {
         };
         let mut state = ManifoldState::default();
         adapter
-            .post_process(&mut kernels, &mut primary, &state, false)
+            .post_process(
+                &mut kernels,
+                &mut primary,
+                &mut AttributeStore::default(),
+                &state,
+                false,
+            )
             .unwrap();
         state.intersection_vertices.push(v);
         assert!(adapter
-            .post_process(&mut kernels, &mut primary, &state, false)
+            .post_process(
+                &mut kernels,
+                &mut primary,
+                &mut AttributeStore::default(),
+                &state,
+                false,
+            )
             .is_err());
         assert_eq!(adapter.merge.intersector.vertices.other(v), Some(v));
         assert_eq!(
