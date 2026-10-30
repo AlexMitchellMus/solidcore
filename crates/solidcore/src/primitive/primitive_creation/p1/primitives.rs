@@ -26,6 +26,16 @@
 //! them. `SmBrep` is caller-owned; edits retain upstream edit-mode side effects.
 //! Face construction uses caller notification records, attributes and identity keys.
 //! No recursion.
+//! Not upstream (WR-565, tangency-labs/solidcore#1477, opt-in
+//! `Kernel::fixes.linear_sweep_arc_is_cylinder`; SolidCraft change, tangency-labs/smlib
+//! 12918e9): [`PrimitiveCreation::create_linear_sweep`] makes a circular arc short of a
+//! whole turn that is swept square to its plane a cylinder (`arc_sweep_cylinder`), where
+//! upstream makes it an `SmSurfOfExtrusion`.
+//! Not upstream (WR-576, tangency-labs/solidcore#1507, opt-in
+//! `Kernel::fixes.linear_sweep_arc_to_cylinder_zero`; SolidCraft change, tangency-labs/smlib
+//! fd59111): [`PrimitiveCreation::create_linear_sweep`] tests a profile curve for an arc
+//! to the zero an `SmCylinder`'s own check holds its generating curve to (`arc_zero`),
+//! not to the B-rep's tolerance.
 
 use super::PrimitiveCreation;
 use crate::curve::curve::Curve;
@@ -905,10 +915,65 @@ fn cover_face_surface(
     Ok(r.success)
 }
 
+/// Not upstream (WR-565, #1477, `fixes.linear_sweep_arc_is_cylinder`): the cylinder of
+/// the circular arc of `frame` and `radius` from `start` to `end` degrees, swept square
+/// to its plane over `distance` along the unit `sweep_dir`. The frame is turned about
+/// its Z axis to the arc's start or, for a sweep against the arc's normal, to its end
+/// and then flipped about its X axis, so that STEP u runs over the arc from 0 to its
+/// sweep angle and v along the sweep from 0 to `distance`. `None` when the cylinder
+/// cannot be made.
+fn arc_sweep_cylinder(
+    k: &Kernel,
+    mut frame: Axis2Placement,
+    radius: f64,
+    (start, end): (f64, f64),
+    sweep_dir: Vec3,
+    distance: f64,
+) -> Result<Option<Cone>> {
+    let against = sweep_dir.dot(frame.z_axis()) < 0.0;
+    let turn = if against { end } else { start };
+    frame.rotate_about_axis_at_point(
+        turn * core::f64::consts::PI / 180.0,
+        frame.origin(),
+        frame.z_axis(),
+    );
+    if against {
+        frame.rotate_about_axis_at_point(
+            180.0 * core::f64::consts::PI / 180.0,
+            frame.origin(),
+            frame.x_axis(),
+        );
+    }
+    let Some(mut cylinder) = ignored(Cone::create_canonical_cylinder(k, &frame, radius))? else {
+        return Ok(None);
+    };
+    ignore_status(
+        cylinder.adjust_step_uv_domain(k, &Extent2d::from_bounds(0.0, 0.0, end - start, distance)),
+    )?;
+    Ok(Some(cylinder))
+}
+
+/// Not upstream (WR-576, #1507, `fixes.linear_sweep_arc_to_cylinder_zero`): the zero a
+/// linear sweep tests a profile curve's arc to, the one an `SmCylinder`'s own check holds
+/// its generating curve to: `SM_EFF_ZERO * 1000 * (1 + the largest coordinate of the
+/// curve's ends)` (the fork's `ArcZero`). The ends' status is ignored, as `GetEnds`'
+/// is there: ends that cannot be evaluated count as the origin.
+fn arc_zero(k: &Kernel, curve: &Curve) -> Result<f64> {
+    let (start, end) = match ignored(curve.ends(k))? {
+        Some(ends) => (ends.start, ends.end),
+        None => (Vec3::ZERO, Vec3::ZERO),
+    };
+    Ok(EFF_ZERO * 1000.0 * (1.0 + start.max_dimension().max(end.max_dimension())))
+}
+
 impl PrimitiveCreation {
     /// The curve overload of `CreateLinearSweep`. It consumes the curves, chooses
     /// a rectangular plane for an orthogonal line, a cylinder for a full circle
     /// swept along its axis, and an extrusion otherwise. Topology edits defer.
+    /// With `k.fixes.linear_sweep_arc_is_cylinder` (not upstream, WR-565) an arc
+    /// short of a full circle swept along its axis is a cylinder too.
+    /// With `k.fixes.linear_sweep_arc_to_cylinder_zero` (not upstream, WR-576) the arc
+    /// test is to the cylinder check's zero (`arc_zero`), not the B-rep's tolerance.
     pub fn create_linear_sweep(
         &mut self,
         k: &mut Kernel,
@@ -955,9 +1020,17 @@ impl PrimitiveCreation {
                     } else {
                         None
                     }
-                } else if let Some((mut frame, radius, start, end)) =
-                    curve.is_arc(k, 8, brep.tolerance())?
-                {
+                } else if let Some((mut frame, radius, start, end)) = curve.is_arc(
+                    k,
+                    8,
+                    // Not upstream (WR-576, #1507): with the fix, an arc only to the
+                    // zero the cylinder's own check holds it to.
+                    if k.fixes.linear_sweep_arc_to_cylinder_zero {
+                        arc_zero(k, curve)?
+                    } else {
+                        brep.tolerance()
+                    },
+                )? {
                     let angle = end - start;
                     // A right cylinder only fits if the cap, translated along the
                     // sweep direction, is within tolerance of its far edge.
@@ -979,6 +1052,21 @@ impl PrimitiveCreation {
                                 k,
                                 &Extent2d::from_bounds(0.0, 0.0, 360.0, distance),
                             ))?;
+                            let domain = cylinder.rev.base().natural_uv_domain();
+                            ignore_status(cone_face(k, brep, &cylinder, domain))?;
+                            continue;
+                        }
+                    }
+                    // Not upstream (WR-565, #1477): with the fix, an arc short of a
+                    // whole turn swept square to its plane is a cylinder too.
+                    if k.fixes.linear_sweep_arc_is_cylinder
+                        && angle > 0.0
+                        && angle <= 360.0 - brep.tolerance()
+                        && distance * frame.z_axis().cross(sweep_dir).length() <= brep.tolerance()
+                    {
+                        if let Some(cylinder) =
+                            arc_sweep_cylinder(k, frame, radius, (start, end), sweep_dir, distance)?
+                        {
                             let domain = cylinder.rev.base().natural_uv_domain();
                             ignore_status(cone_face(k, brep, &cylinder, domain))?;
                             continue;
