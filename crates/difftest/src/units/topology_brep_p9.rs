@@ -607,10 +607,14 @@ impl solidcore::intersect::point_class::ClassObject for Handle {
         }
     }
 }
-/// Empties the Rust-only face loop and loop edge lists (`Face::loops`, `Loop::edges`,
-/// which `make_edge_in_face_with_vu` and friends keep in step) as the shared importer
-/// leaves them on the C++ side, which has no such lists: the graph compares the
-/// upstream topology links.
+/// Empties the Rust-only cached lists the graph would otherwise compare: the face loop
+/// and loop edge lists (`Face::loops`, `Loop::edges`, which `make_edge_in_face_with_vu`
+/// and friends keep in step; the shared importer leaves them empty) and the shells'
+/// face lists (`Shell::faces`: the Rust reader's refresh lists a face in every shell one
+/// of its face uses is in, the importer only in its first face use's, so a B-rep whose
+/// faces have face uses in two shells, as Mouse.smb's void and solid shells, lists them
+/// twice). Upstream keeps none of these lists (`GetFaces` walks the face uses), so on
+/// both sides the graph compares the upstream topology links.
 fn skeleton_caches(b: &mut Brep) {
     let faces: Vec<FaceId> = b.faces().ids().collect();
     for f in faces {
@@ -622,6 +626,12 @@ fn skeleton_caches(b: &mut Brep) {
     for l in loops {
         if let Ok(r) = b.loop_mut(l) {
             r.edges.clear();
+        }
+    }
+    let shells: Vec<solidcore::topology::ShellId> = b.shells().ids().collect();
+    for s in shells {
+        if let Ok(r) = b.shell_mut(s) {
+            r.faces.clear();
         }
     }
 }
@@ -686,11 +696,13 @@ impl UnitDiff for Runner {
             raw.get(2..2 + n)
                 .ok_or_else(|| error("short native record"))?,
         );
-        let (b, _) = import_raw(
+        let (mut b, _) = import_raw(
             raw.get(2 + n..)
                 .ok_or_else(|| error("short native graph"))?,
         )?;
         canon_record(&b, i.op, &mut record);
+        // the same Rust-only lists emptied as on the Rust side
+        skeleton_caches(&mut b);
         Ok(graph_reachable(&b, record))
     }
     fn run_rust(&self, case: &Case) -> Result<Output, HarnessError> {
