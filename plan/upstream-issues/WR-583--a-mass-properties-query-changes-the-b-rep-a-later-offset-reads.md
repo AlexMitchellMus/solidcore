@@ -15,4 +15,4 @@
 
   With the fork's loop-gap closing (solidcore's WR-578 opt-in), the shell builds on a clean operand and is refused after the query.
 - **How found:** a probe that measured the operand before shelling disagreed with a test that did not. The difference was traced to the writes above (debugger trace of the volume query's writers).
-- **Confirmed:** yes. fixer-8's operand-state extension of case `issue1528_plate_api_shell_2` of `offset.offset_executive_p2` (#1757) shows the pinned C++ making the same writes and shelling to the same, shifted volume as the port, with and without the query.
+- **Confirmed:** yes. fixer-8's operand-state extension (#1793) of case `issue1528_plate_api_shell_2` of `offset.offset_executive_p2` (from #1757) shows the pinned C++ making the same writes and shelling to the same, shifted volume as the port, with and without the query.
