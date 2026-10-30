@@ -244,11 +244,15 @@ fn key_of(e: EntityRef) -> ObjectRef {
 /// `topology.brep_p10` `project_*_Defeature_inset_cube` cases).
 #[test]
 fn project_and_trim_names_split_trims_by_caller_keys() {
-    let bytes = std::fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../upstream/TestFiles/pt_TestFiles/Defeature/inset_cube.smb"
-    ))
-    .unwrap();
+    // the upstream test file is not checked in (CI's test job has no upstream tree; the
+    // difftest job runs the same body through `topology.brep_p10`), as
+    // `issue_1570_flat_body_ray_fire`
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../upstream/TestFiles/pt_TestFiles/Defeature/inset_cube.smb");
+    let Ok(bytes) = std::fs::read(&path) else {
+        eprintln!("unavailable upstream test file: {}", path.display());
+        return;
+    };
     let mut k = Kernel::default();
     let mut data = BrepData::read_from_file(&k, bytes, FileType::Ascii).unwrap();
     let mut b = Brep::new_with_infinite_region().unwrap();
