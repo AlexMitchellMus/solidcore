@@ -24,7 +24,9 @@
 // both operands with the caller (deleted here); on success the result is deleted and the second
 // operand is deleted here only when upstream keeps it. OP_ATTRIBUTED tags every operand face
 // and edge with an SmLongAttribute before SmApiBoolean and records the attributes the result's
-// faces and edges carry (the Rust side tags its own operands the same way). A failed N-ary call after validation
+// faces and edges carry (the Rust side tags its own operands the same way); OP_ATTRIBUTED_LIST
+// does the same for SmApiMergeBreps, SmApiBooleanLists and SmApiBooleanTrees and their
+// output B-reps. A failed N-ary call after validation
 // may have consumed some operands, so those are leaked rather than risk a double delete.
 #include "sc_shim.h"
 
@@ -51,6 +53,7 @@
 #include <nurbs.h>
 
 #include <algorithm>
+#include <set>
 #include <stdexcept>
 #include <vector>
 
@@ -82,8 +85,9 @@ enum : int32_t
     OP_NM_ROTATIONAL_SWEEP = 16,
     OP_ATTRIBUTED = 17,
     OP_TESSELLATE_BOUNDARIES = 18,
-    OP_ATTRIBUTED_NM_SWEEP = 19,            // `behavior` then OP_NM_SWEEP's program
-    OP_ATTRIBUTED_NM_ROTATIONAL_SWEEP = 20, // `behavior` then OP_NM_ROTATIONAL_SWEEP's
+    OP_ATTRIBUTED_LIST = 19,
+    OP_ATTRIBUTED_NM_SWEEP = 20,            // `behavior` then OP_NM_SWEEP's program
+    OP_ATTRIBUTED_NM_ROTATIONAL_SWEEP = 21, // `behavior` then OP_NM_ROTATIONAL_SWEEP's
 };
 
 // Most entries of one non-manifold sweep selection array (MAX_SELECTION in the Rust module).
@@ -580,10 +584,12 @@ void tag_operand(SmBrep* b, ULONG operand, SmAttributeBehaviorType behavior)
 }
 
 // One object's row: `measure n` then per attribute `id behavior value users` (value: an
-// SmLongAttribute's GetValue, else 0; users: the GetUsers that are SmTopology objects), the attributes in ascending
+// SmLongAttribute's GetValue, else 0; users: the GetUsers that are SmTopology objects,
+// within `scope` when given), the attributes in ascending
 // order: which of two merged coplanar faces survives (and so whose attributes come first
 // in its list) depends on the C++ process's earlier heap use, the set does not.
-std::vector<double> attribute_row(const SmAObject* obj, double measure)
+std::vector<double> attribute_row(const SmAObject* obj, double measure,
+                                  const std::set<const SmAObject*>* scope = NULL)
 {
     SmTArray<SmAttribute*> attrs;
     obj->GetAttributes(attrs);
@@ -598,13 +604,15 @@ std::vector<double> attribute_row(const SmAObject* obj, double measure)
         e.push_back((double)a->GetAttributeID());
         e.push_back((double)a->GetBehavior());
         e.push_back(l != NULL ? (double)l->GetValue() : 0.0);
-        // the topology users: the port keeps no attributes on geometry, whose
-        // objects (an edge's curve) also use an edge's reference attribute here
-        ULONG topology_users = 0;
+        // the topology users (the port keeps no attributes on geometry, whose objects,
+        // an edge's curve, also use an edge's reference attribute here), and with a
+        // `scope` only the users that are objects of the same B-rep
+        double n = 0.0;
         for (ULONG u = 0; u < users.GetSize(); u++)
-            if (users[u] != NULL && users[u]->IsKindOf(SmTopology_TYPE))
-                topology_users++;
-        e.push_back((double)topology_users);
+            if (users[u] != NULL && users[u]->IsKindOf(SmTopology_TYPE) &&
+                (scope == NULL || scope->count(users[u]) != 0))
+                n += 1.0;
+        e.push_back(n);
         entries.push_back(e);
     }
     std::sort(entries.begin(), entries.end());
@@ -638,26 +646,34 @@ void put_rows(std::vector<double>& o, std::vector<std::vector<double>>& rows)
 // `faces rows... edges rows...` of a B-rep: each face's row with its area
 // (SmApiFaceComputeArea at AREA_ACCURACY; a failure as minus its status) and each edge's
 // with its length (SmApiEdgeComputeLength at LENGTH_ACCURACY, likewise).
-void put_attributes(std::vector<double>& o, SmBrep* b)
+void put_attributes(std::vector<double>& o, SmBrep* b, bool scoped = false)
 {
     std::vector<std::vector<double>> rows;
     SmTArray<SmFace*> faces;
     b->GetFaces(faces);
+    SmTArray<SmEdge*> edges;
+    b->GetEdges(edges);
+    // `scoped`: users counted within `b` (the port keeps one attribute store per B-rep,
+    // so a reference attribute shared with another B-rep is one attribute per B-rep)
+    std::set<const SmAObject*> objects;
+    for (ULONG i = 0; i < faces.GetSize(); i++)
+        objects.insert(faces[i]);
+    for (ULONG i = 0; i < edges.GetSize(); i++)
+        objects.insert(edges[i]);
+    const std::set<const SmAObject*>* scope = scoped ? &objects : NULL;
     for (ULONG i = 0; i < faces.GetSize(); i++)
     {
         double area = 0.0;
         SmApiStatus astat = SmApiFaceComputeArea(faces[i], AREA_ACCURACY, area);
-        rows.push_back(attribute_row(faces[i], astat == SM_SUCCESS ? area : -(double)st(astat)));
+        rows.push_back(attribute_row(faces[i], astat == SM_SUCCESS ? area : -(double)st(astat), scope));
     }
     put_rows(o, rows);
     rows.clear();
-    SmTArray<SmEdge*> edges;
-    b->GetEdges(edges);
     for (ULONG i = 0; i < edges.GetSize(); i++)
     {
         double length = 0.0;
         SmApiStatus lstat = SmApiEdgeComputeLength(edges[i], LENGTH_ACCURACY, length);
-        rows.push_back(attribute_row(edges[i], lstat == SM_SUCCESS ? length : -(double)st(lstat)));
+        rows.push_back(attribute_row(edges[i], lstat == SM_SUCCESS ? length : -(double)st(lstat), scope));
     }
     put_rows(o, rows);
 }
@@ -713,13 +729,37 @@ void run_attributed(Rd& rd, std::vector<double>& o)
     delete res;
 }
 
-void run_merge_breps(Rd& rd, std::vector<double>& o)
+// OP_ATTRIBUTED_LIST's tagging: every B-rep `i` of `bs` tagged as operand `i`
+// (tag_operand) when `behavior` is one (>= 0).
+void tag_all(const std::vector<SmBrep*>& bs, int32_t behavior)
+{
+    if (behavior < 0)
+        return;
+    for (size_t i = 0; i < bs.size(); i++)
+        tag_operand(bs[i], (ULONG)i, (SmAttributeBehaviorType)behavior);
+}
+
+// OP_ATTRIBUTED_LIST's tail after a successful record: put_attributes of each non-null
+// output B-rep in order, then the number of those values.
+void put_list_attributes(std::vector<double>& o, SmBrep* const* bs, ULONG n, int32_t behavior)
+{
+    if (behavior < 0)
+        return;
+    size_t start = o.size();
+    for (ULONG i = 0; i < n; i++)
+        if (bs[i] != NULL)
+            put_attributes(o, bs[i], true);
+    o.push_back((double)(o.size() - start));
+}
+
+void run_merge_breps(Rd& rd, std::vector<double>& o, int32_t behavior = -1)
 {
     std::vector<BrepSpec> specs = read_specs(rd, 16);
     int32_t op = (int32_t)rd.idx(0, 10);
     if (rd.at != rd.n)
         throw Bad();
     std::vector<SmBrep*> bs = build_all(specs);
+    tag_all(bs, behavior);
     SmTArray<SmBrep*> arr;
     for (size_t i = 0; i < bs.size(); i++)
         arr.Add(bs[i]);
@@ -740,12 +780,16 @@ void run_merge_breps(Rd& rd, std::vector<double>& o)
     o.push_back((double)arr.GetSize());
     o.push_back(flg(res != NULL));
     if (res == NULL)
+    {
+        put_list_attributes(o, &res, 0, behavior);
         return;
+    }
     put_brep(o, res);
+    put_list_attributes(o, &res, 1, behavior);
     delete res;
 }
 
-void run_lists(Rd& rd, std::vector<double>& o)
+void run_lists(Rd& rd, std::vector<double>& o, int32_t behavior = -1)
 {
     std::vector<BrepSpec> s1 = read_specs(rd, 8);
     std::vector<BrepSpec> s2 = read_specs(rd, 8);
@@ -755,6 +799,7 @@ void run_lists(Rd& rd, std::vector<double>& o)
     std::vector<BrepSpec> all(s1);
     all.insert(all.end(), s2.begin(), s2.end());
     std::vector<SmBrep*> bs = build_all(all);
+    tag_all(bs, behavior);
     SmTArray<SmBrep*> b1, b2;
     for (size_t i = 0; i < bs.size(); i++)
         (i < s1.size() ? b1 : b2).Add(bs[i]);
@@ -773,6 +818,10 @@ void run_lists(Rd& rd, std::vector<double>& o)
                 put_brep(o, rb[i]);
         }
         o.push_back((double)rs.GetSize());
+        std::vector<SmBrep*> outs;
+        for (ULONG i = 0; i < rb.GetSize(); i++)
+            outs.push_back(rb[i]);
+        put_list_attributes(o, outs.data(), (ULONG)outs.size(), behavior);
     }
     // The inputs are never modified; outputs are new objects.
     for (ULONG i = 0; i < rb.GetSize(); i++)
@@ -783,7 +832,7 @@ void run_lists(Rd& rd, std::vector<double>& o)
         delete bs[i];
 }
 
-void run_trees(Rd& rd, std::vector<double>& o)
+void run_trees(Rd& rd, std::vector<double>& o, int32_t behavior = -1)
 {
     std::vector<BrepSpec> specs = read_specs(rd, 16);
     int64_t t = rd.idx(0, 64);
@@ -793,6 +842,7 @@ void run_trees(Rd& rd, std::vector<double>& o)
     if (rd.at != rd.n)
         throw Bad();
     std::vector<SmBrep*> bs = build_all(specs);
+    tag_all(bs, behavior);
     SmTArray<SmBrep*> arr;
     for (size_t i = 0; i < bs.size(); i++)
         arr.Add(bs[i]);
@@ -807,8 +857,28 @@ void run_trees(Rd& rd, std::vector<double>& o)
         if (arr[i] != NULL)
             put_brep(o, arr[i]);
     }
+    std::vector<SmBrep*> outs;
+    for (ULONG i = 0; i < arr.GetSize(); i++)
+        outs.push_back(arr[i]);
+    put_list_attributes(o, outs.data(), (ULONG)outs.size(), behavior);
     for (ULONG i = 0; i < arr.GetSize(); i++)
         delete arr[i];
+}
+
+// OP_ATTRIBUTED_LIST `behavior inner...`: the OP_MERGE_BREPS, OP_LISTS or OP_TREES call
+// `inner` with every B-rep of its lists (in input order, the lists of OP_LISTS
+// concatenated) tagged as operand `i` (tag_operand); a successful record ends with the
+// attribute rows of each output B-rep (put_attributes) and the number of those values.
+void run_attributed_list(Rd& rd, std::vector<double>& o)
+{
+    int32_t behavior = (int32_t)rd.idx(0, 4);
+    switch ((int32_t)rd.idx(1, 17))
+    {
+    case OP_MERGE_BREPS: run_merge_breps(rd, o, behavior); break;
+    case OP_LISTS: run_lists(rd, o, behavior); break;
+    case OP_TREES: run_trees(rd, o, behavior); break;
+    default: throw Bad();
+    }
 }
 
 // The index of `e` in `b`'s GetEdges list, -1 when `b` no longer has it (compared by
@@ -1090,7 +1160,7 @@ void run_tessellate_boundaries(Rd& rd, std::vector<double>& o)
 
 void run(Rd& rd, std::vector<double>& o)
 {
-    int32_t api = (int32_t)rd.idx(1, 20);
+    int32_t api = (int32_t)rd.idx(1, 21);
     switch (api)
     {
     case OP_BOOLEAN:
@@ -1111,11 +1181,12 @@ void run(Rd& rd, std::vector<double>& o)
     case OP_NM_ROTATIONAL_SWEEP: run_sweep(rd, api, o); break;
     case OP_ATTRIBUTED: run_attributed(rd, o); break;
     case OP_TESSELLATE_BOUNDARIES: run_tessellate_boundaries(rd, o); break;
+    case OP_ATTRIBUTED_LIST: run_attributed_list(rd, o); break;
     case OP_ATTRIBUTED_NM_SWEEP:
     case OP_ATTRIBUTED_NM_ROTATIONAL_SWEEP:
     {
         int64_t behavior = rd.idx(0, 4);
-        run_sweep(rd, api - 4, o, behavior);
+        run_sweep(rd, api - 5, o, behavior);
         break;
     }
     default: throw Bad();

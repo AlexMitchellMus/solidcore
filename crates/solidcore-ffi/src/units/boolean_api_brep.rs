@@ -42,8 +42,9 @@
 //! | `RotationalSweep` | 16 | brep `P[3] A[3] angle stitch merge region` sel | brep (also on `SM_ERR_INVALID_INPUT`)  |
 //! | `Attributed`    | 17 | brep brep `operation` `behavior`       | two-B-rep record, then the attribute rows       |
 //! | `TessellateBoundaries` | 18 | brep `angle_tol_deg` `nd`, `nd` edge indices | (also after `SM_ERR`) `ne` edge indices, `nc` counts, `np` points `x y z` |
-//! | `Sweep` (attributed) | 19 | `behavior`, then op 15's args     | op 15's record, then the attribute rows         |
-//! | `RotationalSweep` (attributed) | 20 | `behavior`, then op 16's args | op 16's record, then the attribute rows |
+//! | `AttributedList` | 19 | `behavior`, a `MergeBreps` / `Lists` / `Trees` call | its record, then the attribute rows |
+//! | `Sweep` (attributed) | 20 | `behavior`, then op 15's args     | op 15's record, then the attribute rows         |
+//! | `RotationalSweep` (attributed) | 21 | `behavior`, then op 16's args | op 16's record, then the attribute rows |
 //!
 //! The two-B-rep record is `has [is_first kept brep [brep]]` (the second B-rep when
 //! upstream keeps it); a B-rep is `faces edges vertices regions manifold_solid`, then per
@@ -89,7 +90,11 @@
 //! measure is the face's `SmApiFaceComputeArea` at [`AREA_ACCURACY`] or the edge's
 //! `SmApiEdgeComputeLength` at [`LENGTH_ACCURACY`] (minus the status on failure); rows are
 //! sorted by their attribute part, then by measure ([`sort_rows`]).
-//! An attributed sweep (op `19` / `20`: [`Call::Sweep`] / [`Call::RotationalSweep`] with
+//! `AttributedList` tags every B-rep `i` of a `MergeBreps`, `Lists` or `Trees` call's
+//! lists (in input order, `breps1` then `breps2`) as operand `i`, runs the call, and ends a
+//! successful record with the `faces rows... edges rows...` of each output B-rep (the
+//! result; each list output; each non-null tree slot), then the number of those values.
+//! An attributed sweep (op `20` / `21`: [`Call::Sweep`] / [`Call::RotationalSweep`] with
 //! `attributed`) tags the swept B-rep's faces and edges the same way (operand 0) before
 //! the sweep; a successful record ends, after the areas tail, with that B-rep's
 //! `faces rows... edges rows...` and the number of those values.
@@ -492,7 +497,7 @@ pub enum Call {
         /// The optional selections.
         selection: Selection,
         /// `Some(behavior)`: every face and edge of the B-rep is tagged first, as
-        /// [`Call::Attributed`] tags operand 0 (op `19`/`20`), and the record ends with
+        /// [`Call::Attributed`] tags operand 0 (op `20`/`21`), and the record ends with
         /// the swept B-rep's attribute rows.
         attributed: Option<u8>,
     },
@@ -515,7 +520,7 @@ pub enum Call {
         /// The optional selections.
         selection: Selection,
         /// `Some(behavior)`: every face and edge of the B-rep is tagged first, as
-        /// [`Call::Attributed`] tags operand 0 (op `19`/`20`), and the record ends with
+        /// [`Call::Attributed`] tags operand 0 (op `20`/`21`), and the record ends with
         /// the swept B-rep's attribute rows.
         attributed: Option<u8>,
     },
@@ -540,6 +545,14 @@ pub enum Call {
         angle_tol_deg: f64,
         /// `GetEdges` indices of the edges whose curve is taken away.
         drop_curves: Vec<u64>,
+    },
+    /// A [`Call::MergeBreps`], [`Call::Lists`] or [`Call::Trees`] whose input B-reps are
+    /// tagged, followed by the attribute rows of the B-reps it returns.
+    AttributedList {
+        /// The list call.
+        call: Box<Call>,
+        /// `SmAttributeBehaviorType` value of the tags (0 to 4).
+        behavior: u8,
     },
 }
 
@@ -791,7 +804,7 @@ fn push_list(o: &mut Vec<f64>, l: &[BrepSpec], max: usize) -> Result<(), FfiErro
 fn push_attributed(o: &mut Vec<f64>, op: f64, attributed: Option<u8>) -> Result<(), FfiError> {
     match attributed {
         None => o.push(op),
-        Some(behavior) if behavior <= 4 => o.extend([op + 4.0, f64::from(behavior)]),
+        Some(behavior) if behavior <= 4 => o.extend([op + 5.0, f64::from(behavior)]),
         Some(_) => return Err(bad("behavior is not an SmAttributeBehaviorType value")),
     }
     Ok(())
@@ -984,6 +997,20 @@ fn encode(call: &Call) -> Result<Vec<f64>, FfiError> {
             o.push(*angle_tol_deg);
             o.push(drop_curves.len() as f64);
             o.extend(drop_curves.iter().map(|&d| d as f64));
+        }
+        Call::AttributedList { call, behavior } => {
+            if *behavior > 4 {
+                return Err(bad("behavior is not an SmAttributeBehaviorType value"));
+            }
+            if !matches!(
+                **call,
+                Call::MergeBreps { .. } | Call::Lists { .. } | Call::Trees { .. }
+            ) {
+                return Err(bad("attributed list call is not MergeBreps, Lists or Trees"));
+            }
+            o.push(19.0);
+            o.push(f64::from(*behavior));
+            o.extend(encode(call)?);
         }
     }
     Ok(o)
