@@ -39,6 +39,8 @@
 //! friend writes of `SmBrepConstructor`: they link records without validation (a
 //! B-rep graph is cyclic, so a record may name ids added later).
 
+pub mod api_files;
+pub mod api_projection;
 pub mod brep;
 pub mod brep_cache;
 pub mod brep_data;
