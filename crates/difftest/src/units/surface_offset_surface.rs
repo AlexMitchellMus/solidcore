@@ -8,6 +8,8 @@
 //! storing `*_extending` evaluators; an op marked `via` runs the `&self` evaluators through
 //! the `Surface` interface instead and is only generated where no extension can be
 //! stored). A `read_db` case reads the C++ `WriteToDB` record of an offset on both sides.
+//! The `avNNNN` cases (their own seed stream, so the `genNNNN` inputs are unchanged) run
+//! `AssertValid` on an offset after an optional edit and compare every report.
 //!
 //! Output `out`: the construction status, then each op's status and outputs (see the
 //! FFI module); a failure is the upstream `SmStatus` (`InvalidInput` is
@@ -17,6 +19,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use solidcore::geom::assert_array::{AssertArray, ObjectKey};
 use solidcore::geom::axis2_placement::Axis2Placement;
 use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::extent2d::Extent2d;
@@ -232,6 +235,9 @@ enum StepIn {
         d: f64,
         tol: f64,
     },
+    AssertValid {
+        level: u8,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -406,6 +412,7 @@ fn ffi_step(s: &StepIn) -> Result<ffi::Step, HarnessError> {
         StepIn::IsPlanar { tol } => F::IsPlanar { tol: *tol },
         StepIn::IsKindOf { t } => F::IsKindOf { t: *t },
         StepIn::BaseOffset { d, tol } => F::BaseOffset { d: *d, tol: *tol },
+        StepIn::AssertValid { level } => F::AssertValid { level: *level },
     })
 }
 
@@ -486,7 +493,7 @@ fn status(e: &SolidError) -> f64 {
     match e {
         SolidError::Upstream { code, .. } => f64::from(*code),
         // SM_ERR_INVALID_INPUT (the zero-vector status of Unitize)
-        SolidError::InvalidInput { .. } => 1007.0,
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => 1007.0,
         _ => -1.0,
     }
 }
@@ -587,7 +594,7 @@ fn rust_off(k: &Kernel, o: &OffIn) -> Result<solidcore::Result<OffsetSurface>, H
 
 /// The 3x3 `EvaluatePoint` grid over the natural domain.
 fn put_grid(k: &Kernel, o: &mut Vec<f64>, s: &Surface) -> Result<(), Fail> {
-    let d = s.natural_uv_domain();
+    let d = s.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?;
     for i in 0..3 {
         for j in 0..3 {
             let uv = d.evaluate(f64::from(i) / 2.0, f64::from(j) / 2.0);
@@ -613,14 +620,15 @@ fn put_state(k: &Kernel, o: &mut Vec<f64>, s: &OffsetSurface) -> Result<(), Fail
     s.with_extended_base_surface(|e| match e {
         Some(e) => {
             o.push(1.0);
-            put_dom(o, &e.natural_uv_domain());
+            // (an extension is a B-spline surface: never lazy)
+            put_dom(o, &e.natural_uv_domain_if_built());
             o.push(e.type_code() as f64);
         }
         None => o.push(0.0),
     });
     let b = s.base_surface();
     o.push(b.type_code() as f64);
-    put_dom(o, &b.natural_uv_domain());
+    put_dom(o, &b.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?);
     o.push(s.type_code() as f64);
     put_grid(k, o, &Surface::from(s.clone()))
 }
@@ -630,7 +638,7 @@ fn put_result(k: &Kernel, o: &mut Vec<f64>, r: &Surface) -> Result<(), Fail> {
     if let SurfaceKind::OffsetSurface(off) = r.kind() {
         put_state(k, o, off)
     } else {
-        put_dom(o, &r.natural_uv_domain());
+        put_dom(o, &r.natural_uv_domain_with_nurb(k).map_err(|e| HarnessError::new(e.to_string()))?);
         put_grid(k, o, r)
     }
 }
@@ -900,7 +908,65 @@ fn run_step(
             // (a NULL result writes only the status, as the shim)
             |o, r| r.as_ref().map_or(Ok(()), |r| put_result(k, o, r)),
         ),
+        StepIn::AssertValid { level } => put_assert_valid(k, s, *level, o),
     }
+}
+
+fn av_text(o: &mut Vec<f64>, s: Option<&str>) {
+    o.push(s.map_or(0, str::len) as f64);
+    if let Some(s) = s {
+        o.extend(s.bytes().map(f64::from));
+    }
+}
+
+/// A report object as the shim writes it: `0` null, `1` the checked offset, `9` another.
+fn av_id(key: Option<ObjectKey>) -> f64 {
+    match key {
+        None => 0.0,
+        Some(ObjectKey(1)) => 1.0,
+        Some(_) => 9.0,
+    }
+}
+
+/// `AssertValid` through `SmSurface*` on the offset (key `1`): `0 ok n reports last_add`.
+fn put_assert_valid(
+    k: &Kernel,
+    s: &OffsetSurface,
+    level: u8,
+    o: &mut Vec<f64>,
+) -> Result<(), Fail> {
+    let w = Surface::from(s.clone());
+    let mut list = AssertArray::new();
+    let ok = w
+        .assert_valid(k, Some(&mut list), level, ObjectKey(1))
+        .map_err(|e| {
+            defer(&e).unwrap_or_else(|| Fail::Harness(harness(format!("AssertValid failed: {e}"))))
+        })?;
+    o.extend([0.0, flag(ok), list.len() as f64]);
+    for r in list.reports() {
+        o.extend([
+            r.reporting_type as f64,
+            r.list_index as f64,
+            r.test_index as f64,
+            f64::from(r.assert_type.code()),
+            flag(r.ok),
+            av_id(r.reporter),
+            av_id(r.owner),
+            av_id(r.other),
+            r.owner_type as f64,
+            r.other_type as f64,
+            r.tol3d,
+            r.value,
+            r.dist3d,
+        ]);
+        av_text(o, Some(r.name));
+        av_text(o, r.message.as_deref());
+        av_text(o, r.message_for_file);
+        av_text(o, r.owner_type_string);
+        av_text(o, r.other_type_string);
+    }
+    o.push(flag(list.last_add()));
+    Ok(())
 }
 
 fn rust_script(off: &OffIn, steps: &[StepIn]) -> Result<Vec<f64>, Fail> {
@@ -1222,7 +1288,8 @@ fn gen_off(rng: &mut Rng, scale: f64, depth: usize) -> OffIn {
 /// points, at least `1e-9`), built on the Rust side.
 fn base_info(k: &Kernel, off: &OffIn) -> Option<([f64; 4], f64)> {
     let s = rust_srf(k, &off.base).ok()?.ok()?;
-    let d = s.natural_uv_domain();
+    // (runner helper that does not return Result)
+    let d = s.natural_uv_domain_if_built();
     let r = [d.min().x, d.min().y, d.max().x, d.max().y];
     if !(r.iter().all(|c| c.is_finite() && c.abs() < 1e5) && r[0] < r[2] && r[1] < r[3]) {
         return None;
@@ -1553,6 +1620,79 @@ fn gen_case(rng: &mut Rng) -> Option<Inputs> {
     Some(Inputs::Script { off, steps })
 }
 
+/// Generated `AssertValid` cases.
+const ASSERT_VALID_GENERATED: usize = 100;
+
+/// A base for an `AssertValid` case. The self-intersection test runs a full
+/// surface/surface intersection of the offset with itself, which takes seconds to
+/// minutes in C++ for the curved, tiny-scale and huge-scale bases of `gen_base`
+/// (one 1e150-scale check took 148 s), so these bases are planes, flat and low-degree
+/// curved B-splines (some with a pole) and offsets of them.
+fn gen_av_base(rng: &mut Rng, scale: f64, depth: usize) -> SrfIn {
+    match rng.below(10) {
+        0..=2 => SrfIn::Plane {
+            o: rng.point3(-2.0 * scale, 2.0 * scale),
+            n: rev::unit_vec(rng),
+        },
+        3..=5 => SrfIn::Bspline(gen_bss(rng, Shape::Flat, scale)),
+        6 => SrfIn::Bspline(gen_bss(rng, Shape::Smooth, scale)),
+        7 => SrfIn::Bspline(gen_bss(rng, Shape::PoleU, scale)),
+        _ if depth < 1 => SrfIn::Offset(Box::new(gen_av_off(rng, scale, depth + 1))),
+        _ => SrfIn::Bspline(gen_bss(rng, Shape::Flat, scale)),
+    }
+}
+
+/// An offset for an `AssertValid` case: owning or shared base, no extension.
+fn gen_av_off(rng: &mut Rng, scale: f64, depth: usize) -> OffIn {
+    let base = gen_av_base(rng, scale, depth);
+    let d = match rng.below(10) {
+        0 => 0.0,
+        1 => rng.uniform(2.0, 5.0) * scale,
+        _ => rng.uniform(-0.5, 0.5) * scale,
+    };
+    OffIn {
+        d,
+        owns: rng.chance(0.75),
+        sing: if rng.chance(0.2) { SS_UNKNOWN } else { 0 },
+        allow: false,
+        base,
+    }
+}
+
+/// An `AssertValid` script: an offset, an optional edit (distance, reversal, swap), then
+/// the check at `SM_LEVEL_GIVEN` (mostly) or a level running the inherited base checks.
+fn gen_assert_valid_case(rng: &mut Rng) -> Option<Inputs> {
+    let scale = *rng.choose(&[1.0, 1.0, 1.0, 10.0, 1e-3, 1e3, 1e6])?;
+    let off = gen_av_off(rng, scale, 0);
+    let mut steps = Vec::new();
+    match rng.below(8) {
+        0 => steps.push(StepIn::SetDist {
+            d: rng.uniform(-0.5, 0.5) * scale,
+        }),
+        1 => steps.push(StepIn::Reverse {
+            param: *rng.choose(&[0, 1])?,
+        }),
+        2 => steps.push(StepIn::Swap),
+        _ => {}
+    }
+    let level = if rng.chance(0.75) { 4 } else { rng.below(3) as u8 };
+    steps.push(StepIn::AssertValid { level });
+    let foff = ffi_off(&off).ok()?;
+    let fsteps = ffi_steps(&steps).ok()?;
+    ffi::check(&foff, &fsteps).ok()?;
+    // below SM_LEVEL_GIVEN the shim refuses some bases only on the actual surfaces
+    // (inherited checks reading unwritten outputs): drop those
+    if level != 4
+        && matches!(
+            ffi::script(&foff, &fsteps),
+            Err(solidcore_ffi::FfiError::InvalidArgument(_))
+        )
+    {
+        return None;
+    }
+    Some(Inputs::Script { off, steps })
+}
+
 /// Which directions (`[u, v]`) of the B-spline NLib extends for this offset (its base,
 /// looking through nested offsets, curve-bounded and STEP wrappers) have degree 1;
 /// `None` when neither does.
@@ -1645,7 +1785,7 @@ fn fill_placeholders(case: &mut Case) -> Result<(), HarnessError> {
     .map_err(|e| bad(&e.to_string()))?;
     let k = Kernel::default();
     let base = rust_srf(&k, &off.base)?.map_err(|e| bad(&format!("base: {e}")))?;
-    let d = base.natural_uv_domain();
+    let d = base.natural_uv_domain_with_nurb(&k).map_err(|e| HarnessError::new(e.to_string()))?;
     let (u0, v0, u1, v1) = (d.min().x, d.min().y, d.max().x, d.max().y);
     let (lu, lv) = (u1 - u0, v1 - v0);
     let on = || -> Result<[f64; 3], HarnessError> {
@@ -1735,11 +1875,24 @@ impl UnitDiff for Runner {
     }
 
     fn cases(&self, ctx: &CaseContext) -> Result<Vec<Case>, HarnessError> {
+        let av = CaseContext {
+            seeds: ctx.seeds.max(ASSERT_VALID_GENERATED),
+            ..ctx.clone()
+        };
         let ctx = CaseContext {
             seeds: ctx.seeds.max(MIN_GENERATED),
             ..ctx.clone()
         };
         let mut cases = default_cases(self, &ctx)?;
+        for mut c in av.generated_cases("surface.offset_surface:assert-valid", |rng| {
+            (0..16)
+                .find_map(|_| gen_assert_valid_case(rng))
+                .and_then(|i| serde_json::to_value(i).ok())
+        }) {
+            c.name = c.name.replacen("gen", "av", 1);
+            c.unit = self.id().to_string();
+            cases.push(c);
+        }
         for case in &mut cases {
             fill_placeholders(case)?;
             fill_read_bytes(case)?;

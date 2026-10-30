@@ -89,12 +89,12 @@
 
 use crate::error::{ignore_status, ignored, EntityRef, Result, SolidError};
 use crate::geom::a_object::BREP_TYPE;
-use crate::geom::attribute::{AttributeStore, ObjectKey};
+use crate::geom::attribute::AttributeStore;
 use crate::geom::context::{Context, MarkLock, ALL_MARKS};
 use crate::geom::extent1d::Extent1d;
 use crate::geom::extent2d::Extent2d;
 use crate::geom::object::{NotifyOperation, ObjectRef};
-use crate::heal::stitch::p1::{DefaultStitchCallback, Stitch};
+use crate::heal::stitch::p1::{DefaultStitchCallback, Stitch, StitchCallback};
 use crate::heal::stitch::p2::MinGapRequest;
 use crate::kernel::Kernel;
 use crate::math::{Point2, Vec3, EFF_ZERO};
@@ -112,14 +112,12 @@ use crate::topology::face::p1 as face1;
 use crate::topology::face::p2 as face2;
 use crate::topology::face::p3 as face3;
 use crate::topology::shell::{self, ShellMembers, ShellType};
-use crate::topology::topology::Topology;
 use crate::topology::topology_traverser::{self, Entity, Marks};
 use crate::topology::{
     loopuse, vertex, vertexuse, Brep, EdgeId, EdgeuseId, EdgeuseOwner, FaceId, FaceuseId, Loop,
     LoopId, Loopuse, LoopuseId, LoopuseStart, RegionId, Shell, ShellId, VertexId, VertexuseId,
     VertexuseOwner,
 };
-use std::collections::BTreeMap;
 
 const OP_DELETE_EDGE: &str = "topology::brep::p4::delete_edge";
 const OP_DELETE_VERTEX: &str = "topology::brep::p4::delete_vertex";
@@ -131,7 +129,7 @@ const OP_DESTROY: &str = "topology::brep::p4::destroy";
 /// go through (as [`NotifyEnv`], with the kernel's context).
 pub struct DeleteEnv<'a> {
     /// The topology records (`SmTopology` members) of the notified objects.
-    pub records: &'a mut BTreeMap<ObjectKey, Topology>,
+    pub records: &'a mut crate::topology::topology::NotifyRecords,
     /// The attribute store.
     pub attributes: &'a mut AttributeStore,
     /// The identity each topology entity is notified under.
@@ -166,7 +164,7 @@ impl core::fmt::Debug for DeleteEnv<'_> {
 /// notification state (the B-rep keeps no attributes for its records; upstream on
 /// objects without attributes).
 pub(crate) fn with_local_env<T>(f: impl FnOnce(&mut DeleteEnv<'_>) -> Result<T>) -> Result<T> {
-    let mut records = BTreeMap::new();
+    let mut records = crate::topology::topology::NotifyRecords::new();
     let mut attributes = AttributeStore::default();
     let mut env = DeleteEnv {
         records: &mut records,
@@ -488,6 +486,7 @@ fn face_remove_loop(b: &mut Brep, f: FaceId, l: Option<LoopId>) -> Result<()> {
 /// one to `del_f`. `SetSurface` is `void` upstream; the only failure the port can
 /// raise is [`SolidError::Unported`] from its notification.
 fn swap_face_surfaces(
+    k: &Kernel,
     b: &mut Brep,
     key_of: &dyn Fn(EntityRef) -> ObjectRef,
     surv_f: FaceId,
@@ -497,11 +496,11 @@ fn swap_face_surfaces(
     deref(b.face(surv_f)?.surface.as_ref(), OP_DELETE_EDGE)?;
     let del_surface = deref(b.face_mut(del_f)?.surface.take(), OP_DELETE_EDGE)?;
     let surv_this = key_of(EntityRef::Face(surv_f));
-    let surv_old = face1::set_surface(b, surv_f, surv_this, del_surface, false)?;
+    let surv_old = face1::set_surface(k, b, surv_f, surv_this, del_surface, false)?;
     // the survivor's surface was checked above
     let surv_old = deref(surv_old, OP_DELETE_EDGE)?;
     let del_this = key_of(EntityRef::Face(del_f));
-    face1::set_surface(b, del_f, del_this, surv_old, false)?;
+    face1::set_surface(k, b, del_f, del_this, surv_old, false)?;
     Ok(())
 }
 
@@ -984,7 +983,7 @@ fn delete_manifold_edge(
                 // when DelF owns the surface to keep
                 if surface_of(b, df)? == Some(keep) {
                     // swap the surfaces between the faces
-                    swap_face_surfaces(b, env.key_of, sf, df)?;
+                    swap_face_surfaces(k, b, env.key_of, sf, df)?;
                     if flip_face {
                         ignore_status(face1::flip_face_orientation(b, sf))?;
                     }
@@ -1249,7 +1248,7 @@ fn edgeuse_normal(
     let uv = Point2::new(uv3.x, uv3.y);
     let f = deref(srf, op)?;
     let s = deref(b.face(f)?.surface.as_ref(), op)?;
-    Ok(ignored(s.evaluate_normal(k, uv, Side::Left, Side::Left))?.unwrap_or(Vec3::UNDEF))
+    Ok(ignored(s.evaluate_normal(k, uv, Side::Right, Side::Right))?.unwrap_or(Vec3::UNDEF))
 }
 
 /// The lamina branch of [`delete_edge`].
@@ -1742,16 +1741,47 @@ pub(crate) fn stitch_faces_with_context<'a>(
     faces: Option<&[Option<FaceId>]>,
     allow_spine_edges: bool,
     identity: Option<crate::query::brep::BrepIdentity<'a>>,
+    edits: Option<&'a mut dyn crate::heal::stitch::p1::StitchEditContext>,
+) -> Result<StitchOutcome> {
+    // StitchCallback has SelectTopologyToKeep(): pick KeepItem and DeleteItem
+    let mut callback = DefaultStitchCallback::new();
+    stitch_faces_with_callback(
+        k,
+        b,
+        xsect_tol_3d,
+        faces,
+        allow_spine_edges,
+        identity,
+        edits,
+        &mut callback,
+    )
+}
+
+/// [`stitch_faces_with_context`] with the caller's keep/delete choice for the glued
+/// pairs: the fork's `pOptCallback` argument of `SmBrep::StitchFaces`
+/// (tangency-labs/smlib@1072d1b), `SmStitchCallback`'s own choice when it is
+/// [`DefaultStitchCallback`].
+///
+/// # Errors
+///
+/// Those of [`stitch_faces`] and of `callback`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn stitch_faces_with_callback<'a, C: StitchCallback>(
+    k: &mut Kernel,
+    b: &mut Brep,
+    xsect_tol_3d: f64,
+    faces: Option<&[Option<FaceId>]>,
+    allow_spine_edges: bool,
+    identity: Option<crate::query::brep::BrepIdentity<'a>>,
     mut edits: Option<&'a mut dyn crate::heal::stitch::p1::StitchEditContext>,
+    callback: &mut C,
 ) -> Result<StitchOutcome> {
     // lock brep bounding box, until goes out of scope
     let mut lockit = LockBrepBox::new(k, b)?;
     let b = lockit.brep();
 
-    // StitchCallback has SelectTopologyToKeep(): pick KeepItem and DeleteItem
-    let mut callback = DefaultStitchCallback::new();
-    // construct Stitch manager using default coincident keep/delete logic
-    let mut stitch = Stitch::new(&mut callback, xsect_tol_3d, true, true);
+    // construct Stitch manager using the caller's keep/delete logic for glue pairs
+    let mut stitch = Stitch::new(callback, xsect_tol_3d, true, true);
     stitch.query_identity = identity;
     stitch.edits = edits
         .as_mut()
@@ -1797,7 +1827,8 @@ pub fn shrink_geometry(k: &Kernel, b: &mut Brep) -> Result<()> {
         let Some(face_domain) = ignored(face_calculate_uv_domain(k, b, f))? else {
             continue;
         };
-        let surf_domain = deref(face2::surface(b, f)?, OP_SHRINK)?.natural_uv_domain();
+        let surf_domain =
+            deref(face2::surface(b, f)?, OP_SHRINK)?.natural_uv_domain_with_nurb(k)?;
         let tol = face_domain.size().length() / 1000.0;
         let mut min = face_domain.min();
         let mut max = face_domain.max();
@@ -1819,7 +1850,8 @@ pub fn shrink_geometry(k: &Kernel, b: &mut Brep) -> Result<()> {
 
     for face in brep_get_surfaces(b)? {
         let mut face_domain = face2::uv_domain(b, face)?;
-        let surf_domain = deref(face2::surface(b, face)?, OP_SHRINK)?.natural_uv_domain();
+        let surf_domain =
+            deref(face2::surface(b, face)?, OP_SHRINK)?.natural_uv_domain_with_nurb(k)?;
         // The status of `Intersect` is dropped upstream, but on disjoint domains it has
         // `Init()`ed the result (SmExtent2d.cpp:414-418), and that undefined extent is
         // the face domain from here on (`AreEqual`, `TrimWithDomain`, `SetUVDomain`).
@@ -1964,7 +1996,7 @@ mod tests {
             assert_ne!(legacy_key, body.key);
             let edge = b.edge_list()[0];
             let vertex = b.vertex_list()[0];
-            let mut records = BTreeMap::new();
+            let mut records = crate::topology::topology::NotifyRecords::new();
             super::super::p3::seed_records(&mut records, &b, &key_of);
             let mut attributes = AttributeStore::default();
             let marker = attributes
@@ -2054,7 +2086,7 @@ mod tests {
             &crate::geom::axis2_placement::Axis2Placement::IDENTITY,
         )
         .unwrap();
-        let mut records = BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let face = {
             let mut marks = Marks::default();

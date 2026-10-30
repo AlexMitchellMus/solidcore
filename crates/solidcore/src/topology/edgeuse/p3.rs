@@ -128,11 +128,13 @@ fn null(reason: &'static str) -> SolidError {
 /// dereference.
 fn vec_status<T>(r: Result<T>) -> Result<T> {
     r.map_err(|e| match e {
-        SolidError::InvalidInput { .. } => SolidError::Upstream {
-            operation: OP,
-            code: 1007, // SM_ERR_INVALID_INPUT
-            entity: None,
-        },
+        SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. } => {
+            SolidError::Upstream {
+                operation: OP,
+                code: 1007, // SM_ERR_INVALID_INPUT
+                entity: None,
+            }
+        }
         e => e,
     })
 }
@@ -396,11 +398,14 @@ pub fn create_uv_trim_curve(
         .clone_for_evaluation()?;
     let face_domain = face_rec.uv_domain;
     let edge_rec = b.edge(e)?;
-    let curve = edge_rec
+    let mut curve = edge_rec
         .curve
         .as_ref()
         .ok_or_else(|| null("CreateUVTrimCurve: edge without curve"))?
         .clone_for_evaluation()?;
+    // the drops build the edge curve's cache at the edge's tolerance
+    // (SmTol::GetApproxTol3d(&m_crCurve) reads pEdge->GetTolerance() through the owner)
+    curve.set_owner_zone_tol_3d(Some(edge_rec.tolerance));
     let mut edge_domain = edge_rec.interval;
     let uv_trim_at_start = uv_trim_curve(b, eu)?.0.is_some();
     let surface_handle = handle(ObjectKind::Surface, f.index());
@@ -428,7 +433,7 @@ pub fn create_uv_trim_curve(
                 )?
         {
             let uv_curve = cos.uv_curve();
-            let surface_uv = face_surface.natural_uv_domain();
+            let surface_uv = face_surface.natural_uv_domain_with_nurb(k)?;
             let tol = tolerance(b, eu)?;
 
             let (start_pt, _end_pt) = match ignored(uv_curve.ends(k))? {
@@ -761,7 +766,18 @@ pub fn create_uv_trim_curve(
             //   UVTrimCurve. But it's not the worst idea either, it does not create gaps
             //   between the Edge and its vertices - leave this healing in this method for
             //   now.
-            if uv_curves.len() > 1 {
+            if uv_curves.len() > 1 && k.fixes.uv_trim_joins_drop_pieces {
+                // Not upstream (WR-543, tangency-labs/solidcore#1383; the fork's
+                // tangency-labs/smlib@e36feb1): keep the longest run of pieces that meet
+                // end to end, joined, on the edge parameters it was dropped from:
+                // stretching a piece onto the whole edge interval would put every trim
+                // point off its edge point. A run shorter than the edge is then kept only
+                // as any shorter trim below: when its ends are within tolerance of the
+                // edge's vertices.
+                longest_drop_run(k, &surface, zone_tol, &mut uv_curves)?;
+                fail.create_path_type = CreateUvTrimCurvePathType::TenPercentSeamCrossRecovery;
+                fail.brep = brep_handle(b, eu)?;
+            } else if uv_curves.len() > 1 {
                 let param_size = edge_domain.length();
 
                 // for every found UVTrimCurve
@@ -1033,7 +1049,8 @@ fn set_create_fail(
         from_call: 3,
         create_path_type: path,
         has_context: true,
-        uv_domain: surface.natural_uv_domain(),
+        // (kernel-free: a lazy analytic answers its NURB-less base's empty domain)
+        uv_domain: surface.natural_uv_domain_if_built(),
         surface: Some(surface_handle),
         curve: Some(curve_handle),
         interval: curve.natural_interval(),
@@ -1109,6 +1126,7 @@ fn trim_other_uv_curves(
     });
     tk.rng = k.rng.clone();
     tk.fixes.bspline_trim_preserves_uv_spans = k.fixes.bspline_trim_preserves_uv_spans;
+    tk.fixes.bspline_trim_keeps_rational_end_spans = k.fixes.bspline_trim_keeps_rational_end_spans;
     for x in crate::topology::edge::edgeuses(b, e, None, None)? {
         if x == this {
             continue;
@@ -1145,7 +1163,7 @@ fn two_singular_end_points(
     // see if both curve ends drop to singularities
     let mut start_singularity = false;
     let mut end_singularity = false;
-    let surface_uv_domain = surface.natural_uv_domain();
+    let surface_uv_domain = surface.natural_uv_domain_with_nurb(k)?;
 
     // Curve EndPoints
     let start_point = ignored(curve.evaluate_point(k, edge_domain.min()))?.unwrap_or(Vec3::UNDEF);
@@ -1453,8 +1471,17 @@ fn brute_force(
                 points.push(pnt);
                 params.push(param);
 
-                // (the solution's own first object, as `sm_CalcDistAndDev` reads it)
-                let (dist, dev) = calc_dist_and_dev(k, p0, sol, |_| Some(surface), want_deviation)?;
+                // (the solution's own first object, as `sm_CalcDistAndDev` reads it:
+                // upstream every solution of `pTmpSurface->GlobalPointSolve` names that
+                // surface, the fast drops `this` and `GlobalPointSolve_1` its branch owner,
+                // while the port's solve returns them without objects; name the solved
+                // surface again so the distance and deviation are measured, not -1)
+                let mut named = *sol;
+                if let Some(first) = named.objects.first_mut() {
+                    *first = Some(NoObject);
+                }
+                let (dist, dev) =
+                    calc_dist_and_dev(k, p0, &named, |_| Some(surface), want_deviation)?;
                 max_dist = max_dist.max(dist);
                 // (Note, dMaxDev is 0 if ptr is Null.)
                 max_dev = max_dev.max(dev.unwrap_or(0.0));
@@ -1611,6 +1638,7 @@ pub fn get_or_create_uv_trim_curve(
         Err(
             e @ (SolidError::Unported { .. }
             | SolidError::InvalidInput { .. }
+            | SolidError::PortInvariant { .. }
             | SolidError::NotFound { .. }),
         ) => return Err(e),
         Err(e) => {
@@ -1980,7 +2008,7 @@ pub fn evaluate_binormal_uv(
         // without classifying the solution point against the trim boundaries
         // (`global_point_solve_point_test_off`; the boundary-curve flag is not
         // modelled, module docs). Use surface's domain instead of Face's domain.
-        let srf_domain = surface.natural_uv_domain();
+        let srf_domain = surface.natural_uv_domain_with_nurb(k)?;
 
         // This 'turns off point testing' when GPS does not use the cache (a copy of
         // the surface without owner stands for upstream's temporary change)
@@ -2293,7 +2321,7 @@ pub fn normalized_evaluate(
                     .surface
                     .as_ref()
                     .ok_or_else(|| SolidError::null_pointer(OP))?; // NER(pSurf)
-                let domain = surf.natural_uv_domain();
+                let domain = surf.natural_uv_domain_with_nurb(k)?;
                 let drop = surface_drop_point(k, surf, three_d.point, &domain)?;
                 if !drop.found {
                     return Err(SolidError::sm_err(OP));
@@ -2357,6 +2385,103 @@ fn normalized_evaluate_3d(
         normalized_parameter,
         want_first_deriv,
     )
+}
+
+/// Not upstream (WR-543; the fork's tangency-labs/smlib@e36feb1, `sm_LongestDropRun`):
+/// of a drop that came back in pieces (`DropAndTrimCurve` splits it where the curve
+/// leaves the face's domain or crosses a seam), the longest run (in edge parameter) of
+/// pieces that meet end to end, as one UV trim curve: the second starts at the edge
+/// parameter where the first ends (`SM_ARE_SAME`) and at the same `(u, v)`, to within
+/// the drop's UV tolerances (`tol_3d` over one plus the surface's derivative lengths).
+/// A run of several pieces is joined exactly (`CreateByJoining`); no piece is
+/// reparameterized. `uv_curves` keeps the one run.
+///
+/// # Errors
+///
+/// Those of the derivative lengths, the end evaluations and the join.
+fn longest_drop_run(
+    k: &Kernel,
+    surface: &Surface,
+    tol_3d: f64,
+    uv_curves: &mut Vec<Curve>,
+) -> Result<()> {
+    if uv_curves.len() < 2 {
+        return Ok(());
+    }
+
+    // UV tolerances proportional to the surface's 3d/UV mapping, as DropCurve's
+    let speeds = crate::surface::surface::p7::approx_derivative_lengths(
+        k,
+        surface,
+        &surface.natural_uv_domain_with_nurb(k)?,
+    )?;
+    let u_tol = tol_3d / (speeds.x + 1.0);
+    let v_tol = tol_3d / (speeds.y + 1.0);
+
+    // by the start of the edge interval each piece was dropped from
+    uv_curves.sort_by(|a, b| {
+        a.natural_interval()
+            .min()
+            .total_cmp(&b.natural_interval().min())
+    });
+
+    let pieces = core::mem::take(uv_curves);
+    let mut ends = Vec::with_capacity(pieces.len());
+    for piece in &pieces {
+        let e = piece.ends(k)?;
+        ends.push((piece.natural_interval(), e.start, e.end));
+    }
+    let mut best: Option<Curve> = None;
+    let mut best_len = -1.0;
+    let mut first = 0;
+    while first < pieces.len() {
+        // extend the run from `first` through every piece that meets the previous one
+        let mut last = first;
+        while let (Some(prev), Some(next)) = (ends.get(last), ends.get(last + 1)) {
+            if !are_same(prev.0.max(), next.0.min())
+                || (prev.2.x - next.1.x).abs() > u_tol
+                || (prev.2.y - next.1.y).abs() > v_tol
+            {
+                break;
+            }
+            last += 1;
+        }
+
+        // the run as one curve
+        let run_pieces = pieces.get(first..=last).unwrap_or_default();
+        let run = if let [one] = run_pieces {
+            one.clone()
+        } else {
+            let mut segments = Vec::with_capacity(run_pieces.len());
+            for piece in run_pieces {
+                segments.push(b_spline_part(piece)?);
+            }
+            Curve::from(BSplineCurve::create_by_joining(&mut segments, None)?)
+        };
+
+        // keep the longest run
+        let len = run.natural_interval().length();
+        if len > best_len {
+            best = Some(run);
+            best_len = len;
+        }
+        first = last + 1;
+    }
+    uv_curves.extend(best);
+    Ok(())
+}
+
+/// The B-spline data of a UV trim piece (an `SmBSplineCurve` kind: a B-spline, line or
+/// conic; a line's NURB is made when it has none), as `CreateByJoining` reads it.
+fn b_spline_part(c: &Curve) -> Result<BSplineCurve> {
+    Ok(match c.kind() {
+        CurveKind::BSpline(b) => b.clone(),
+        CurveKind::Line(l) => l.base_with_nurb()?.into_owned(),
+        CurveKind::Ellipse(e) => e.base().clone(),
+        CurveKind::Hyperbola(h) => h.base().clone(),
+        CurveKind::Parabola(p) => p.base().clone(),
+        _ => return Err(null("CreateUVTrimCurve: a dropped piece is not a B-spline")),
+    })
 }
 
 #[cfg(test)]
@@ -2451,5 +2576,49 @@ mod tests {
                 assert!(gap > k.tolerances.zone_tol_3d, "default gap {gap}");
             }
         }
+    }
+
+    /// WR-543 (tangency-labs/solidcore#1383; the fork's tangency-labs/smlib@e36feb1):
+    /// of three drop pieces, two that meet end to end (edge parameters [0, 0.4] and
+    /// [0.4, 1], the same (u, v) where they meet) are joined on their own parameters and
+    /// kept; a shorter piece apart from them is dropped.
+    #[test]
+    fn longest_drop_run_joins_the_pieces_that_meet() {
+        use crate::math::Vec3;
+        use crate::nurbs::crv_basic::Curve as NlCurve;
+        use crate::nurbs::math::{CPoint, NOW};
+
+        let piece = |t0: f64, t1: f64, a: [f64; 2], b: [f64; 2]| {
+            let pts = vec![
+                CPoint::new(a[0], a[1], 0.0, NOW),
+                CPoint::new(b[0], b[1], 0.0, NOW),
+            ];
+            let nl = NlCurve::new(pts, 1, vec![t0, t0, t1, t1]).unwrap();
+            Curve::from(BSplineCurve::from_nurb(nl, 2, false))
+        };
+        let k = Kernel::default();
+        let plane = Surface::from(
+            crate::primitive::api_primitives::create_plane_surface(
+                Vec3::new(0.0, 0.0, 0.0),
+                1.0,
+                1.0,
+            )
+            .unwrap(),
+        );
+        let mut pieces = vec![
+            piece(0.4, 1.0, [0.4, 0.0], [1.0, 0.0]),
+            piece(-0.5, -0.3, [0.5, 0.5], [0.6, 0.5]),
+            piece(0.0, 0.4, [0.0, 0.0], [0.4, 0.0]),
+        ];
+        longest_drop_run(&k, &plane, 1e-6, &mut pieces).unwrap();
+        assert_eq!(pieces.len(), 1);
+        let run = &pieces[0];
+        let ivl = run.natural_interval();
+        assert!(
+            are_same(ivl.min(), 0.0) && are_same(ivl.max(), 1.0),
+            "{ivl:?}"
+        );
+        let p = run.evaluate_point(&k, 0.4).unwrap();
+        assert!((p.x - 0.4).abs() < 1e-12 && p.y.abs() < 1e-12, "{p:?}");
     }
 }

@@ -88,7 +88,9 @@
 //!   `MakeFaceTopology` names the face by the notification environment's identity
 //!   and builds it on a copy of the surface (with no surface identity: its owner
 //!   changes are not notified), which `MakeFace` then replaces with its own
-//!   (upstream: one shared surface whose owner `MakeFace` restores). It claims its
+//!   (upstream: one shared surface whose owner `MakeFace` restores). The copy shares
+//!   the original's cache slot, so a surface cache built while making the face stays
+//!   with the installed surface as upstream's does. It claims its
 //!   marks through a fresh [`Marks`] record per call, as each call takes a new mark.
 //! - **Original-surface transfer ownership (#894).** Deliberately correcting pinned
 //!   C++ `SmBrep.cpp:18859-18889`, the original-transfer path never restores the old
@@ -330,17 +332,6 @@ fn make_topology_from_data(
     );
     env.all_attributes = saved;
     r
-}
-
-/// `SmFace::Notify(op, data1, data2, data3)` on face `f` (`None` for a null datum or for
-/// the B-rep, which has no identity here).
-fn face_notify(
-    b: &mut Brep,
-    f: FaceId,
-    op: NotifyOperation,
-    data: [Option<EntityRef>; 3],
-) -> Result<()> {
-    crate::topology::loopuse::face_notify_data(b, f, op, data)
 }
 
 /// `SmFace::SetTolerance(tol, bUpdateOnlyIfLarger, bCascadeToBndries)` (`SM_USE_OLDTOL`).
@@ -906,7 +897,10 @@ fn make_face_transfer_attempt_with_state(
         surface_key: None,
     };
     let attempt = if legacy {
-        let mut copy = p6::FaceSurfaceTransfer::new(transfer.owned_surface()?.clone());
+        // The copy shares the original's caches: upstream builds the face on the one
+        // surface `MakeFace` keeps, so a cache made while building it stays with it.
+        let mut copy =
+            p6::FaceSurfaceTransfer::new(transfer.owned_surface()?.clone_sharing_cache());
         p6::make_face_topology_transfer_attempt_with_state(
             k,
             b,
@@ -2134,7 +2128,7 @@ pub fn copy_faces(
         // (status ignored upstream, which then dereferences the null copy)
         let s2 = ignored(s1.copy_and_add_analytics(k))?
             .ok_or_else(|| null("CopyAndAddAnalytics failed (upstream dereferences null)"))?;
-        let dom = s2.natural_uv_domain();
+        let dom = s2.natural_uv_domain_with_nurb(k)?;
         let input = FaceCurvesInput {
             loops: curves
                 .curve_loops
@@ -2162,12 +2156,25 @@ pub fn copy_faces(
                 if let Some(nf) = made.face {
                     new_faces.push(nf);
                 }
-                // SmFace::Notify(SM_NO_COPY, pNewFace, pDestinationBrep, this)
-                face_notify(
+                // SmFace::Notify(SM_NO_COPY, pNewFace, pDestinationBrep, this), through
+                // the caller's records and attributes (the B-reps have no identity
+                // here). Both faces are SmTopology objects upstream, the new one with
+                // the default record its constructor gives it, so a face the caller
+                // has no record for gets one (#1628: a fresh empty map failed as soon
+                // as the new face's identity differed from the source face's).
+                let this = (env.key_of)(EntityRef::Face(f));
+                let new_face = made.face.map(this_face);
+                env.records.or_default(this.key);
+                if let Some(nf) = new_face {
+                    env.records.or_default(nf.key);
+                }
+                crate::topology::face::p3::notify(
                     src,
                     f,
+                    env,
+                    None,
                     NotifyOperation::Copy,
-                    [made.face.map(EntityRef::Face), None, None],
+                    [new_face, None, None],
                 )?;
             }
             Err(e) if e.is_unported() => return Err(e),
@@ -2422,7 +2429,7 @@ mod tests {
             .unwrap();
         b.set_infinite_region(Some(region));
         let mut owners = vec![Some(EdgeId::from_index(99))];
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let mut env = ed::NotifyEnv {
             records: &mut records,
@@ -2461,7 +2468,7 @@ mod tests {
         let v0 = b.add_vertex(Point3::new(0.0, 0.0, 0.0)).unwrap();
         let v1 = b.add_vertex(Point3::new(1.0, 0.0, 0.0)).unwrap();
         let e = b.add_edge(v0, v1).unwrap();
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attrs = AttributeStore::default();
         let mut env = ed::NotifyEnv {
             records: &mut records,
@@ -2665,7 +2672,7 @@ mod tests {
                 b.vertex(shared_ends[1]).unwrap().point,
                 3,
             )));
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         glue_edges_general(
             &mut k,
@@ -2723,7 +2730,7 @@ mod tests {
         let key_of = crate::topology::loopuse::notify_ref;
         let surviving_ref = key_of(EntityRef::Edge(surviving));
         let deleted_ref = key_of(EntityRef::Edge(deleted));
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let shared = attributes
             .insert(Attribute::long(81, 912, Behavior::Reference))
@@ -2771,7 +2778,6 @@ mod tests {
         use crate::geom::context::Context;
         use crate::topology::edge::notification_test_support as callbacks;
         use crate::topology::topology::Topology;
-        use std::collections::BTreeMap;
 
         for with_context in [true, false] {
             let mut k = Kernel::default();
@@ -2796,11 +2802,12 @@ mod tests {
             edge_record.set_all_flags(0x40);
             let mut face_record = Topology::default();
             face_record.set_user_index1(912);
-            let mut records = BTreeMap::from([
-                (surviving_ref.key, edge_record),
-                (deleted_ref.key, edge_record),
-                (face_ref.key, face_record),
-            ]);
+            let mut records =
+                crate::topology::topology::NotifyRecords::from(std::collections::BTreeMap::from([
+                    (surviving_ref.key, edge_record),
+                    (deleted_ref.key, edge_record),
+                    (face_ref.key, face_record),
+                ]));
             let before = records.clone();
             let mut attributes = AttributeStore::default();
             let label = attributes
@@ -2876,7 +2883,7 @@ mod tests {
         let mut k = Kernel::default();
         let mut b = Brep::new();
         let opts = MakeFaceOptions::default();
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attrs = AttributeStore::default();
         let mut env = ed::NotifyEnv {
             records: &mut records,
@@ -2972,7 +2979,7 @@ mod tests {
             .unwrap();
         let mut transfer = p6::FaceSurfaceTransfer::new(surface);
         let mut out = NewFace::default();
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let mut env = ed::NotifyEnv {
             records: &mut records,
@@ -3043,7 +3050,7 @@ mod tests {
                     shell: None,
                     face: None,
                 };
-                let mut records = std::collections::BTreeMap::new();
+                let mut records = crate::topology::topology::NotifyRecords::new();
                 let mut attributes = AttributeStore::default();
                 let mut env = ed::NotifyEnv {
                     records: &mut records,
@@ -3129,7 +3136,7 @@ mod tests {
             .unwrap();
         let mut transfer = p6::FaceSurfaceTransfer::new(surface);
         let mut out = NewFace::default();
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let mut env = ed::NotifyEnv {
             records: &mut records,
@@ -3214,7 +3221,7 @@ mod tests {
                 requested.set(Some(face));
                 owner
             };
-            let mut records = std::collections::BTreeMap::new();
+            let mut records = crate::topology::topology::NotifyRecords::new();
             let mut attributes = AttributeStore::default();
             let input = FaceCurvesInput {
                 loops: vec![1],
@@ -3299,7 +3306,7 @@ mod tests {
         let mut k = Kernel::default();
         let mut b = Brep::new();
         let region = b.add_region_record(Region::default()).unwrap();
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attributes = AttributeStore::default();
         let key_of = crate::topology::loopuse::notify_ref;
         let mut stores = ed::NotificationStores {
@@ -3376,7 +3383,7 @@ mod tests {
                 ..Region::default()
             })
             .unwrap();
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attrs = AttributeStore::default();
         let mut env = ed::NotifyEnv {
             records: &mut records,
@@ -3449,7 +3456,7 @@ mod tests {
         let mut b = Brep::new();
         let s = b.add_shell().unwrap();
         let f = b.add_face(s).unwrap();
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attrs = AttributeStore::default();
         let mut env = ed::NotifyEnv {
             records: &mut records,
@@ -3490,7 +3497,7 @@ mod tests {
         let mut k = Kernel::default();
         let mut b = Brep::new_with_infinite_region().unwrap();
         let mut store = AttributeStore::new();
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut env = TopologyEnv {
             all_attributes: &[],
             attributes: &mut store,
@@ -3504,7 +3511,7 @@ mod tests {
         assert!(r.is_ok(), "read: {r:?}");
         let mut src = Brep::new();
         let mut dest = Brep::new();
-        let mut records = std::collections::BTreeMap::new();
+        let mut records = crate::topology::topology::NotifyRecords::new();
         let mut attrs = AttributeStore::default();
         let mut env = ed::NotifyEnv {
             records: &mut records,

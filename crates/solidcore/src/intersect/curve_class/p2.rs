@@ -225,6 +225,8 @@ impl<O: ClassObject> CurveClassification<O> {
             _ => self.curve = other.curve,
         }
 
+        // sm_CopiedUVCurve1: the copy keeps `other`'s curve handle, so the UV curve of the
+        // copied SmCrvOnSurf is `other`'s UV curve
         self.uv_curve1 = other.uv_curve1;
         self.is_curve_current = other.is_curve_current;
         self.surface1 = other.surface1;
@@ -861,7 +863,7 @@ impl<O: ClassObject> CurveClassification<O> {
         let drop = surface.drop_point::<NoObject>(
             k,
             point,
-            &surface.natural_uv_domain(),
+            &surface.natural_uv_domain_with_nurb(k)?,
             &DropPointOptions::default(),
         )?;
         Ok(drop.result_uv)
@@ -914,7 +916,9 @@ pub fn refine_cci_to_surfaces<O: ClassObject, S: Copy>(
     }
     // this entry point has no adapter to resolve the edge ([`refine_cci_to_surfaces_in`]
     // has one)
-    // UNPORTED(topology.edge): SmEdge::GetCurve
+    // DISPATCH GAP: SmEdge::GetCurve (topology.edge, green)
+    // Proof (unreachable): B-rep-less entry point; library callers use the `_in` twin, only
+    // difftest and a unit test call this one; 0 hits in the green difftest sweep.
     Err(SolidError::unported("SmEdge::GetCurve", "topology.edge"))
 }
 
@@ -1205,9 +1209,9 @@ fn refine_on_pair(
     let ssi = SurfaceIntersector::new(
         k,
         s1,
-        &s1.natural_uv_domain(),
+        &s1.natural_uv_domain_with_nurb(k)?,
         s2,
-        &s2.natural_uv_domain(),
+        &s2.natural_uv_domain_with_nurb(k)?,
         false,
     )?;
     let r = ssi.refine_point(
@@ -1298,6 +1302,7 @@ fn tail_apply<O: ClassObject, G: ClassGeometryMut<O>, S: Copy>(
                 "SmBrep mutable owning context (sm_SetXSectCurveThroughPoint)",
             ));
         }
+        // a working copy, written back into the same curve object below
         src_curve = Some((h, classification.curve_geometry(&*geometry)?.clone()));
     }
     let mate_edge = match (edge, emate) {
@@ -1337,10 +1342,11 @@ fn tail_apply<O: ClassObject, G: ClassGeometryMut<O>, S: Copy>(
         solution,
         out.sss_point,
     ))?;
-    // the classification curve is edited in place upstream
+    // the classification curve is edited in place upstream: the edit goes back into
+    // the same curve object, which keeps its owner (an edge's curve stays the edge's)
     if let Some((h, c)) = src_curve {
         if let Some(slot) = geometry.curve_mut(h) {
-            *slot = c;
+            slot.assign_edited(c);
         }
     }
     if let Some(r) = r {
@@ -1561,21 +1567,21 @@ fn refine_large_gap<O: ClassObject, G: ClassGeometryMut<O>, S: Copy>(
                 continue;
             }
         }
-        let expanded = |s: &Surface| {
-            let mut d = s.natural_uv_domain();
+        let expanded = |s: &Surface| -> Result<crate::geom::extent2d::Extent2d> {
+            let mut d = s.natural_uv_domain_with_nurb(k)?;
             d.expand_absolute(0.01);
-            d
+            Ok(d)
         };
         let uv_0 = entry(&st.uv_points, 0)?;
         let uv_1 = entry(&st.uv_points, 1)?;
         let found: Option<[Point2; 3]> = if defined(uv_0) && defined(uv_1) && defined(uv_ii) {
             ignored(surface1.local_surface_surface_intersect(
                 k,
-                &expanded(surface1),
+                &expanded(surface1)?,
                 surface2,
-                &expanded(surface2),
+                &expanded(surface2)?,
                 surf,
-                &expanded(surf),
+                &expanded(surf)?,
                 uv_0,
                 uv_1,
                 uv_ii,
@@ -1585,11 +1591,11 @@ fn refine_large_gap<O: ClassObject, G: ClassGeometryMut<O>, S: Copy>(
         } else {
             match ignored(surface1.local_surface_surface_intersect_xyz::<NoObject>(
                 k,
-                &expanded(surface1),
+                &expanded(surface1)?,
                 surface2,
-                &expanded(surface2),
+                &expanded(surface2)?,
                 surf,
-                &expanded(surf),
+                &expanded(surf)?,
                 src_curve_pt,
                 Some(edge_curve_pt),
             ))? {
@@ -1643,7 +1649,7 @@ fn refine_large_gap<O: ClassObject, G: ClassGeometryMut<O>, S: Copy>(
             if !are_perpendicular(tan, srf_norm, Some(this_ang_tol_rad)) {
                 found = ignored(e_surface_unique.local_curve_intersect(
                     k,
-                    &e_surface_unique.natural_uv_domain(),
+                    &e_surface_unique.natural_uv_domain_with_nurb(k)?,
                     &src_curve,
                     &src_curve.natural_interval(),
                     xsect_tol_3d, /* was 1.0, too big [B254] */
@@ -1658,7 +1664,7 @@ fn refine_large_gap<O: ClassObject, G: ClassGeometryMut<O>, S: Copy>(
                 k,
                 [None, None],
                 None,
-                &e_surface_unique.natural_uv_domain(),
+                &e_surface_unique.natural_uv_domain_with_nurb(k)?,
                 &src_curve,
                 &src_curve.natural_interval(),
                 xsect_tol_3d, /* was 1.0, too big [b254] */
@@ -1815,7 +1821,7 @@ fn refine_large_gap<O: ClassObject, G: ClassGeometryMut<O>, S: Copy>(
                 if !are_perpendicular(tan, srf_norm, Some(this_ang_tol_rad)) {
                     found = ignored(c_surface_unique.local_curve_intersect(
                         k,
-                        &c_surface_unique.natural_uv_domain(),
+                        &c_surface_unique.natural_uv_domain_with_nurb(k)?,
                         &edge_curve,
                         &edge_curve.natural_interval(),
                         xsect_tol_3d, /* was 1.0 , which is too big [B254] */
@@ -1830,7 +1836,7 @@ fn refine_large_gap<O: ClassObject, G: ClassGeometryMut<O>, S: Copy>(
                     k,
                     [None, None],
                     None,
-                    &c_surface_unique.natural_uv_domain(),
+                    &c_surface_unique.natural_uv_domain_with_nurb(k)?,
                     &edge_curve,
                     &edge_curve.natural_interval(),
                     xsect_tol_3d, /* was 1.0, too big [B254] */
@@ -2273,5 +2279,61 @@ mod tests {
         let r = refine_cci_to_surfaces(&c, &s, None, Point3::new(1.0, 2.0, 3.0), 6).unwrap();
         assert_eq!(r.recursion_count, 7);
         assert_eq!(r.sss_point.y, 2.0);
+    }
+
+    impl ClassGeometryMut<H> for G {
+        fn curve_mut(&mut self, o: H) -> Option<&mut Curve> {
+            self.0.get_mut(o.0)
+        }
+        fn topology_entity_mut(&mut self, _o: H) -> Option<(&mut Brep, EntityRef)> {
+            None
+        }
+    }
+
+    /// `sm_ApplyPointSolution` edits the classification curve object in place
+    /// (`sm_SetXSectCurveThroughPoint((SmCurve *)pSrcCurve3d, ..)`), so the curve keeps
+    /// its owner (an edge's curve stays the edge's) and its recorded edge tolerance.
+    /// The port edits a copy; writing the copy back with `*slot = copy` made the
+    /// stored curve another object without owner.
+    #[test]
+    fn apply_point_solution_keeps_the_class_curve_owner() {
+        use crate::geom::attribute::ObjectKey;
+        use crate::geom::object::ObjectRef;
+        use crate::surface::plane::Plane;
+        let k = Kernel::default();
+        let mut g = line();
+        let owner = ObjectRef {
+            type_code: crate::topology::edge::TYPE,
+            key: ObjectKey(7),
+        };
+        let _ = g.0[0].set_owner(Some(owner), None);
+        g.0[0].set_owner_zone_tol_3d(Some(1e-3));
+        let c = cc(&k, &[0.0, 1.0]);
+        let plane = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0)));
+        let side = Surface::from(Plane::from_normal(Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0)));
+        let uv = Point2::new(0.5, 0.0);
+        let mut sol = Solution::<H>::new();
+        sol.start.parameters[0] = 0.5;
+        sol.start.parameters[1] = 0.5;
+        let mut out = RefineCci {
+            sss_point_flag: false,
+            sss_point: Point3::new(0.5, 0.0, 0.0),
+            deviation: 0.0,
+            recursion_count: 0,
+        };
+        tail_apply(
+            &k,
+            &mut g,
+            &c,
+            true,
+            None,
+            None,
+            [(&plane, uv), (&side, uv), (&plane, uv), (&side, uv)],
+            &mut sol,
+            &mut out,
+        )
+        .unwrap();
+        assert_eq!(g.0[0].owner(), Some(owner));
+        assert_eq!(g.0[0].owner_zone_tol_3d(), Some(1e-3));
     }
 }

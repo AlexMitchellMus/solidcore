@@ -17,6 +17,16 @@
 //! Not upstream (WR-442, tangency-labs/solidcore#478, opt-in
 //! `Kernel::fixes.revolve_nested_shells_as_cavities`): after a full turn's
 //! stitch, a closed shell inside another becomes that solid's cavity.
+//! Not upstream (WR-448, tangency-labs/solidcore#545, opt-in
+//! `Kernel::fixes.revolve_analytic_profile_faces`; SolidCraft change, tangency-labs/smlib
+//! 0b143f7): upstream makes analytic faces only for a one-curve profile. With the fix
+//! a whole turn gives each other curve its cylinder, cone, sphere or torus
+//! ([`analytic_revolution`]) before falling back to the `SmSurfOfRevolution`, and a
+//! partial turn sweeps with [`RotationalSweepGeometry::set_analytic_revolutions`] on.
+//! With the fix a whole turn also skips the one-curve special case
+//! (`sm_CreateAnalyticRotationalSweep`), as fork 9853e54 deletes it: a one-curve profile
+//! goes through the same per-curve rule, so a whole circle's torus has its seam at the
+//! profile (#1491).
 
 use super::{construct::target, geometry::bspline, PrimitiveAccess};
 use crate::curve::curve::Curve;
@@ -32,6 +42,7 @@ use crate::nurbs::b_spline_curve::p1::BSplineCurve;
 use crate::primitive::primitive_creation::p1::{analytic_rotational_sweep, PrimitiveCreation};
 use crate::surface::surf_of_revolution::p1::SurfOfRevolution;
 use crate::surface::surface::Surface;
+use crate::sweep::analytic_revolution::analytic_revolution;
 use crate::sweep::rotational_sweep_geometry::RotationalSweepGeometry;
 use crate::sweep::topology_sweep::{
     engine::SweepTargets, geometry::SweepGeometry, SweepEntity, TopologySweep,
@@ -45,7 +56,8 @@ const OP: &str = "primitive::primitive_creation::p3::sweeps";
 pub struct RepeatedSweepOptions {
     /// Number of incremental sweeps, including zero as accepted upstream.
     pub repetitions: u64,
-    /// Create end caps; repeated capped sweeps require exactly one repetition.
+    /// Create end caps on the first and last profiles; capped sweeps require at least
+    /// one repetition.
     pub cap_ends: bool,
     /// Split inputs at C1 discontinuities (default true).
     pub test_continuity: bool,
@@ -194,7 +206,7 @@ impl PrimitiveCreation {
         options: RepeatedSweepOptions,
     ) -> Result<()> {
         self.init_entity_maps();
-        if options.cap_ends && options.repetitions != 1 {
+        if options.cap_ends && options.repetitions == 0 {
             return Err(SolidError::sm_err(OP));
         }
         let region = target(self, brep)?;
@@ -215,6 +227,12 @@ impl PrimitiveCreation {
             }
             let mut faces = Vec::new();
             let mut edges = Vec::new();
+            // the profile the end cap is copied from (the planar faces consume the curves)
+            let profile: Vec<Curve> = if options.cap_ends {
+                curves.iter().flatten().cloned().collect()
+            } else {
+                Vec::new()
+            };
             if let Some(()) = ignored(a.planar_faces(region, curves, tolerance, &mut faces))? {
                 for &face in &faces {
                     edges.extend(a.face_edges((brep, face))?);
@@ -235,28 +253,47 @@ impl PrimitiveCreation {
             if distance == 0.0 {
                 return Ok(());
             }
-            let mut cap = options.cap_ends;
-            if let Some(&base) = faces.first() {
-                edges = a.face_edges((brep, base))?;
-            } else {
-                cap = false;
-            }
-            let mut geometry = TranslationalSweepGeometry::new(distance * direction);
-            geometry.base.eps = tolerance;
-            let geometry = SweepGeometry::Translation(geometry);
+            // without planar faces there is nothing to cap
+            let cap = options.cap_ends && !faces.is_empty();
+
+            // Each step is distance along the unit direction; a zero vector is rejected.
+            let sweep_dir = direction.unitize()?;
+
+            let mut translation = TranslationalSweepGeometry::new(distance * sweep_dir);
+            translation.base.eps = tolerance;
+            let step = translation.sweep_transform();
+            let geometry = SweepGeometry::Translation(translation);
             let mut sweep = TopologySweep {
                 do_tagging: self.tag_id() > 0,
                 tag_id: self.tag_id(),
                 repetitions: options.repetitions,
                 ..Default::default()
             };
-            let mut selected = targets(brep, &faces, &edges, cap);
+
+            // when asked and it's possible - build the end cap: the profile moved by
+            // every step
             if cap {
-                sweep.do_stitching = false;
-                sweep.do_sweep(a, &geometry, Some(brep), Some(region), &mut selected)?;
-                a.stitch_linear_caps(brep, &mut sweep, tolerance)?;
+                let mut end_curves = Vec::new();
+                for curve in &profile {
+                    let mut end_curve = curve.copy(a.kernel(brep)?)?;
+                    for _ in 0..options.repetitions {
+                        ignore_status(end_curve.transform(a.kernel(brep)?, &step, None))?;
+                    }
+                    end_curves.push(Some(end_curve));
+                }
+                let mut end_faces = Vec::new();
+                a.planar_faces(region, &mut end_curves, tolerance, &mut end_faces)?;
+                sweep.do_stitching = true; // stitch the sides to the caps
+            }
+
+            let mut selected = targets(brep, &faces, &edges, false);
+            sweep.do_sweep(a, &geometry, Some(brep), Some(region), &mut selected)?;
+
+            if cap {
+                // both caps have the profile's orientation
+                a.orient(brep, true, false)?;
             } else {
-                sweep.do_sweep(a, &geometry, Some(brep), Some(region), &mut selected)?;
+                // unrelated clean up - we didn't use the tmp faces (if any - delete them)
                 for face in faces {
                     ignore_status(a.delete_primitive_face((brep, face)))?;
                 }
@@ -282,7 +319,12 @@ impl PrimitiveCreation {
         self.init_entity_maps();
         let _ = target(self, brep)?;
         a.set_editing(brep, true)?;
-        if let [Some(curve)] = curves {
+        // Not upstream (#1491, with `fixes.revolve_analytic_profile_faces`): fork
+        // 9853e54 deletes the one-curve special case (sm_CreateAnalyticRotationalSweep),
+        // whose whole-circle torus puts its seam a quarter turn from the profile; the
+        // per-curve rule below covers a one-curve profile too
+        let one_curve_special_case = !a.kernel(brep)?.fixes.revolve_analytic_profile_faces;
+        if let (true, [Some(curve)]) = (one_curve_special_case, &mut *curves) {
             if ignored(a.with_primitive_brep(brep, |k, b| {
                 analytic_rotational_sweep(k, b, curve, axis_base, axis)
             }))?
@@ -349,17 +391,36 @@ impl PrimitiveCreation {
             }
             if face.is_none() {
                 if let Some(curve) = slot.as_ref() {
-                    let rev = ignored(SurfOfRevolution::create_canonical(
-                        a.kernel(brep)?,
-                        curve.clone(),
-                        axis_base,
-                        axis,
-                        false,
-                    ))?;
+                    // Not upstream (WR-448, #545): the curve's cylinder, cone,
+                    // sphere or torus, else the surface of revolution
+                    let analytic = if a.kernel(brep)?.fixes.revolve_analytic_profile_faces {
+                        let tolerance = a.brep(brep)?.tolerance();
+                        analytic_revolution(
+                            a.kernel(brep)?,
+                            curve,
+                            axis_base,
+                            axis,
+                            360.0,
+                            tolerance,
+                            None,
+                        )?
+                    } else {
+                        None
+                    };
+                    let rev = match analytic {
+                        Some(surface) => Some(surface),
+                        None => ignored(SurfOfRevolution::create_canonical(
+                            a.kernel(brep)?,
+                            curve.clone(),
+                            axis_base,
+                            axis,
+                            false,
+                        ))?
+                        .map(Surface::from),
+                    };
                     let mut success = false;
-                    if let Some(rev) = rev {
-                        let surface = Surface::from(rev);
-                        let domain = surface.natural_uv_domain();
+                    if let Some(surface) = rev {
+                        let domain = surface.natural_uv_domain_with_nurb(a.kernel(brep)?)?;
                         success =
                             ignored(a.surface_face(brep, surface, domain, &mut face))?.is_some();
                     }
@@ -444,9 +505,10 @@ impl PrimitiveCreation {
             } else {
                 cap = false;
             }
-            let geometry = SweepGeometry::Rotation(RotationalSweepGeometry::new(
-                axis_base, axis, angle_deg, tolerance,
-            ));
+            let mut rotation = RotationalSweepGeometry::new(axis_base, axis, angle_deg, tolerance);
+            // Not upstream (WR-448, #545): analytic side faces
+            rotation.set_analytic_revolutions(a.kernel(brep)?.fixes.revolve_analytic_profile_faces);
+            let geometry = SweepGeometry::Rotation(rotation);
             let mut sweep = TopologySweep {
                 repetitions: options.repetitions,
                 ..Default::default()
@@ -553,6 +615,54 @@ mod tests {
                 "block at {corner:?} minus the hollow ball: volume {got}, want {want}"
             );
         }
+    }
+
+    /// A square with a square hole (20 x 20 at r 10 to 30, the hole 8 x 8 centred in it)
+    /// turned a whole turn about z is a ring with a ring-shaped void: with the opt-ins
+    /// (WR-529, the fork's tangency-labs/smlib@38b4212) the void is not counted as
+    /// material, and the volume is Pappus's, area 336 about the centroid at r 20.
+    #[test]
+    fn holed_profile_full_turn_leaves_the_hole_a_void() {
+        use crate::geom::attribute::{AttributeStore, ObjectKey};
+        use crate::mass::integrator::properties::{brep_volume, PropertyAttributes};
+
+        let square = |x0: f64, z0: f64, side: f64| {
+            let (x1, z1) = (x0 + side, z0 + side);
+            [
+                segment([x0, 0.0, z0], [x1, 0.0, z0]),
+                segment([x1, 0.0, z0], [x1, 0.0, z1]),
+                segment([x1, 0.0, z1], [x0, 0.0, z1]),
+                segment([x0, 0.0, z1], [x0, 0.0, z0]),
+            ]
+        };
+        let mut profile = square(10.0, 0.0, 20.0).to_vec();
+        profile.extend(square(16.0, 6.0, 8.0));
+        let curves: Vec<Option<&Curve>> = profile.iter().map(Some).collect();
+        let (o, z) = (Point3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 0.0, 1.0));
+
+        let mut k = Kernel::default();
+        k.fixes.revolve_nested_shells_as_cavities = true;
+        k.fixes.revolve_holed_profile_void = true;
+        let mut ring = create_rotational_sweep(&mut k, &curves, o, z, 360.0, true).unwrap();
+        let store = AttributeStore::default();
+        let key_of = |_| ObjectKey(0);
+        let attributes = PropertyAttributes {
+            store: &store,
+            key_of: &key_of,
+        };
+        let volume = brep_volume(&k, &mut ring, 1e-6, &attributes).unwrap();
+        let want = (400.0 - 64.0) * 2.0 * std::f64::consts::PI * 20.0;
+        assert!(
+            (volume - want).abs() < 1e-3 * want,
+            "volume {volume}, want {want}"
+        );
+        let check = crate::topology::brep::validation::check_brep(
+            &mut k,
+            &mut ring,
+            crate::topology::brep::validation::CheckLevel::Level2,
+        )
+        .unwrap();
+        assert_eq!(check.failure_count(), 0, "{:?}", check.lines());
     }
 
     /// An open chain of two lines (out from r 6 to 8, then up 2) revolved half a turn into
