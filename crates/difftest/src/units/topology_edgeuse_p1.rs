@@ -41,6 +41,7 @@ use solidcore::geom::extent1d::Extent1d;
 use solidcore::geom::extent2d::Extent2d;
 use solidcore::geom::local_solve_nd::EvalNFunctions;
 use solidcore::geom::matrix::Matrix;
+use solidcore::geom::object::ObjectRef;
 use solidcore::geom::solution_array::{ObjectKind, Solution};
 use solidcore::geom::vector3d::Vec3;
 use solidcore::kernel::Kernel;
@@ -58,8 +59,8 @@ use solidcore::topology::edgeuse::p1 as eu1;
 use solidcore::topology::shell::{ShellMembers, ShellType};
 use solidcore::topology::{
     Brep, Edge, EdgeId, Edgeuse, EdgeuseId, EdgeuseOwner, Face, FaceId, Faceuse, FaceuseId, Loop,
-    LoopId, Loopuse, LoopuseId, LoopuseStart, ObjectHandle, Region, RegionId, Shell, ShellId,
-    Vertex, VertexId, Vertexuse, VertexuseId, VertexuseOwner,
+    LoopId, Loopuse, LoopuseId, LoopuseStart, NamingScheme, ObjectHandle, Region, RegionId, Shell,
+    ShellId, Vertex, VertexId, Vertexuse, VertexuseId, VertexuseOwner,
 };
 use solidcore::{EntityRef, SolidError};
 use solidcore_ffi::units::topology_edgeuse_p1::{self as ffi, Op};
@@ -1209,8 +1210,13 @@ pub(crate) fn import_raw_with_types(ex: &[f64]) -> Result<(Brep, ImportTypes), H
         let ccw = opt(rd.idx()?, EdgeuseId::from_index)?;
         let vertexuse = opt(rd.idx()?, VertexuseId::from_index)?;
         let orientation = orient_of(rd.idx()?)?;
-        let uv_trim_curve = read_curve(&mut rd, true)?;
-        rd.idx()?; // the curve's owner: the holding edge use
+        let mut uv_trim_curve = read_curve(&mut rd, true)?;
+        // the curve's owner (`g.find`: an edge use index, `-1` none, `-3` outside the
+        // graph), under the builders' edge-use naming
+        let curve_owner = rd.idx()?;
+        if let Some(c) = uv_trim_curve.as_mut() {
+            let _ = c.set_owner(owner_key(curve_owner)?, None);
+        }
         let has_fail = rd.num()? != 0.0;
         let fail_status = rd.idx()?;
         let fail_brep = rd.num()? != 0.0;
@@ -1641,6 +1647,36 @@ fn eid(i: i64) -> EdgeuseId {
     EdgeuseId::from_index(i as u32)
 }
 
+/// The UV trim curve owner key of the shim's owner index `i` (`g.find`): edge use `i`
+/// under the builders' naming ([`crate::own_builder::notify_edgeuse_owner`]), `None` for
+/// `-1`, a key no edge use has for `-3` (an owner outside the graph).
+fn owner_key(i: i64) -> Result<Option<ObjectRef>, HarnessError> {
+    Ok(match i {
+        -1 => None,
+        -3 => Some(ObjectRef {
+            type_code: EDGEUSE_TYPE,
+            key: ObjectKey(u64::MAX),
+        }),
+        _ => {
+            let i = u32::try_from(i).map_err(|_| harness("export: curve owner index"))?;
+            let eu = EdgeuseId::from_index(i);
+            Some(crate::own_builder::notify_edgeuse_owner(eu))
+        }
+    })
+}
+
+/// The shim's `g.find(6, uv->GetOwner())` of a UV trim curve owner: the index of the
+/// edge use named `owner` ([`owner_key`]), `-1` for none, `-3` for one no edge use has.
+fn owner_index(b: &Brep, owner: Option<ObjectRef>) -> f64 {
+    let Some(owner) = owner else {
+        return -1.0;
+    };
+    b.edgeuses()
+        .ids()
+        .find(|&x| crate::own_builder::notify_edgeuse_owner(x) == owner)
+        .map_or(-3.0, |x| f64::from(x.index()))
+}
+
 /// The state of an edge use after `SetUVTrimCurve`, as the shim's `put_eu_state`.
 fn eu_state(k: &Kernel, b: &Brep, eu: Option<EdgeuseId>, out: &mut Vec<f64>) -> Result<(), SolidError> {
     let Some(eu) = eu else {
@@ -1661,10 +1697,9 @@ fn eu_state(k: &Kernel, b: &Brep, eu: Option<EdgeuseId>, out: &mut Vec<f64>) -> 
             }
         }
     }
-    out.push(if r.uv_trim_curve.is_some() {
-        f64::from(eu.index())
-    } else {
-        -1.0
+    out.push(match r.uv_trim_curve.as_ref() {
+        Some(c) => owner_index(b, c.owner()),
+        None => -1.0,
     });
     match r.drop_curve_fail.as_deref() {
         Some(f) => out.extend([1.0, f64::from(f.fail_status), flag(f.brep.is_some())]),
@@ -1838,6 +1873,12 @@ fn run_rust_brep(k: &Kernel, b: &mut Brep, op: &OpIn) -> Result<Output, Fail> {
             fail,
         } => {
             let e = eid(*eu);
+            // the builders and the import name UV trim curve owners as Notify B-reps do
+            // (`own_builder::notify_edgeuse_owner`), so `SetUVTrimCurve` /
+            // `SetMemberUVTrimCurve` name the new owner the same way
+            if b.naming() == NamingScheme::Unknown {
+                b.set_naming(NamingScheme::Notify);
+            }
             let mate = match eu1::mate(b, e) {
                 Ok(m) => m,
                 Err(SolidError::InvalidInput { .. } | SolidError::PortInvariant { .. }) => {
