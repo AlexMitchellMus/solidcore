@@ -183,7 +183,7 @@ use crate::surface::surface_cache::face_context::FaceQueries;
 use crate::surface::surface_cache::SurfaceCache;
 use crate::topology::brep::p1 as bp1;
 use crate::topology::brep::p2 as brep_p2;
-use crate::topology::edge::{self as topo_edge, NotificationStores, NotifyState, SetCurveOptions};
+use crate::topology::edge::{self as topo_edge, NotificationStores, NotifyState};
 use crate::topology::edgeuse::p1 as eu1;
 use crate::topology::face::p3::create_uv_trim_curves;
 use crate::topology::proto_topology::ProtoGeometry;
@@ -372,6 +372,13 @@ pub trait OffsetExecutive<O> {
     /// `GetOffsetEdgeuse`: the offset edge use related to `original`, only when exactly
     /// one is (`m_vEUToEU` is a many-to-many `SmRelation`; none or several give `None`).
     fn offset_edgeuse(&self, original: O) -> Option<O>;
+    /// Not upstream (WR-344 refinement, tangency-labs/solidcore#1795): `EdgeuseOffset`
+    /// could not mate the offsets of `original`'s edge (`MateEdges` failed, which upstream
+    /// only reports), so the merge must still intersect them; called only with
+    /// `Kernel::fixes.offset_extended_edges_mated`. The default ignores it.
+    fn note_unmated_edgeuse(&mut self, original: O) {
+        let _ = original;
+    }
     /// `GetCreateExtendedSurface(pBase, rUVDomainOfOffset, rpExtSurface)`: the extension
     /// of `base` cached by the executive (`m_vSurfExtSurf`), created on a miss by
     /// extending `base` by five offset distances
@@ -1409,23 +1416,15 @@ fn brep_replace_curve(
     k: &mut Kernel,
     b: &mut Brep,
     e: EdgeId,
-    mut curve: Curve,
+    curve: Curve,
     stores: &mut NotificationStores<'_>,
 ) -> Result<()> {
-    let interval = curve.natural_interval();
     NotifyState::from_kernel_stores(stores).with_kernel_env(k, |_k, env| {
         let this = Some(brep_p2::NotifyArg::Object(brep_p2::brep_ref(b)));
         brep_p2::notify(b, env, None, NotifyOperation::PreEdit, [this, None, None])?;
 
         // Replace3DCurve
-        let owner = (env.key_of)(EntityRef::Edge(e));
-        let _ = curve.set_owner(Some(owner), Some(brep_p2::brep_ref(b)));
-        let options = SetCurveOptions {
-            delete_old_curve: true,
-            ..SetCurveOptions::default()
-        };
-        let _ = topo_edge::set_curve(b, e, Some(curve), options, env, [None, None])?;
-        topo_edge::set_interval(b, e, &interval)?;
+        topo_edge::replace_3d_curve(b, e, Some(curve), env)?;
 
         // RemoveUVTrimCurves (ClearUVCaches)
         let edge_ref = (env.key_of)(EntityRef::Edge(e));
@@ -4047,7 +4046,7 @@ impl OffsetGeometryCreation {
             }
 
             // Mate a couple of edges by extension and intersection (a problem is only reported).
-            let _ = ignore_soft(self.mate_edges(
+            let mated = ignore_soft(self.mate_edges(
                 k,
                 brep,
                 executive,
@@ -4057,6 +4056,11 @@ impl OffsetGeometryCreation {
                 other_offset_edgeuse,
                 mark,
             ))?;
+            // Not upstream (WR-344 refinement, #1795): the merge must still intersect the
+            // offsets of an edge that could not be mated
+            if mated.is_none() && k.fixes.offset_extended_edges_mated {
+                executive.note_unmated_edgeuse(original_edgeuse);
+            }
             return Ok(out);
         } // end when extending convex edges
 
